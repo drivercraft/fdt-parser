@@ -20,15 +20,11 @@ pub enum FdtError<'a> {
 
     MissingProperty,
 
-    Utf8Parse,
+    Utf8Parse {
+        data: &'a [u8],
+    },
 
     FromBytesUntilNull {
         data: &'a [u8],
     },
-}
-
-impl<'a> From<Utf8Error> for FdtError<'a> {
-    fn from(_value: Utf8Error) -> Self {
-        FdtError::Utf8Parse
-    }
 }

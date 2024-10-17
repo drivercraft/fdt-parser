@@ -109,9 +109,7 @@ impl<'a> FdtReader<'a> {
     }
 
     pub fn take_unit_name(&mut self) -> FdtResult<'a, &'a str> {
-        let unit_name = CStr::from_bytes_until_nul(self.remaining())
-            .map_err(|_e| FdtError::Utf8Parse)?
-            .to_str()?;
+        let unit_name = self.peek_str()?;
         let full_name_len = unit_name.len() + 1;
         let _ = self.skip_4_aligned(full_name_len);
         Ok(if unit_name.is_empty() { "/" } else { unit_name })
@@ -127,13 +125,15 @@ impl<'a> FdtReader<'a> {
         })
     }
 
-    fn peek_str(&self) -> Option<&'a str> {
-        let s = CStr::from_bytes_until_nul(self.remaining()).ok()?;
-        s.to_str().ok()
+    pub fn peek_str(&self) -> FdtResult<'a, &'a str> {
+        let data = self.remaining();
+        let s =
+            CStr::from_bytes_until_nul(data).map_err(|_| FdtError::FromBytesUntilNull { data })?;
+        s.to_str().map_err(|_| FdtError::Utf8Parse { data })
     }
 
     pub fn take_str(&mut self) -> Option<&'a str> {
-        let s = self.peek_str()?;
+        let s = self.peek_str().ok()?;
 
         let _ = self.skip(s.bytes().len() + 1);
         if s.is_empty() {

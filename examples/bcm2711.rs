@@ -14,9 +14,9 @@ fn main() {
     }
     let mut i = 0;
     for node in fdt.all_nodes() {
-        if i > 40 {
-            break;
-        }
+        // if i > 40 {
+        //     break;
+        // }
         let space = " ".repeat((node.level - 1) * 4);
         println!("{}{}", space, node.name());
 

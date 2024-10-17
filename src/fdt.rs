@@ -49,16 +49,15 @@ impl<'a> Fdt<'a> {
         })
     }
 
-    pub(crate) fn get_str<'b: 'a>(&'b self, offset: usize) -> FdtResult<'a, &'a str> {
-        let reader = self.reader(self.header.off_dt_strings.get() as usize + offset);
-        let s = CStr::from_bytes_until_nul(reader.remaining())
-            .map_err(|_e| FdtError::Utf8Parse)?
-            .to_str()?;
-        Ok(s)
+    pub(crate) fn get_str(&'a self, offset: usize) -> FdtResult<'a, &'a str> {
+        let string_bytes = &self.data[self.header.strings_range()];
+        let reader = FdtReader::new(&string_bytes[offset..]);
+        reader.peek_str()
     }
 
     pub fn all_nodes(&'a self) -> impl Iterator<Item = Node<'a>> {
-        let reader = self.reader(self.header.off_dt_struct.get() as _);
+        let struct_bytes = &self.data[self.header.struct_range()];
+        let reader = FdtReader::new(struct_bytes);
         FdtIter {
             fdt: self,
             current_level: 0,
