@@ -52,7 +52,7 @@ impl<'a> FdtReader<'a> {
         }
     }
     pub fn skip(&mut self, n_bytes: usize) -> FdtResult<'a> {
-        self.bytes = self.bytes.get(n_bytes..).ok_or(FdtError::BufferTooSmall)?;
+        self.bytes = self.bytes.get(n_bytes..).ok_or(FdtError::Eof)?;
         Ok(())
     }
 
@@ -127,19 +127,17 @@ impl<'a> FdtReader<'a> {
 
     pub fn peek_str(&self) -> FdtResult<'a, &'a str> {
         let data = self.remaining();
+        if data.is_empty(){
+            return Err(FdtError::Eof);
+        }
         let s =
             CStr::from_bytes_until_nul(data).map_err(|_| FdtError::FromBytesUntilNull { data })?;
         s.to_str().map_err(|_| FdtError::Utf8Parse { data })
     }
 
-    pub fn take_str(&mut self) -> Option<&'a str> {
-        let s = self.peek_str().ok()?;
-
+    pub fn take_str(&mut self) -> FdtResult<'a, &'a str> {
+        let s = self.peek_str()?;
         let _ = self.skip(s.bytes().len() + 1);
-        if s.is_empty() {
-            None
-        } else {
-            Some(s)
-        }
+        Ok(s)
     }
 }

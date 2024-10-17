@@ -1,8 +1,11 @@
 use core::iter;
 
 use crate::{
-    meta::MetaData, property::Property, read::FdtReader, Fdt, FdtRange, FdtRangeSilce, FdtReg,
-    Phandle, Token,
+    error::{FdtError, FdtResult},
+    meta::MetaData,
+    property::Property,
+    read::FdtReader,
+    Fdt, FdtRange, FdtRangeSilce, FdtReg, Phandle, Token,
 };
 
 #[derive(Clone)]
@@ -115,9 +118,38 @@ impl<'a> Node<'a> {
         self.fdt.get_node_by_phandle(phandle)
     }
 
-    pub fn compatible(&self) -> Option<impl Iterator<Item = &'a str> + 'a> {
-        let mut prop = self.find_property("compatible")?;
-        Some(iter::from_fn(move || prop.data.take_str()))
+    pub fn compatible(&self) -> Option<impl Iterator<Item = FdtResult<'a, &'a str>> + 'a> {
+        let prop = self.find_property("compatible")?;
+        // {
+        //     let mut value = prop.data.clone();
+        //     loop {
+        //         match value.take_str() {
+        //             Ok(_) => {}
+        //             Err(e) => match e {
+        //                 FdtError::Eof => break,
+        //                 _ => return Err(e),
+        //             },
+        //         }
+        //     }
+        // }
+        let mut value = prop.data.clone();
+
+        Some(iter::from_fn(move || {
+            let s = value.take_str();
+            match s {
+                Ok(s) => {
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(Ok(s))
+                    }
+                }
+                Err(e) => match e {
+                    FdtError::Eof => return None,
+                    _ => return Some(Err(e)),
+                },
+            }
+        }))
     }
 
     pub fn phandle(&self) -> Option<Phandle> {

@@ -1,4 +1,4 @@
-use core::{ffi::CStr, iter, ptr::NonNull};
+use core::{iter, ptr::NonNull};
 
 use crate::{
     error::*, meta::MetaData, node::Node, read::FdtReader, FdtHeader, MemoryRegion, Phandle, Token,

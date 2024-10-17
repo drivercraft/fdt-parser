@@ -23,7 +23,7 @@ fn main() {
         if let Some(cap) = node.compatible() {
             println!("{} -compatible: ", space);
             for cap in cap {
-                println!("{}     {:?}", space, cap);
+                println!("{}     {:?}", space, cap.unwrap());
             }
         }
 

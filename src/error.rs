@@ -4,6 +4,7 @@ pub type FdtResult<'a, T = ()> = Result<T, FdtError<'a>>;
 
 #[derive(Debug)]
 pub enum FdtError<'a> {
+    NotFound,
     /// The FDT had an invalid magic value.
     BadMagic,
     /// The given pointer was null.
@@ -16,7 +17,7 @@ pub enum FdtError<'a> {
     BadPropTag((u32, u32)),
     /// The slice passed in was too small to fit the given total size of the FDT
     /// structure.
-    BufferTooSmall,
+    Eof,
 
     MissingProperty,
 

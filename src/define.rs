@@ -145,7 +145,7 @@ impl FdtHeader {
 
     pub fn from_bytes(bytes: &[u8]) -> FdtResult<'static, Self> {
         if bytes.len() < size_of::<FdtHeader>() {
-            return Err(FdtError::BufferTooSmall);
+            return Err(FdtError::Eof);
         }
 
         unsafe {
