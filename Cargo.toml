@@ -1,0 +1,15 @@
+[package]
+name = "fdt-parser"
+version = "0.1.0"
+authors = ["Zhourui <zrufo747@outlook.com>"]
+edition = "2021"
+
+[features]
+
+
+[dependencies]
+log = "0.4"
+
+
+[dev-dependencies]
+env_logger = "0.9"
