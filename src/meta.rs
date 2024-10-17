@@ -1,4 +1,4 @@
-use crate::{node::Node, FdtRangeSilce, Phandle};
+use crate::{FdtRangeSilce, Phandle};
 
 #[derive(Clone, Default)]
 pub(crate) struct MetaData<'a> {

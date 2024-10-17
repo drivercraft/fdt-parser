@@ -40,9 +40,6 @@ impl Fdt32 {
         u32::from_be_bytes(self.0)
     }
 
-    pub(crate) fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        Some(Self(bytes.get(..4)?.try_into().ok()?))
-    }
 }
 
 impl From<&[u8]> for Fdt32 {
@@ -69,10 +66,6 @@ impl Fdt64 {
     pub fn get(&self) -> u64 {
         u64::from_be_bytes(self.0)
     }
-
-    pub(crate) fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        Some(Self(bytes.get(..8)?.try_into().ok()?))
-    }
 }
 impl From<&[u8]> for Fdt64 {
     fn from(value: &[u8]) -> Self {
@@ -97,7 +90,7 @@ pub struct RawReg<'a> {
 }
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-pub(crate) struct FdtHeader {
+pub struct FdtHeader {
     /// FDT header magic
     pub magic: Fdt32,
     /// Total size in bytes of the FDT structure

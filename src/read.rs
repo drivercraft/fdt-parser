@@ -126,10 +126,10 @@ impl<'a> FdtReader<'a> {
     }
 
     pub fn peek_str(&self) -> FdtResult<'a, &'a str> {
-        let data = self.remaining();
-        if data.is_empty(){
+        if self.is_empty() {
             return Err(FdtError::Eof);
         }
+        let data = self.remaining();
         let s =
             CStr::from_bytes_until_nul(data).map_err(|_| FdtError::FromBytesUntilNull { data })?;
         s.to_str().map_err(|_| FdtError::Utf8Parse { data })

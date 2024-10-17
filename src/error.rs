@@ -1,5 +1,3 @@
-use core::str::Utf8Error;
-
 pub type FdtResult<'a, T = ()> = Result<T, FdtError<'a>>;
 
 #[derive(Debug)]

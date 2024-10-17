@@ -10,4 +10,5 @@ mod read;
 
 use define::*;
 
+pub use define::FdtHeader;
 pub use fdt::Fdt;
