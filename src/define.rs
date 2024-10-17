@@ -122,7 +122,7 @@ pub(crate) struct FdtHeader {
 }
 
 impl FdtHeader {
-    pub(crate) fn valid_magic(&self) -> FdtResult {
+    pub(crate) fn valid_magic(&self) -> FdtResult<'static> {
         if self.magic.get() == 0xd00dfeed {
             Ok(())
         } else {
@@ -143,7 +143,7 @@ impl FdtHeader {
         start..end
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> FdtResult<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> FdtResult<'static, Self> {
         if bytes.len() < size_of::<FdtHeader>() {
             return Err(FdtError::BufferTooSmall);
         }
@@ -154,7 +154,7 @@ impl FdtHeader {
         }
     }
 
-    pub fn from_ptr(ptr: NonNull<u8>) -> FdtResult<Self> {
+    pub fn from_ptr(ptr: NonNull<u8>) -> FdtResult<'static, Self> {
         let ptr: NonNull<FdtHeader> = ptr.cast();
         unsafe { Ok(ptr.as_ref().clone()) }
     }

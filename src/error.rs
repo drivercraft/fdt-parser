@@ -1,9 +1,9 @@
 use core::str::Utf8Error;
 
-pub type FdtResult<T = ()> = Result<T, FdtError>;
+pub type FdtResult<'a, T = ()> = Result<T, FdtError<'a>>;
 
 #[derive(Debug)]
-pub enum FdtError {
+pub enum FdtError<'a> {
     /// The FDT had an invalid magic value.
     BadMagic,
     /// The given pointer was null.
@@ -21,9 +21,13 @@ pub enum FdtError {
     MissingProperty,
 
     Utf8Parse,
+
+    FromBytesUntilNull {
+        data: &'a [u8],
+    },
 }
 
-impl From<Utf8Error> for FdtError {
+impl<'a> From<Utf8Error> for FdtError<'a> {
     fn from(_value: Utf8Error) -> Self {
         FdtError::Utf8Parse
     }

@@ -11,7 +11,7 @@ pub struct Fdt<'a> {
 }
 
 impl<'a> Fdt<'a> {
-    pub fn from_bytes(data: &'a [u8]) -> FdtResult<Self> {
+    pub fn from_bytes(data: &'a [u8]) -> FdtResult<'a, Self> {
         let header = FdtHeader::from_bytes(data)?;
 
         header.valid_magic()?;
@@ -19,7 +19,7 @@ impl<'a> Fdt<'a> {
         Ok(Self { header, data })
     }
 
-    pub fn from_ptr(ptr: NonNull<u8>) -> FdtResult<Self> {
+    pub fn from_ptr(ptr: NonNull<u8>) -> FdtResult<'a, Self> {
         let tmp_header =
             unsafe { core::slice::from_raw_parts(ptr.as_ptr(), core::mem::size_of::<FdtHeader>()) };
         let real_size = FdtHeader::from_bytes(tmp_header)?.totalsize.get() as usize;
@@ -49,7 +49,7 @@ impl<'a> Fdt<'a> {
         })
     }
 
-    pub(crate) fn get_str<'b: 'a>(&'b self, offset: usize) -> FdtResult<&'a str> {
+    pub(crate) fn get_str<'b: 'a>(&'b self, offset: usize) -> FdtResult<'a, &'a str> {
         let reader = self.reader(self.header.off_dt_strings.get() as usize + offset);
         let s = CStr::from_bytes_until_nul(reader.remaining())
             .map_err(|_e| FdtError::Utf8Parse)?

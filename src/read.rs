@@ -51,7 +51,7 @@ impl<'a> FdtReader<'a> {
             _ => panic!("invalid cell size {}", cell_size),
         }
     }
-    pub fn skip(&mut self, n_bytes: usize) -> FdtResult {
+    pub fn skip(&mut self, n_bytes: usize) -> FdtResult<'a> {
         self.bytes = self.bytes.get(n_bytes..).ok_or(FdtError::BufferTooSmall)?;
         Ok(())
     }
@@ -98,7 +98,7 @@ impl<'a> FdtReader<'a> {
         self.take(bytes)
     }
 
-    pub fn skip_4_aligned(&mut self, len: usize) -> FdtResult {
+    pub fn skip_4_aligned(&mut self, len: usize) -> FdtResult<'a> {
         self.skip((len + 3) & !0x3)
     }
 
@@ -108,7 +108,7 @@ impl<'a> FdtReader<'a> {
         Some(FdtReserveEntry::new(address, size))
     }
 
-    pub fn take_unit_name(&mut self) -> FdtResult<&'a str> {
+    pub fn take_unit_name(&mut self) -> FdtResult<'a, &'a str> {
         let unit_name = CStr::from_bytes_until_nul(self.remaining())
             .map_err(|_e| FdtError::Utf8Parse)?
             .to_str()?;
@@ -127,11 +127,13 @@ impl<'a> FdtReader<'a> {
         })
     }
 
+    fn peek_str(&self) -> Option<&'a str> {
+        let s = CStr::from_bytes_until_nul(self.remaining()).ok()?;
+        s.to_str().ok()
+    }
+
     pub fn take_str(&mut self) -> Option<&'a str> {
-        let s = CStr::from_bytes_until_nul(self.remaining())
-            .ok()?
-            .to_str()
-            .ok()?;
+        let s = self.peek_str()?;
 
         let _ = self.skip(s.bytes().len() + 1);
         if s.is_empty() {
