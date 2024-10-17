@@ -39,7 +39,6 @@ impl Fdt32 {
     pub fn get(self) -> u32 {
         u32::from_be_bytes(self.0)
     }
-
 }
 
 impl From<&[u8]> for Fdt32 {
@@ -149,7 +148,7 @@ impl FdtHeader {
 
     pub fn from_ptr(ptr: NonNull<u8>) -> FdtResult<'static, Self> {
         let ptr: NonNull<FdtHeader> = ptr.cast();
-        unsafe { Ok(ptr.as_ref().clone()) }
+        unsafe { Ok(*ptr.as_ref()) }
     }
 }
 

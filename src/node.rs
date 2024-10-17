@@ -120,18 +120,6 @@ impl<'a> Node<'a> {
 
     pub fn compatible(&self) -> Option<impl Iterator<Item = FdtResult<'a, &'a str>> + 'a> {
         let prop = self.find_property("compatible")?;
-        // {
-        //     let mut value = prop.data.clone();
-        //     loop {
-        //         match value.take_str() {
-        //             Ok(_) => {}
-        //             Err(e) => match e {
-        //                 FdtError::Eof => break,
-        //                 _ => return Err(e),
-        //             },
-        //         }
-        //     }
-        // }
         let mut value = prop.data.clone();
 
         Some(iter::from_fn(move || {
@@ -145,8 +133,8 @@ impl<'a> Node<'a> {
                     }
                 }
                 Err(e) => match e {
-                    FdtError::Eof => return None,
-                    _ => return Some(Err(e)),
+                    FdtError::Eof => None,
+                    _ => Some(Err(e)),
                 },
             }
         }))

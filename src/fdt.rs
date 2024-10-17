@@ -40,9 +40,9 @@ impl<'a> Fdt<'a> {
         iter::from_fn(move || match reader.reserved_memory() {
             Some(region) => {
                 if region.address == 0 && region.size == 0 {
-                    return None;
+                    None
                 } else {
-                    return Some(region.into());
+                    Some(region.into())
                 }
             }
             None => None,
@@ -182,7 +182,7 @@ impl<'a> Iterator for FdtIter<'a> {
                     }
                 }
                 Token::Prop => {
-                    let prop = self.reader.take_prop(&self.fdt)?;
+                    let prop = self.reader.take_prop(self.fdt)?;
                     let index = self.level_current_index();
                     macro_rules! update_cell {
                         ($cell:ident) => {
