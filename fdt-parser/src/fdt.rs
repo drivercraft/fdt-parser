@@ -80,6 +80,65 @@ impl<'a> Fdt<'a> {
     pub fn get_node_by_name(&'a self, name: &str) -> Option<Node<'a>> {
         self.all_nodes().find(|x| x.name().eq(name)).clone()
     }
+
+    pub fn find_compatible(&'a self, with: &[&str]) -> Option<Node<'a>> {
+        self.all_nodes().find(|n| {
+            n.compatible()
+                .and_then(|mut compats| {
+                    compats.find(|c| match c {
+                        Ok(c) => with.contains(c),
+                        Err(_) => false,
+                    })
+                })
+                .is_some()
+        })
+    }
+
+    pub fn find_node(&'a self, path: &str) -> Option<Node<'a>> {
+        if path.starts_with("/") {
+            let mut out = None;
+            let mut parts = path.split("/").filter(|o| !o.is_empty());
+            let mut want = "/";
+            for node in self.all_nodes() {
+                let eq = if path.contains("@") {
+                    node.name.eq(want)
+                } else {
+                    let name = node.name.split("@").next().unwrap();
+                    name.eq(want)
+                };
+                if eq {
+                    out = Some(node.clone());
+                    want = match parts.next() {
+                        Some(t) => {
+                            out = None;
+                            t
+                        }
+                        None => return out,
+                    };
+                }
+            }
+            out
+        } else {
+            let aliases = self.find_node("/aliases")?;
+            for prop in aliases.propertys() {
+                if prop.name.eq(path) {
+                    let path = prop.str();
+                    return self.find_node(path);
+                }
+            }
+            None
+        }
+    }
+
+    pub fn find_aliase(&'a self, name: &str) -> Option<&'a str> {
+        let aliases = self.find_node("/aliases")?;
+        for prop in aliases.propertys() {
+            if prop.name.eq(name) {
+                return Some(prop.str());
+            }
+        }
+        None
+    }
 }
 
 pub struct FdtIter<'a> {

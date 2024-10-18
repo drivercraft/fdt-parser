@@ -12,11 +12,10 @@ fn main() {
     for region in fdt.reserved_memory_regions() {
         println!("region: {:?}", region);
     }
-    let mut i = 0;
-    for node in fdt.all_nodes() {
-        // if i > 40 {
-        //     break;
-        // }
+    for (i, node) in fdt.all_nodes().enumerate() {
+        if i > 40 {
+            break;
+        }
         let space = " ".repeat((node.level - 1) * 4);
         println!("{}{}", space, node.name());
 
@@ -33,6 +32,5 @@ fn main() {
                 println!("{}     {:?}", space, cell);
             }
         }
-        i += 1;
     }
 }
