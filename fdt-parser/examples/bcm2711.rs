@@ -5,7 +5,7 @@ fn main() {
         .filter_level(log::LevelFilter::Trace)
         .init();
 
-    let bytes = include_bytes!("../dtb/bcm2711-rpi-4-b.dtb");
+    let bytes = include_bytes!("../../dtb/bcm2711-rpi-4-b.dtb");
 
     let fdt = Fdt::from_bytes(bytes).unwrap();
     println!("version: {}", fdt.version());

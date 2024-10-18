@@ -1,0 +1,17 @@
+[package]
+name = "fdt-parser"
+version = "0.1.0"
+authors = ["Zhourui <zrufo747@outlook.com>"]
+edition = "2021"
+repository = "https://github.com/qclic/fdt-parser"
+documentation = "https://docs.rs/fdt-parser"
+license = "MPL-2.0"
+description = "A pure-Rust `#![no_std]` crate for parsing FDT"
+keywords = ["devicetree", "fdt", "dt", "dtb"]
+categories = ["embedded", "no-std"]
+
+[dependencies]
+log = "0.4"
+
+[dev-dependencies]
+env_logger = "0.11"
