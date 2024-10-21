@@ -1,7 +1,5 @@
 # FDT Parser
 
-========
-
 [![Build & Check CI](https://github.com/qclic/fdt-parser/actions/workflows/ci.yml/badge.svg)](https://github.com/qclic/fdt-parser/actions/workflows/ci.yml)
 [![Latest version](https://img.shields.io/crates/v/fdt-parser.svg)](https://crates.io/crates/fdt-parser)
 [![Documentation](https://docs.rs/fdt-parser/badge.svg)](https://docs.rs/fdt-parser)
