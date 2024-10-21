@@ -26,13 +26,13 @@ fn main() {
     let mut file = std::fs::File::create(&args.output).unwrap();
 
     writeln!(file, "/dts-v{}/;", fdt.version()).unwrap();
-    for region in fdt.reserved_memory_regions() {
+    for region in fdt.memory_reservation_block() {
         writeln!(file, "/memreserve/ {:?};", region).unwrap();
     }
 
     for node in fdt.all_nodes() {
-        let space = "\t".repeat((node.level - 1));
-        writeln!(file,"{}{}", space, node.name()).unwrap();
+        let space = "\t".repeat(node.level - 1);
+        writeln!(file, "{}{}", space, node.name()).unwrap();
 
         if let Some(cap) = node.compatible() {
             writeln!(file, "{} -compatible: ", space).unwrap();

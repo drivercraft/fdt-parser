@@ -4,6 +4,7 @@ use crate::{
     error::*, meta::MetaData, node::Node, read::FdtReader, FdtHeader, MemoryRegion, Phandle, Token,
 };
 
+/// The reference to the FDT raw data.
 #[derive(Clone)]
 pub struct Fdt<'a> {
     pub(crate) header: FdtHeader,
@@ -11,6 +12,7 @@ pub struct Fdt<'a> {
 }
 
 impl<'a> Fdt<'a> {
+    /// Create a new FDT from raw data.
     pub fn from_bytes(data: &'a [u8]) -> FdtResult<'a, Self> {
         let header = FdtHeader::from_bytes(data)?;
 
@@ -19,6 +21,7 @@ impl<'a> Fdt<'a> {
         Ok(Self { header, data })
     }
 
+    /// Create a new FDT from a pointer.
     pub fn from_ptr(ptr: NonNull<u8>) -> FdtResult<'a, Self> {
         let tmp_header =
             unsafe { core::slice::from_raw_parts(ptr.as_ptr(), core::mem::size_of::<FdtHeader>()) };
@@ -35,7 +38,10 @@ impl<'a> Fdt<'a> {
         self.header.version.get() as _
     }
 
-    pub fn reserved_memory_regions(&self) -> impl Iterator<Item = MemoryRegion> + '_ {
+    /// The memory reservation block provides the client program with a list of areas in physical memory which are reserved; that
+    /// is, which shall not be used for general memory allocations. It is used to protect vital data structures from being overwritten
+    /// by the client program.
+    pub fn memory_reservation_block(&self) -> impl Iterator<Item = MemoryRegion> + '_ {
         let mut reader = self.reader(self.header.off_mem_rsvmap.get() as _);
         iter::from_fn(move || match reader.reserved_memory() {
             Some(region) => {
@@ -94,6 +100,7 @@ impl<'a> Fdt<'a> {
         })
     }
 
+    /// if path start with '/' then search by path, else search by aliases
     pub fn find_node(&'a self, path: &str) -> Option<Node<'a>> {
         if path.starts_with("/") {
             let mut out = None;

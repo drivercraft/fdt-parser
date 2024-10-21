@@ -26,5 +26,4 @@ impl<'a> Property<'a> {
             .to_str()
             .unwrap()
     }
-
 }

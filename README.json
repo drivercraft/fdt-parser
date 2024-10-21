@@ -1,0 +1,12 @@
+{
+  "name": "fdt-parser",
+  "description": "This is a crate of device tree FDT format parser",
+  "authors": [{
+    "name": "周睿",
+    "email": "zrufo747@outlook.com"
+  }],
+  "keywords": ["dtb", "fdt"],
+  "test_repos": [],
+  "repo": "qclic/fdt-parser",
+  "doc_url": "https://docs.rs/fdt-parser/latest/fdt_parser/"
+}
