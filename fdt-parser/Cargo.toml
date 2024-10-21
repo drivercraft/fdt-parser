@@ -10,6 +10,9 @@ description = "A crate for parsing FDT"
 keywords = ["devicetree", "fdt", "dt", "dtb"]
 categories = ["embedded", "no-std"]
 
+[lib]
+doctest = false
+
 [dependencies]
 log = "0.4"
 
