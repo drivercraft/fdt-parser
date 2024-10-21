@@ -22,7 +22,7 @@ jobs:
     - name: Check code format
       run: cargo fmt --all -- --check
     - name: Clippy
-      run: cargo clippy  --manifest-path .\fdt-parser\Cargo.toml --target ${{ matrix.targets }} --all-features -- -A clippy::new_without_default
+      run: cargo clippy  --manifest-path ./fdt-parser/Cargo.toml --target ${{ matrix.targets }} --all-features -- -A clippy::new_without_default
     - name: Build
       run: cargo build -p fdt-parser --target ${{ matrix.targets }} --all-features
     - name: Unit test
