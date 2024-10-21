@@ -1,16 +1,24 @@
-# Device Tree FDT format parser
+# FDT Parser
+
+========
+
+[![Build & Check CI](https://github.com/qclic/fdt-parser/actions/workflows/ci.yml/badge.svg)](https://github.com/qclic/fdt-parser/actions/workflows/ci.yml)
+[![Latest version](https://img.shields.io/crates/v/fdt-parser.svg)](https://crates.io/crates/fdt-parser)
+[![Documentation](https://docs.rs/fdt-parser/badge.svg)](https://docs.rs/fdt-parser)
+![License](https://img.shields.io/crates/l/fdt-parser.svg)
 
 Base on [devicetree-specification-v0.4](https://github.com/devicetree-org/devicetree-specification/releases/download/v0.4/devicetree-specification-v0.4.pdf)
 
 ## Usage
 
 ```rust
+use fdt_parser::Fdt;
 fn main() {
-    let bytes = include_bytes!("../dtb/bcm2711-rpi-4-b.dtb");
+    let bytes = include_bytes!("../../dtb/bcm2711-rpi-4-b.dtb");
 
     let fdt = Fdt::from_bytes(bytes).unwrap();
     println!("version: {}", fdt.version());
-    for region in fdt.reserved_memory_regions() {
+    for region in fdt.memory_reservation_block() {
         println!("region: {:?}", region);
     }
     
