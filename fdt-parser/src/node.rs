@@ -2,6 +2,7 @@ use core::iter;
 
 use crate::{
     error::{FdtError, FdtResult},
+    interrupt::InterruptController,
     meta::MetaData,
     property::Property,
     read::FdtReader,
@@ -12,7 +13,7 @@ use crate::{
 pub struct Node<'a> {
     pub level: usize,
     pub name: &'a str,
-    fdt: &'a Fdt<'a>,
+    pub(crate) fdt: &'a Fdt<'a>,
     /// 父节点的元数据
     pub(crate) meta_parents: MetaData<'a>,
     /// 当前节点的元数据
@@ -108,14 +109,16 @@ impl<'a> Node<'a> {
         Some(prop.u32().into())
     }
 
-    pub fn interrupt_parent(&self) -> Option<Node<'a>> {
+    pub fn interrupt_parent(&self) -> Option<InterruptController<'a>> {
         let phandle = if let Some(p) = self.meta.interrupt_parent {
             Some(p)
         } else {
             self.meta_parents.interrupt_parent
         }?;
 
-        self.fdt.get_node_by_phandle(phandle)
+        self.fdt
+            .get_node_by_phandle(phandle)
+            .map(|node| InterruptController { node })
     }
 
     pub fn compatible(&self) -> Option<impl Iterator<Item = FdtResult<'a, &'a str>> + 'a> {

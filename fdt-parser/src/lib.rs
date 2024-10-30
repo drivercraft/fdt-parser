@@ -1,9 +1,11 @@
 #![no_std]
 #![doc = include_str!("../README.md")]
 
+mod chosen;
 mod define;
 pub mod error;
 mod fdt;
+mod interrupt;
 mod meta;
 mod node;
 mod property;

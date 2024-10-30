@@ -1,7 +1,8 @@
 use core::{iter, ptr::NonNull};
 
 use crate::{
-    error::*, meta::MetaData, node::Node, read::FdtReader, FdtHeader, MemoryRegion, Phandle, Token,
+    chosen::Chosen, error::*, meta::MetaData, node::Node, read::FdtReader, FdtHeader, MemoryRegion,
+    Phandle, Token,
 };
 
 /// The reference to the FDT raw data.
@@ -78,6 +79,10 @@ impl<'a> Fdt<'a> {
             node_reader: None,
             node_name: "",
         }
+    }
+
+    pub fn chosen(&'a self) -> Option<Chosen<'a>> {
+        self.find_node("/chosen").map(|o| Chosen::new(o))
     }
 
     pub fn get_node_by_phandle(&'a self, phandle: Phandle) -> Option<Node<'a>> {
