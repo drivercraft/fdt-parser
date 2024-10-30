@@ -38,6 +38,12 @@ impl<'a> Fdt<'a> {
         self.header.version.get() as _
     }
 
+    /// This field shall contain the physical ID of the system’s boot CPU. It shall be identical to the physical ID given in the
+    /// reg property of that CPU node within the devicetree.
+    pub fn boot_cpuid_phys(&self) -> u32 {
+        self.header.boot_cpuid_phys.get()
+    }
+
     /// The memory reservation block provides the client program with a list of areas in physical memory which are reserved; that
     /// is, which shall not be used for general memory allocations. It is used to protect vital data structures from being overwritten
     /// by the client program.
