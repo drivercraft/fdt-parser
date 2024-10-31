@@ -145,6 +145,20 @@ impl<'a> Node<'a> {
         }))
     }
 
+    /// Get all compatible ignoring errors
+    pub fn compatibles(&self) -> impl Iterator<Item = &'a str> + 'a {
+        let mut cap_raw = self.compatible();
+
+        iter::from_fn(move || {
+            if let Some(caps) = &mut cap_raw {
+                let cap = caps.next()?.ok()?;
+                Some(cap)
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn phandle(&self) -> Option<Phandle> {
         let prop = self.find_property("phandle")?;
         Some(prop.u32().into())

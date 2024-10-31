@@ -12,6 +12,19 @@ mod test {
     }
 
     #[test]
+    fn test_compatibles() {
+        let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
+        let uart = fdt.find_nodes("/soc/serial@7e201000").next().unwrap();
+        let caps = uart.compatibles().collect::<Vec<_>>();
+
+        let want = ["arm,pl011", "arm,primecell"];
+
+        for (i, cap) in caps.iter().enumerate() {
+            assert_eq!(*cap, want[i]);
+        }
+    }
+
+    #[test]
     fn test_find_nodes() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
         let uart = fdt.find_nodes("/soc/serial");
