@@ -11,9 +11,7 @@ impl<'a> Chosen<'a> {
 
     /// Contains the bootargs, if they exist
     pub fn bootargs(&self) -> Option<&'a str> {
-        self.node
-            .find_property("bootargs")
-            .and_then(|p| Some(p.str()))
+        self.node.find_property("bootargs").map(|p| p.str())
     }
 
     /// Searches for the node representing `stdout`, if the property exists,
@@ -23,8 +21,8 @@ impl<'a> Chosen<'a> {
         let mut sp = path.split(':');
         let name = sp.next()?;
         let params = sp.next();
-        let node = self.node.fdt.find_node(name)?;
-        return Some(Stdout { params, node });
+        let node = self.node.fdt.find_nodes(name).next()?;
+        Some(Stdout { params, node })
     }
 }
 

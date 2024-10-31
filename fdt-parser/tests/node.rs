@@ -12,15 +12,27 @@ mod test {
     }
 
     #[test]
-    fn test_find_node1() {
+    fn test_find_nodes() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-        let node = fdt.find_node("/soc/timer").unwrap();
-        assert_eq!(node.name, "timer@7e003000");
+        let uart = fdt.find_nodes("/soc/serial");
+        let want = [
+            "serial@7e201000",
+            "serial@7e215040",
+            "serial@7e201400",
+            "serial@7e201600",
+            "serial@7e201800",
+            "serial@7e201a00",
+        ];
+
+        for (i, timer) in uart.enumerate() {
+            assert_eq!(timer.name, want[i]);
+        }
     }
+
     #[test]
     fn test_find_node2() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-        let node = fdt.find_node("/soc/serial@7e215040").unwrap();
+        let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
         assert_eq!(node.name, "serial@7e215040");
     }
     #[test]
@@ -32,7 +44,7 @@ mod test {
     #[test]
     fn test_find_node_aliases() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-        let node = fdt.find_node("serial0").unwrap();
+        let node = fdt.find_nodes("serial0").next().unwrap();
         assert_eq!(node.name, "serial@7e215040");
     }
 
@@ -54,7 +66,7 @@ mod test {
     #[test]
     fn test_reg() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-        let node = fdt.find_node("/soc/serial@7e215040").unwrap();
+        let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
 
         let reg = node.reg().unwrap().next().unwrap();
 
@@ -66,7 +78,7 @@ mod test {
     #[test]
     fn test_interrupt() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-        let node = fdt.find_node("/soc/serial@7e215040").unwrap();
+        let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
 
         let itr_ctrl = node.interrupt_parent().unwrap();
 

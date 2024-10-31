@@ -69,6 +69,10 @@ impl<'a> Fdt<'a> {
     }
 
     pub fn all_nodes(&'a self) -> impl Iterator<Item = Node<'a>> {
+        self.new_fdt_itr()
+    }
+
+    fn new_fdt_itr(&'a self) -> FdtIter<'a> {
         let struct_bytes = &self.data[self.header.struct_range()];
         let reader = FdtReader::new(struct_bytes);
         FdtIter {
@@ -82,7 +86,7 @@ impl<'a> Fdt<'a> {
     }
 
     pub fn chosen(&'a self) -> Option<Chosen<'a>> {
-        self.find_node("/chosen").map(|o| Chosen::new(o))
+        self.find_nodes("/chosen").next().map(Chosen::new)
     }
 
     pub fn get_node_by_phandle(&'a self, phandle: Phandle) -> Option<Node<'a>> {
@@ -112,50 +116,28 @@ impl<'a> Fdt<'a> {
     }
 
     /// if path start with '/' then search by path, else search by aliases
-    pub fn find_node(&'a self, path: &str) -> Option<Node<'a>> {
-        if path.starts_with("/") {
-            let mut out = None;
-            let mut parts = path.split("/").filter(|o| !o.is_empty());
-            let mut want = "/";
-            for node in self.all_nodes() {
-                let eq = if path.contains("@") {
-                    node.name.eq(want)
-                } else {
-                    let name = node.name.split("@").next().unwrap();
-                    name.eq(want)
-                };
-                if eq {
-                    out = Some(node.clone());
-                    want = match parts.next() {
-                        Some(t) => {
-                            out = None;
-                            t
-                        }
-                        None => return out,
-                    };
-                }
-            }
-            out
+    pub fn find_nodes(&'a self, path: &'a str) -> impl Iterator<Item = Node<'a>> + 'a {
+        let path = if path.starts_with("/") {
+            path
         } else {
-            let aliases = self.find_node("/aliases")?;
-            for prop in aliases.propertys() {
-                if prop.name.eq(path) {
-                    let path = prop.str();
-                    return self.find_node(path);
-                }
-            }
-            None
-        }
+            self.find_aliase(path).expect("aliase not found")
+        };
+
+        IterFindNode::new(self.new_fdt_itr(), path)
     }
 
     pub fn find_aliase(&'a self, name: &str) -> Option<&'a str> {
-        let aliases = self.find_node("/aliases")?;
+        let aliases = self.find_nodes("/aliases").next()?;
         for prop in aliases.propertys() {
             if prop.name.eq(name) {
                 return Some(prop.str());
             }
         }
         None
+    }
+
+    pub fn memory(&'a self) -> impl Iterator<Item = Node<'a>> + 'a {
+        self.find_nodes("/memory")
     }
 }
 
@@ -282,6 +264,58 @@ impl<'a> Iterator for FdtIter<'a> {
                     return self.finish_node();
                 }
                 _ => {}
+            }
+        }
+    }
+}
+
+struct IterFindNode<'a> {
+    itr: FdtIter<'a>,
+    want: &'a str,
+    want_itr: usize,
+    is_path_last: bool,
+}
+
+impl<'a> IterFindNode<'a> {
+    fn new(itr: FdtIter<'a>, want: &'a str) -> Self {
+        IterFindNode {
+            itr,
+            want,
+            want_itr: 0,
+            is_path_last: false,
+        }
+    }
+}
+
+impl<'a> Iterator for IterFindNode<'a> {
+    type Item = Node<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut out = None;
+        loop {
+            let mut parts = self.want.split("/").filter(|o| !o.is_empty());
+            let mut want_part = "/";
+            for _ in 0..self.want_itr {
+                if let Some(part) = parts.next() {
+                    want_part = part;
+                } else {
+                    self.is_path_last = true;
+                    if let Some(out) = out {
+                        return Some(out);
+                    }
+                }
+            }
+            let node = self.itr.next()?;
+
+            let eq = if want_part.contains("@") {
+                node.name.eq(want_part)
+            } else {
+                let name = node.name.split("@").next().unwrap();
+                name.eq(want_part)
+            };
+            if eq {
+                self.want_itr += 1;
+                out = Some(node);
             }
         }
     }

@@ -104,11 +104,12 @@ impl<'a> Node<'a> {
         ))
     }
 
-    pub fn node_interrupt_parent(&self) -> Option<Phandle> {
+    pub(crate) fn node_interrupt_parent(&self) -> Option<Phandle> {
         let prop = self.find_property("interrupt-parent")?;
         Some(prop.u32().into())
     }
 
+    /// Find [InterruptController] from current node or its parent
     pub fn interrupt_parent(&self) -> Option<InterruptController<'a>> {
         let phandle = if let Some(p) = self.meta.interrupt_parent {
             Some(p)
