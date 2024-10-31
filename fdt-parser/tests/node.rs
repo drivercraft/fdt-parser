@@ -7,7 +7,7 @@ mod test {
     #[test]
     fn test_find_compatible() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-        let pl011 = fdt.find_compatible(&["arm,pl011"]).unwrap();
+        let pl011 = fdt.find_compatible(&["arm,pl011", "arm,primecell"]).next().unwrap();
         assert_eq!(pl011.name, "serial@7e201000");
     }
 
@@ -102,7 +102,7 @@ mod test {
     fn test_interrupt2() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
 
-        let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).unwrap();
+        let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).next().unwrap();
         let itr_ctrl = node.interrupt_parent().unwrap();
 
         assert_eq!(itr_ctrl.node.name, "interrupt-controller@7ef00100");
@@ -112,7 +112,7 @@ mod test {
     fn test_interrupts() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
 
-        let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).unwrap();
+        let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).next().unwrap();
         let itr = node.interrupts().unwrap();
         assert_eq!(itr.cell_size, 1);
         let want_itrs = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5];

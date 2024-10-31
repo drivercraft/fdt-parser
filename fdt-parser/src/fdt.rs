@@ -102,16 +102,19 @@ impl<'a> Fdt<'a> {
         self.all_nodes().find(|x| x.name().eq(name)).clone()
     }
 
-    pub fn find_compatible(&'a self, with: &[&str]) -> Option<Node<'a>> {
-        self.all_nodes().find(|n| {
-            n.compatible()
-                .and_then(|mut compats| {
-                    compats.find(|c| match c {
-                        Ok(c) => with.contains(c),
-                        Err(_) => false,
-                    })
-                })
-                .is_some()
+    pub fn find_compatible(&'a self, with: &'a [&'a str]) -> impl Iterator<Item = Node<'a>> + 'a {
+        let mut all = self.all_nodes();
+
+        iter::from_fn(move || loop {
+            let node = all.next()?;
+            let caps = node.compatibles();
+            for cap in caps {
+                for want in with {
+                    if cap.eq(want) {
+                        return Some(node);
+                    }
+                }
+            }
         })
     }
 
