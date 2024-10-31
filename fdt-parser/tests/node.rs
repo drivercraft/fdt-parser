@@ -7,7 +7,10 @@ mod test {
     #[test]
     fn test_find_compatible() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-        let pl011 = fdt.find_compatible(&["arm,pl011", "arm,primecell"]).next().unwrap();
+        let pl011 = fdt
+            .find_compatible(&["arm,pl011", "arm,primecell"])
+            .next()
+            .unwrap();
         assert_eq!(pl011.name, "serial@7e201000");
     }
 
