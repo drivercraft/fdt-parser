@@ -114,7 +114,7 @@ impl<'a> Fdt<'a> {
             let caps = node.compatibles();
             for cap in caps {
                 for want in with {
-                    if cap.eq(want) {
+                    if cap.eq(*want) {
                         return Some(node);
                     }
                 }
