@@ -35,6 +35,10 @@ impl<'a> Fdt<'a> {
         FdtReader::new(&self.data[offset..])
     }
 
+    pub fn total_size(&self) -> usize {
+        self.header.totalsize.get() as _
+    }
+
     pub fn version(&self) -> usize {
         self.header.version.get() as _
     }

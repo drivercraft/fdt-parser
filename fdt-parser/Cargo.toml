@@ -1,6 +1,6 @@
 [package]
 name = "fdt-parser"
-version = "0.3.4"
+version = "0.3.5"
 authors = ["Zhourui <zrufo747@outlook.com>"]
 edition = "2021"
 repository = "https://github.com/qclic/fdt-parser"
