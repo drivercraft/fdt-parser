@@ -66,6 +66,13 @@ impl<'a> Fdt<'a> {
         })
     }
 
+    /// Reserved memory is specified as a node under the `/reserved-memory` node. The operating system shall exclude reserved
+    /// memory from normal usage. One can create child nodes describing particular reserved (excluded from normal use) memory
+    /// regions. Such memory regions are usually designed for the special usage by various device drivers.
+    pub fn reserved_memory(&'a self) -> impl Iterator<Item = Node<'a>> + 'a {
+        self.find_nodes("/reserved-memory")
+    }
+
     pub(crate) fn get_str(&'a self, offset: usize) -> FdtResult<'a, &'a str> {
         let string_bytes = &self.data[self.header.strings_range()];
         let reader = FdtReader::new(&string_bytes[offset..]);
