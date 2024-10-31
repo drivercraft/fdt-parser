@@ -108,4 +108,14 @@ mod test {
             assert_eq!(o, want_itrs[i]);
         }
     }
+
+    #[test]
+    fn test_clocks() {
+        let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
+        let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
+        let clocks = node.clocks().collect::<Vec<_>>();
+        let clock = &clocks[0];
+
+        assert_eq!(clock.node.name, "aux@7e215000");
+    }
 }

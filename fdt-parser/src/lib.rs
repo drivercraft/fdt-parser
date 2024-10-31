@@ -10,8 +10,10 @@ mod meta;
 mod node;
 mod property;
 mod read;
+mod clocks;
 
 use define::*;
 
 pub use define::FdtHeader;
 pub use fdt::Fdt;
+pub use interrupt::InterruptInfo;

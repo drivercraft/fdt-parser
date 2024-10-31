@@ -1,6 +1,7 @@
 use core::iter;
 
 use crate::{
+    clocks::{ClockRef, ClocksIter},
     error::{FdtError, FdtResult},
     interrupt::{InterruptController, InterruptInfo},
     meta::MetaData,
@@ -154,6 +155,15 @@ impl<'a> Node<'a> {
         let cell_size = self.interrupt_parent()?.interrupt_cells();
 
         Some(InterruptInfo { cell_size, prop })
+    }
+
+    pub fn clocks(&'a self) -> impl Iterator<Item = ClockRef<'a>> + 'a {
+        ClocksIter::new(self)
+    }
+
+    pub fn clock_freqency(&self) -> Option<u32> {
+        let prop = self.find_property("clock-frequency")?;
+        Some(prop.u32())
     }
 }
 
