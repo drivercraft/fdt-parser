@@ -161,7 +161,7 @@ impl<'a> Node<'a> {
         ClocksIter::new(self)
     }
 
-    pub fn clock_freqency(&self) -> Option<u32> {
+    pub fn clock_frequency(&self) -> Option<u32> {
         let prop = self.find_property("clock-frequency")?;
         Some(prop.u32())
     }
