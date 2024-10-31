@@ -1,7 +1,5 @@
 use core::{iter, ptr::NonNull};
 
-use log::debug;
-
 use crate::{
     chosen::Chosen, error::*, meta::MetaData, node::Node, read::FdtReader, FdtHeader, MemoryRegion,
     Phandle, Token,
