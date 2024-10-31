@@ -76,11 +76,24 @@ mod test {
     #[test]
     fn test_interrupt2() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-      
 
         let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).unwrap();
         let itr_ctrl = node.interrupt_parent().unwrap();
 
         assert_eq!(itr_ctrl.node.name, "interrupt-controller@7ef00100");
+    }
+
+    #[test]
+    fn test_interrupts() {
+        let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
+
+        let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).unwrap();
+        let itr = node.interrupts().unwrap();
+        assert_eq!(itr.cell_size, 1);
+        let want_itrs = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5];
+
+        for (i, o) in itr.interrupts().enumerate() {
+            assert_eq!(o, want_itrs[i]);
+        }
     }
 }

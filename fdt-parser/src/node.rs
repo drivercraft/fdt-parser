@@ -2,7 +2,7 @@ use core::iter;
 
 use crate::{
     error::{FdtError, FdtResult},
-    interrupt::InterruptController,
+    interrupt::{InterruptController, InterruptInfo},
     meta::MetaData,
     property::Property,
     read::FdtReader,
@@ -146,6 +146,13 @@ impl<'a> Node<'a> {
     pub fn phandle(&self) -> Option<Phandle> {
         let prop = self.find_property("phandle")?;
         Some(prop.u32().into())
+    }
+
+    pub fn interrupts(&self) -> Option<InterruptInfo> {
+        let prop = self.find_property("interrupts")?;
+        let cell_size = self.interrupt_parent()?.interrupt_cells();
+
+        Some(InterruptInfo { cell_size, prop })
     }
 }
 

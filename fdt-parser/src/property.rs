@@ -2,6 +2,7 @@ use core::ffi::CStr;
 
 use crate::read::FdtReader;
 
+#[derive(Clone)]
 pub struct Property<'a> {
     pub name: &'a str,
     pub(crate) data: FdtReader<'a>,

@@ -141,3 +141,23 @@ impl<'a> FdtReader<'a> {
         Ok(s)
     }
 }
+
+pub struct U32Array<'a> {
+    reader: FdtReader<'a>,
+}
+
+impl<'a> U32Array<'a> {
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            reader: FdtReader::new(bytes),
+        }
+    }
+}
+
+impl Iterator for U32Array<'_> {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.reader.take_u32()
+    }
+}

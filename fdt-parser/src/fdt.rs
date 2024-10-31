@@ -1,5 +1,7 @@
 use core::{iter, ptr::NonNull};
 
+use log::debug;
+
 use crate::{
     chosen::Chosen, error::*, meta::MetaData, node::Node, read::FdtReader, FdtHeader, MemoryRegion,
     Phandle, Token,
@@ -228,9 +230,10 @@ impl<'a> FdtIter<'a> {
         let mut node = Node::new(self.fdt, level, self.node_name, reader, meta_parent, meta);
         let ranges = node.node_ranges();
         self.stack[self.level_current_index()].range = ranges.clone();
-        self.stack[self.level_current_index()].interrupt_parent = node.node_interrupt_parent();
+        let ph = node.node_interrupt_parent();
+        self.stack[self.level_current_index()].interrupt_parent = ph;
 
-        node.meta.range = ranges;
+        node.meta = self.stack[self.level_current_index()].clone();
 
         Some(node)
     }

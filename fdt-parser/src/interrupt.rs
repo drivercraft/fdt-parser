@@ -1,4 +1,4 @@
-use crate::{node::Node, property::Property};
+use crate::{node::Node, property::Property, read::U32Array};
 
 pub struct InterruptController<'a> {
     pub node: Node<'a>,
@@ -10,14 +10,13 @@ impl<'a> InterruptController<'a> {
     }
 }
 
-pub struct InterruptList<'a> {
-    pub size_cell: u8,
-    pub prop: Property<'a>,
-    pub node: Node<'a>,
+pub struct InterruptInfo<'a> {
+    pub cell_size: usize,
+    pub(crate) prop: Property<'a>,
 }
 
-pub struct Interrupt<'a> {
-    pub size_cell: u8,
-    pub prop: Property<'a>,
-    pub node: Node<'a>,
+impl<'a> InterruptInfo<'a> {
+    pub fn interrupts(&self) -> impl Iterator<Item = u32> + 'a {
+        U32Array::new(self.prop.raw_value())
+    }
 }
