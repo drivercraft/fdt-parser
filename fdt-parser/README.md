@@ -7,6 +7,14 @@
 
 Base on [devicetree-specification-v0.4](https://github.com/devicetree-org/devicetree-specification/releases/download/v0.4/devicetree-specification-v0.4.pdf)
 
+## Advance features
+
+- [√] Parse device tree blob
+- [√] Fix `reg` address by `range`
+- [√] Find interrupt parent
+- [√] Find clocks
+- [√] Handle `aliases`
+
 ## Usage
 
 ```rust
