@@ -7,6 +7,7 @@ mod define;
 pub mod error;
 mod fdt;
 mod interrupt;
+mod memory;
 mod meta;
 mod node;
 mod property;
@@ -16,7 +17,7 @@ use define::*;
 
 pub use chosen::Chosen;
 pub use clocks::ClockRef;
-pub use define::FdtHeader;
+pub use define::{FdtHeader, MemoryRegion};
 pub use error::FdtError;
 pub use fdt::Fdt;
 pub use interrupt::{InterruptController, InterruptInfo};

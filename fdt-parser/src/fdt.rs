@@ -1,8 +1,8 @@
 use core::{iter, ptr::NonNull};
 
 use crate::{
-    chosen::Chosen, error::*, meta::MetaData, node::Node, read::FdtReader, FdtHeader, MemoryRegion,
-    Phandle, Token,
+    chosen::Chosen, error::*, memory::Memory, meta::MetaData, node::Node, read::FdtReader,
+    FdtHeader, MemoryRegion, Phandle, Token,
 };
 
 /// The reference to the FDT raw data.
@@ -150,8 +150,8 @@ impl<'a> Fdt<'a> {
         None
     }
 
-    pub fn memory(&'a self) -> impl Iterator<Item = Node<'a>> + 'a {
-        self.find_nodes("/memory")
+    pub fn memory(&'a self) -> impl Iterator<Item = Memory<'a>> + 'a {
+        self.find_nodes("/memory").map(Memory::new)
     }
 }
 
