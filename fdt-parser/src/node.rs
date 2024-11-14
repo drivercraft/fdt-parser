@@ -69,16 +69,16 @@ impl<'a> Node<'a> {
     }
 
     fn address_cells(&self) -> Option<u8> {
-        if let Some(a) = self.meta.address_cells {
-            return Some(a);
-        }
+        // if let Some(a) = self.meta.address_cells {
+        //     return Some(a);
+        // }
         self.meta_parents.address_cells
     }
 
     fn size_cells(&self) -> Option<u8> {
-        if let Some(a) = self.meta.size_cells {
-            return Some(a);
-        }
+        // if let Some(a) = self.meta.size_cells {
+        //     return Some(a);
+        // }
         self.meta_parents.size_cells
     }
 

@@ -134,4 +134,15 @@ mod test {
 
         assert_eq!(clock.node.name, "aux@7e215000");
     }
+
+    #[test]
+    fn test_pcie() {
+        let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
+        let node = fdt.find_compatible(&["brcm,bcm2711-pcie"]).next().unwrap();
+        let regs = node.reg().unwrap().collect::<Vec<_>>();
+        let reg = regs[0];
+
+        assert_eq!(reg.address, 0x7d500000);
+        assert_eq!(reg.size, Some(0x9310));
+    }
 }
