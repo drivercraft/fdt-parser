@@ -14,6 +14,7 @@ Base on [devicetree-specification-v0.4](https://github.com/devicetree-org/device
 - [√] Find interrupt parent
 - [√] Find clocks
 - [√] Handle `aliases`
+- [√] PCI bus
 
 ## Usage
 
