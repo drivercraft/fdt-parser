@@ -117,11 +117,11 @@ mod test {
 
         let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).next().unwrap();
         let itr = node.interrupts().unwrap();
-        assert_eq!(itr.cell_size, 1);
         let want_itrs = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5];
 
-        for (i, o) in itr.interrupts().enumerate() {
-            assert_eq!(o, want_itrs[i]);
+        for (i, o) in itr.enumerate() {
+            let itr = o.collect::<Vec<_>>();
+            assert_eq!(itr[0], want_itrs[i]);
         }
     }
 

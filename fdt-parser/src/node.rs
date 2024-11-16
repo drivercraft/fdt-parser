@@ -6,7 +6,7 @@ use crate::{
     interrupt::{InterruptController, InterruptInfo},
     meta::MetaData,
     property::Property,
-    read::FdtReader,
+    read::{FdtReader, U32Array, U32Array2D},
     Fdt, FdtRange, FdtRangeSilce, FdtReg, Phandle, Token,
 };
 
@@ -69,16 +69,10 @@ impl<'a> Node<'a> {
     }
 
     fn address_cells(&self) -> Option<u8> {
-        // if let Some(a) = self.meta.address_cells {
-        //     return Some(a);
-        // }
         self.meta_parents.address_cells
     }
 
     fn size_cells(&self) -> Option<u8> {
-        // if let Some(a) = self.meta.size_cells {
-        //     return Some(a);
-        // }
         self.meta_parents.size_cells
     }
 
@@ -164,11 +158,11 @@ impl<'a> Node<'a> {
         Some(prop.u32().into())
     }
 
-    pub fn interrupts(&self) -> Option<InterruptInfo> {
+    pub fn interrupts(&self) -> Option<impl Iterator<Item = impl Iterator<Item = u32> + 'a> + 'a> {
         let prop = self.find_property("interrupts")?;
         let cell_size = self.interrupt_parent()?.interrupt_cells();
 
-        Some(InterruptInfo { cell_size, prop })
+        Some(U32Array2D::new(prop.raw_value(), cell_size))
     }
 
     pub fn clocks(&'a self) -> impl Iterator<Item = ClockRef<'a>> + 'a {

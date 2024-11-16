@@ -161,3 +161,26 @@ impl Iterator for U32Array<'_> {
         self.reader.take_u32()
     }
 }
+
+pub struct U32Array2D<'a> {
+    reader: FdtReader<'a>,
+    row_len: usize,
+}
+
+impl<'a> U32Array2D<'a> {
+    pub fn new(bytes: &'a [u8], row_len: usize) -> Self {
+        Self {
+            reader: FdtReader::new(bytes),
+            row_len,
+        }
+    }
+}
+
+impl<'a> Iterator for U32Array2D<'a> {
+    type Item = U32Array<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let bytes = self.reader.take(self.row_len * size_of::<u32>())?;
+        Some(U32Array::new(bytes))
+    }
+}
