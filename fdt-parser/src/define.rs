@@ -3,7 +3,10 @@ use core::{
     ptr::NonNull,
 };
 
-use crate::{error::*, read::FdtReader};
+use crate::{
+    error::*,
+    read::{FdtReader, U32Array},
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Token {
@@ -200,9 +203,9 @@ impl Debug for MemoryRegion {
 #[derive(Clone, Copy)]
 pub struct FdtReg {
     /// parent bus address
-    pub address: u128,
+    pub address: u64,
     /// child bus address
-    pub child_bus_address: u128,
+    pub child_bus_address: u64,
     pub size: Option<usize>,
 }
 
@@ -222,22 +225,35 @@ impl Debug for FdtReg {
 }
 
 /// Range mapping child bus addresses to parent bus addresses
-#[derive(Clone, Copy, PartialEq)]
-pub struct FdtRange {
-    /// Starting address on child bus
-    pub child_bus_address: u128,
-    /// Starting address on parent bus
-    pub parent_bus_address: u128,
+#[derive(Clone)]
+pub struct FdtRange<'a> {
+    data_child: &'a [u8],
+    data_parent: &'a [u8],
     /// Size of range
-    pub size: usize,
+    pub size: u64,
 }
 
-impl Debug for FdtRange {
+impl<'a> FdtRange<'a> {
+    pub fn child_bus_address(&self) -> U32Array<'a> {
+        U32Array::new(self.data_child)
+    }
+
+    pub fn parent_bus_address(&self) -> U32Array<'a> {
+        U32Array::new(self.data_parent)
+    }
+}
+
+impl<'a> Debug for FdtRange<'a> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_fmt(format_args!(
-            "Range {{ child_bus_address: {:#x}, parent_bus_address: {:#x}, size: {:#x} }}",
-            self.child_bus_address, self.parent_bus_address, self.size
-        ))
+        f.write_str("Range {{ child_bus_address: [ ")?;
+        for addr in self.child_bus_address() {
+            f.write_fmt(format_args!("{:#x} ", addr))?;
+        }
+        f.write_str("], parent_bus_address: [ ")?;
+        for addr in self.parent_bus_address() {
+            f.write_fmt(format_args!("{:#x} ", addr))?;
+        }
+        f.write_fmt(format_args!("], size: {:#x}", self.size))
     }
 }
 
@@ -264,29 +280,35 @@ impl<'a> FdtRangeSilce<'a> {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = FdtRange> + 'a {
+    pub fn iter(&self) -> FdtRangeIter<'a> {
         FdtRangeIter { s: self.clone() }
     }
 }
 #[derive(Clone)]
-struct FdtRangeIter<'a> {
+pub struct FdtRangeIter<'a> {
     s: FdtRangeSilce<'a>,
 }
 
 impl<'a> Iterator for FdtRangeIter<'a> {
-    type Item = FdtRange;
+    type Item = FdtRange<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let child_bus_address = self.s.reader.take_by_cell_size(self.s.address_cell)?;
-        let parent_bus_address = self
-            .s
-            .reader
-            .take_by_cell_size(self.s.address_cell_parent)?;
-        let size = self.s.reader.take_by_cell_size(self.s.size_cell)? as usize;
+        let child_address_bytes = self.s.address_cell as usize * size_of::<u32>();
+        let data_child = self.s.reader.take(child_address_bytes)?;
+
+        let parent_address_bytes = self.s.address_cell_parent as usize * size_of::<u32>();
+        let data_parent = self.s.reader.take(parent_address_bytes)?;
+
+        // let child_bus_address = self.s.reader.take_by_cell_size(self.s.address_cell)?;
+        // let parent_bus_address = self
+        //     .s
+        //     .reader
+        //     .take_by_cell_size(self.s.address_cell_parent)?;
+        let size = self.s.reader.take_by_cell_size(self.s.size_cell)?;
         Some(FdtRange {
-            child_bus_address,
-            parent_bus_address,
             size,
+            data_child,
+            data_parent,
         })
     }
 }

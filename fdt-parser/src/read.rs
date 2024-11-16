@@ -28,26 +28,10 @@ impl<'a> FdtReader<'a> {
         Some(fdt64.get())
     }
 
-    pub fn take_u96(&mut self) -> Option<u128> {
-        let mut out = self.take_u64()? as _;
-        let one = self.take_u32()? as u128;
-        out += one << 64;
-        Some(out)
-    }
-
-    pub fn take_u128(&mut self) -> Option<u128> {
-        let mut out = self.take_u64()? as _;
-        let one = self.take_u64()? as u128;
-        out += one << 64;
-        Some(out)
-    }
-
-    pub fn take_by_cell_size(&mut self, cell_size: u8) -> Option<u128> {
+    pub fn take_by_cell_size(&mut self, cell_size: u8) -> Option<u64> {
         match cell_size {
             1 => self.take_u32().map(|s| s as _),
-            2 => self.take_u64().map(|s| s as _),
-            3 => self.take_u96(),
-            4 => self.take_u128(),
+            2 => self.take_u64(),
             _ => panic!("invalid cell size {}", cell_size),
         }
     }
@@ -150,6 +134,15 @@ impl<'a> U32Array<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
         Self {
             reader: FdtReader::new(bytes),
+        }
+    }
+
+    pub fn as_u64(&mut self) -> u64 {
+        let h = self.reader.take_u32().unwrap();
+        if let Some(l) = self.reader.take_u32() {
+            ((h as u64) << 32) + l as u64
+        } else {
+            h as _
         }
     }
 }

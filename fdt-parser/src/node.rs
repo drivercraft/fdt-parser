@@ -3,11 +3,12 @@ use core::iter;
 use crate::{
     clocks::{ClockRef, ClocksIter},
     error::{FdtError, FdtResult},
-    interrupt::{InterruptController, InterruptInfo},
+    interrupt::InterruptController,
     meta::MetaData,
+    pci::Pci,
     property::Property,
-    read::{FdtReader, U32Array, U32Array2D},
-    Fdt, FdtRange, FdtRangeSilce, FdtReg, Phandle, Token,
+    read::{FdtReader, U32Array2D},
+    Fdt, FdtRangeSilce, FdtReg, Phandle, Token,
 };
 
 #[derive(Clone)]
@@ -62,29 +63,10 @@ impl<'a> Node<'a> {
         let reg = iter.find(|x| x.name.eq("reg"))?;
 
         Some(RegIter {
-            size_cell: self.size_cells().unwrap(),
+            size_cell: self.meta_parents.size_cells.unwrap(),
+            address_cell: self.meta_parents.address_cells.unwrap(),
             prop: reg,
-            node: self.clone(),
-        })
-    }
-
-    fn address_cells(&self) -> Option<u8> {
-        self.meta_parents.address_cells
-    }
-
-    fn size_cells(&self) -> Option<u8> {
-        self.meta_parents.size_cells
-    }
-
-    pub fn ranges(&self) -> impl Iterator<Item = FdtRange> + 'a {
-        let mut iter = self.meta.range.clone().map(|m| m.iter());
-        if iter.is_none() {
-            iter = self.meta_parents.range.clone().map(|m| m.iter());
-        }
-
-        iter::from_fn(move || match &mut iter {
-            Some(i) => i.next(),
-            None => None,
+            ranges: self.meta_parents.range.clone(),
         })
     }
 
@@ -173,26 +155,41 @@ impl<'a> Node<'a> {
         let prop = self.find_property("clock-frequency")?;
         Some(prop.u32())
     }
+
+    pub fn into_pci(self) -> Option<Pci<'a>> {
+        if self.name.contains("pci") {
+            Some(Pci { node: self })
+        } else {
+            None
+        }
+    }
 }
 
 struct RegIter<'a> {
     size_cell: u8,
+    address_cell: u8,
     prop: Property<'a>,
-    node: Node<'a>,
+    ranges: Option<FdtRangeSilce<'a>>,
 }
 impl<'a> Iterator for RegIter<'a> {
     type Item = FdtReg;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let child_address_cell = self.node.address_cells().unwrap();
-        let child_bus_address = self.prop.data.take_by_cell_size(child_address_cell)?;
+        let child_bus_address = self.prop.data.take_by_cell_size(self.address_cell)?;
 
         let mut address = child_bus_address;
-        for one in self.node.ranges() {
-            if child_bus_address >= one.child_bus_address
-                && child_bus_address < one.child_bus_address + one.size as u128
-            {
-                address = child_bus_address - one.child_bus_address + one.parent_bus_address;
+
+        if let Some(ranges) = &self.ranges {
+            for one in ranges.iter() {
+                let range_child_bus_address = one.child_bus_address().as_u64();
+                let range_parent_bus_address = one.parent_bus_address().as_u64();
+
+                if child_bus_address >= range_child_bus_address
+                    && child_bus_address < range_child_bus_address + one.size as u64
+                {
+                    address =
+                        child_bus_address - range_child_bus_address + range_parent_bus_address;
+                }
             }
         }
 

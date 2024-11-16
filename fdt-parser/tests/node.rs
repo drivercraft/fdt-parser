@@ -3,6 +3,7 @@ mod test {
     use fdt_parser::*;
 
     const TEST_FDT: &[u8] = include_bytes!("../../dtb/bcm2711-rpi-4-b.dtb");
+    const TEST_PHYTIUM_FDT: &[u8] = include_bytes!("../../dtb/phytium.dtb");
 
     #[test]
     fn test_find_compatible() {
@@ -144,5 +145,41 @@ mod test {
 
         assert_eq!(reg.address, 0x7d500000);
         assert_eq!(reg.size, Some(0x9310));
+    }
+
+    #[test]
+    fn test_pci2() {
+        let fdt = Fdt::from_bytes(TEST_PHYTIUM_FDT).unwrap();
+        let pci = fdt
+            .find_compatible(&["pci-host-ecam-generic"])
+            .next()
+            .unwrap()
+            .into_pci()
+            .unwrap();
+
+        let want = [
+            PciRange {
+                space: PciSpace::IO,
+                bus_address: 0x0,
+                cpu_address: 0x50000000,
+                size: 0xf00000,
+            },
+            PciRange {
+                space: PciSpace::Memory32,
+                bus_address: 0x58000000,
+                cpu_address: 0x58000000,
+                size: 0x28000000,
+            },
+            PciRange {
+                space: PciSpace::Memory64,
+                bus_address: 0x1000000000,
+                cpu_address: 0x1000000000,
+                size: 0x1000000000,
+            },
+        ];
+
+        for (i, range) in pci.ranges().unwrap().enumerate() {
+            assert_eq!(range, want[i]);
+        }
     }
 }

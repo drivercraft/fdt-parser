@@ -10,6 +10,7 @@ mod interrupt;
 mod memory;
 mod meta;
 mod node;
+mod pci;
 mod property;
 mod read;
 
@@ -20,6 +21,7 @@ pub use clocks::ClockRef;
 pub use define::{FdtHeader, MemoryRegion};
 pub use error::FdtError;
 pub use fdt::Fdt;
-pub use interrupt::{InterruptController, InterruptInfo};
+pub use interrupt::InterruptController;
 pub use node::Node;
+pub use pci::{Pci, PciRange, PciSpace};
 pub use property::Property;

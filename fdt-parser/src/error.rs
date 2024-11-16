@@ -2,7 +2,7 @@ pub type FdtResult<'a, T = ()> = Result<T, FdtError<'a>>;
 
 #[derive(Debug)]
 pub enum FdtError<'a> {
-    NotFound,
+    NotFound(&'static str),
     /// The FDT had an invalid magic value.
     BadMagic,
     /// The given pointer was null.
