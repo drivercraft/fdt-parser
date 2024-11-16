@@ -185,7 +185,7 @@ impl<'a> Iterator for RegIter<'a> {
                 let range_parent_bus_address = one.parent_bus_address().as_u64();
 
                 if child_bus_address >= range_child_bus_address
-                    && child_bus_address < range_child_bus_address + one.size as u64
+                    && child_bus_address < range_child_bus_address + one.size
                 {
                     address =
                         child_bus_address - range_child_bus_address + range_parent_bus_address;
