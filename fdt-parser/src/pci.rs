@@ -16,7 +16,7 @@ impl<'a> Pci<'a> {
         Some(start as usize..end as usize)
     }
 
-    pub fn ranges(&'a self) -> FdtResult<impl Iterator<Item = PciRange> + 'a> {
+    pub fn ranges(&self) -> FdtResult<impl Iterator<Item = PciRange> + 'a> {
         let ranges = self
             .node
             .node_ranges()
