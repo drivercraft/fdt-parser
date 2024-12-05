@@ -163,18 +163,21 @@ mod test {
                 bus_address: 0x0,
                 cpu_address: 0x50000000,
                 size: 0xf00000,
+                prefetchable: false,
             },
             PciRange {
                 space: PciSpace::Memory32,
                 bus_address: 0x58000000,
                 cpu_address: 0x58000000,
                 size: 0x28000000,
+                prefetchable: false,
             },
             PciRange {
                 space: PciSpace::Memory64,
                 bus_address: 0x1000000000,
                 cpu_address: 0x1000000000,
                 size: 0x1000000000,
+                prefetchable: false,
             },
         ];
 

@@ -46,6 +46,7 @@ impl Iterator for PciRangeIter<'_> {
         let low = child.next().unwrap();
 
         let ss = (hi >> 24) & 0b11;
+        let prefetchable = (hi & 1 << 30) > 0;
 
         let space = match ss {
             0b00 => PciSpace::Configuration,
@@ -62,6 +63,7 @@ impl Iterator for PciRangeIter<'_> {
             bus_address: child_bus_address,
             cpu_address,
             size,
+            prefetchable,
         })
     }
 }
@@ -80,11 +82,12 @@ pub struct PciRange {
     pub bus_address: u64,
     pub cpu_address: u64,
     pub size: u64,
+    pub prefetchable: bool,
 }
 
 impl Debug for PciRange {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "PciRange {{ space: {:?}, child_bus_address: {:#x}, parent_bus_address: {:#x}, size: {:#x} }}", 
-        self.space, self.bus_address, self.cpu_address, self.size)
+        write!(f, "PciRange {{ space: {:?}, child_bus_address: {:#x}, parent_bus_address: {:#x}, size: {:#x}, prefetchable: {}}}", 
+        self.space, self.bus_address, self.cpu_address, self.size, self.prefetchable)
     }
 }

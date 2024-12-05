@@ -171,7 +171,7 @@ struct RegIter<'a> {
     prop: Property<'a>,
     ranges: Option<FdtRangeSilce<'a>>,
 }
-impl<'a> Iterator for RegIter<'a> {
+impl Iterator for RegIter<'_> {
     type Item = FdtReg;
 
     fn next(&mut self) -> Option<Self::Item> {

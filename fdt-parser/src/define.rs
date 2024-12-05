@@ -243,7 +243,7 @@ impl<'a> FdtRange<'a> {
     }
 }
 
-impl<'a> Debug for FdtRange<'a> {
+impl Debug for FdtRange<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("Range {{ child_bus_address: [ ")?;
         for addr in self.child_bus_address() {
