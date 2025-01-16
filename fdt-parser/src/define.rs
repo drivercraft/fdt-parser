@@ -322,6 +322,11 @@ impl From<u32> for Phandle {
         Self(value)
     }
 }
+impl Phandle {
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+}
 
 impl Display for Phandle {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
