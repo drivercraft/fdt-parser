@@ -32,5 +32,9 @@ fn main() {
                 println!("{}     {:?}", space, cell);
             }
         }
+
+        if let Some(status) = node.status() {
+            println!("{} - status: {:?}", space, status);
+        }
     }
 }

@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![doc = include_str!("../README.md")]
 
 mod chosen;
@@ -25,3 +25,9 @@ pub use interrupt::InterruptController;
 pub use node::Node;
 pub use pci::{Pci, PciRange, PciSpace};
 pub use property::Property;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Status {
+    Okay,
+    Disabled,
+}

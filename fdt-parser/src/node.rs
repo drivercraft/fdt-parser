@@ -8,7 +8,7 @@ use crate::{
     pci::Pci,
     property::Property,
     read::{FdtReader, U32Array2D},
-    Fdt, FdtRangeSilce, FdtReg, Phandle, Token,
+    Fdt, FdtRangeSilce, FdtReg, Phandle, Status, Token,
 };
 
 #[derive(Clone)]
@@ -162,6 +162,21 @@ impl<'a> Node<'a> {
         } else {
             None
         }
+    }
+
+    pub fn status(&self) -> Option<Status> {
+        let prop = self.find_property("status")?;
+        let s = prop.str();
+
+        if s.contains("disabled") {
+            return Some(Status::Disabled);
+        }
+
+        if s.contains("okay") {
+            return Some(Status::Okay);
+        }
+
+        None
     }
 }
 
