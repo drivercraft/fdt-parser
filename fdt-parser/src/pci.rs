@@ -38,7 +38,7 @@ impl<'a> Pci<'a> {
         bus: u8,
         device: u8,
         func: u8,
-        irq_line: u32,
+        irq_pin: u32,
     ) -> FdtResult<impl Iterator<Item = u32> + 'a> {
         let mask = self.interrupt_map_mask()?;
 
@@ -47,7 +47,7 @@ impl<'a> Pci<'a> {
         let mut want = mask;
 
         want[0] = want0 | mask[0];
-        want[3] = irq_line;
+        want[3] = irq_pin;
 
         let mut prop = self
             .node
