@@ -313,7 +313,7 @@ impl<'a> Iterator for FdtRangeIter<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Phandle(u32);
 

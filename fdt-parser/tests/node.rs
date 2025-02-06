@@ -185,4 +185,21 @@ mod test {
             assert_eq!(range, want[i]);
         }
     }
+
+    #[test]
+    fn test_pci_irq_map() {
+        let fdt = Fdt::from_bytes(TEST_PHYTIUM_FDT).unwrap();
+        let pci = fdt
+            .find_compatible(&["pci-host-ecam-generic"])
+            .next()
+            .unwrap()
+            .into_pci()
+            .unwrap();
+
+        let irqs = pci.child_interrupts(0, 0, 0, 4).unwrap();
+
+        for one in irqs {
+            println!("one: {:?}", one);
+        }
+    }
 }

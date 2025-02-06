@@ -1,5 +1,6 @@
 use crate::node::Node;
 
+#[derive(Clone)]
 pub struct InterruptController<'a> {
     pub node: Node<'a>,
 }
