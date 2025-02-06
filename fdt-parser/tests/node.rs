@@ -196,9 +196,9 @@ mod test {
             .into_pci()
             .unwrap();
 
-        let irqs = pci.child_interrupts(0, 0, 0, 4).unwrap();
+        let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
 
-        for one in irqs {
+        for one in irq.irqs {
             println!("one: {:?}", one);
         }
     }

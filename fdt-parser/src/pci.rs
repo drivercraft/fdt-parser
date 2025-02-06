@@ -39,7 +39,7 @@ impl<'a> Pci<'a> {
         device: u8,
         func: u8,
         irq_pin: u32,
-    ) -> FdtResult<impl Iterator<Item = u32> + 'a> {
+    ) -> FdtResult<PciChildIrq<'a>> {
         let mask = self.interrupt_map_mask()?;
 
         let want0 = (bus as u32) << 16 | (device as u32) << 11 | (func as u32) << 8;
@@ -76,9 +76,9 @@ impl<'a> Pci<'a> {
                 prop.data.take_u32().ok_or(FdtError::Eof)?;
             }
 
-            let parent = InterruptController { node: parent_node };
+            let parent_node = InterruptController { node: parent_node };
 
-            let cell_size = parent.interrupt_cells();
+            let cell_size = parent_node.interrupt_cells();
 
             let data = prop
                 .data
@@ -89,7 +89,10 @@ impl<'a> Pci<'a> {
                 continue;
             }
 
-            return Ok(U32Array::new(data));
+            return Ok(PciChildIrq {
+                parent,
+                irqs: U32Array::new(data),
+            });
         }
 
         Err(FdtError::NotFound("pci child"))
@@ -110,6 +113,11 @@ impl<'a> Pci<'a> {
 
         Ok(mask)
     }
+}
+
+pub struct PciChildIrq<'a> {
+    pub parent: Phandle,
+    pub irqs: U32Array<'a>,
 }
 
 pub struct PciRangeIter<'a> {
