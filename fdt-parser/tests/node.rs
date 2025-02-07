@@ -216,8 +216,10 @@ mod test {
 
         let irq = pci.child_interrupts(0, 2, 0, 1).unwrap();
 
-        for one in irq.irqs {
-            println!("one: {:?}", one);
+        let want = [0, 5, 4];
+
+        for (got, want) in irq.irqs.zip(want.iter()) {
+            assert_eq!(got, *want);
         }
     }
 }
