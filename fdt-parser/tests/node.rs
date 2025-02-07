@@ -4,6 +4,7 @@ mod test {
 
     const TEST_FDT: &[u8] = include_bytes!("../../dtb/bcm2711-rpi-4-b.dtb");
     const TEST_PHYTIUM_FDT: &[u8] = include_bytes!("../../dtb/phytium.dtb");
+    const TEST_QEMU_FDT: &[u8] = include_bytes!("../../dtb/qemu_pci.dtb");
 
     #[test]
     fn test_find_compatible() {
@@ -197,6 +198,23 @@ mod test {
             .unwrap();
 
         let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
+
+        for one in irq.irqs {
+            println!("one: {:?}", one);
+        }
+    }
+
+    #[test]
+    fn test_pci_irq_map2() {
+        let fdt = Fdt::from_bytes(TEST_QEMU_FDT).unwrap();
+        let pci = fdt
+            .find_compatible(&["pci-host-ecam-generic"])
+            .next()
+            .unwrap()
+            .into_pci()
+            .unwrap();
+
+        let irq = pci.child_interrupts(0, 2, 0, 1).unwrap();
 
         for one in irq.irqs {
             println!("one: {:?}", one);

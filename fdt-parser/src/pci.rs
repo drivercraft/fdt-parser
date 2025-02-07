@@ -44,10 +44,10 @@ impl<'a> Pci<'a> {
 
         let want0 = (bus as u32) << 16 | (device as u32) << 11 | (func as u32) << 8;
 
-        let mut want = mask;
+        let mut want = [0; 4];
 
-        want[0] = want0 | mask[0];
-        want[3] = irq_pin;
+        want[0] = want0 & mask[0];
+        want[3] = irq_pin & mask[3];
 
         let mut prop = self
             .node
