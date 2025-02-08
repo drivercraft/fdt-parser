@@ -143,8 +143,8 @@ mod test {
         let node = fdt.find_compatible(&["brcm,bcm2711-pcie"]).next().unwrap();
         let regs = node.reg().unwrap().collect::<Vec<_>>();
         let reg = regs[0];
-
-        assert_eq!(reg.address, 0x7d500000);
+        println!("reg: {:?}", reg);
+        assert_eq!(reg.address, 0xfd500000);
         assert_eq!(reg.size, Some(0x9310));
     }
 

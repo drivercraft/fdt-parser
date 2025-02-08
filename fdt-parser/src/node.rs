@@ -204,6 +204,7 @@ impl Iterator for RegIter<'_> {
                 {
                     address =
                         child_bus_address - range_child_bus_address + range_parent_bus_address;
+                    break;
                 }
             }
         }
