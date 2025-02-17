@@ -18,7 +18,7 @@ use define::*;
 
 pub use chosen::Chosen;
 pub use clocks::ClockRef;
-pub use define::{FdtHeader, MemoryRegion};
+pub use define::{FdtHeader, MemoryRegion, Phandle};
 pub use error::FdtError;
 pub use fdt::Fdt;
 pub use interrupt::InterruptController;
