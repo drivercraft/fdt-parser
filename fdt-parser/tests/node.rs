@@ -30,6 +30,17 @@ mod test {
     }
 
     #[test]
+    fn test_all_compatibles() {
+        let fdt = Fdt::from_bytes(TEST_QEMU_FDT).unwrap();
+        for node in fdt.all_nodes() {
+            println!("{}", node.name);
+            for cam in node.compatibles() {
+                println!("   {}", cam);
+            }
+        }
+    }
+
+    #[test]
     fn test_find_nodes() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
         let uart = fdt.find_nodes("/soc/serial");
