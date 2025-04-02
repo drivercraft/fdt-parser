@@ -1,4 +1,7 @@
-use core::{iter, ptr::NonNull};
+use core::{
+    iter,
+    ptr::{slice_from_raw_parts, NonNull},
+};
 
 use crate::{
     chosen::Chosen, error::*, memory::Memory, meta::MetaData, node::Node, read::FdtReader,
@@ -69,25 +72,26 @@ impl<'a> Fdt<'a> {
     /// Reserved memory is specified as a node under the `/reserved-memory` node. The operating system shall exclude reserved
     /// memory from normal usage. One can create child nodes describing particular reserved (excluded from normal use) memory
     /// regions. Such memory regions are usually designed for the special usage by various device drivers.
-    pub fn reserved_memory(&'a self) -> impl Iterator<Item = Node<'a>> + 'a {
+    pub fn reserved_memory(&self) -> impl Iterator<Item = Node<'a>> + 'a {
         self.find_nodes("/reserved-memory")
     }
 
-    pub(crate) fn get_str(&'a self, offset: usize) -> FdtResult<'a, &'a str> {
+    pub(crate) fn get_str(&self, offset: usize) -> FdtResult<'a, &'a str> {
         let string_bytes = &self.data[self.header.strings_range()];
         let reader = FdtReader::new(&string_bytes[offset..]);
         reader.peek_str()
     }
 
-    pub fn all_nodes(&'a self) -> impl Iterator<Item = Node<'a>> {
+    pub fn all_nodes(&self) -> impl Iterator<Item = Node<'a>> {
         self.new_fdt_itr()
     }
 
-    fn new_fdt_itr(&'a self) -> FdtIter<'a> {
+    fn new_fdt_itr(&self) -> FdtIter<'a> {
         let struct_bytes = &self.data[self.header.struct_range()];
+
         let reader = FdtReader::new(struct_bytes);
         FdtIter {
-            fdt: self,
+            fdt: self.clone(),
             current_level: 0,
             reader,
             stack: Default::default(),
@@ -100,7 +104,7 @@ impl<'a> Fdt<'a> {
         self.find_nodes("/chosen").next().map(Chosen::new)
     }
 
-    pub fn get_node_by_phandle(&'a self, phandle: Phandle) -> Option<Node<'a>> {
+    pub fn get_node_by_phandle(&self, phandle: Phandle) -> Option<Node<'a>> {
         self.all_nodes()
             .find(|x| match x.phandle() {
                 Some(p) => p.eq(&phandle),
@@ -130,7 +134,7 @@ impl<'a> Fdt<'a> {
     }
 
     /// if path start with '/' then search by path, else search by aliases
-    pub fn find_nodes(&'a self, path: &'a str) -> impl Iterator<Item = Node<'a>> + 'a {
+    pub fn find_nodes(&self, path: &'a str) -> impl Iterator<Item = Node<'a>> + 'a {
         let path = if path.starts_with("/") {
             path
         } else {
@@ -140,7 +144,7 @@ impl<'a> Fdt<'a> {
         IterFindNode::new(self.new_fdt_itr(), path)
     }
 
-    pub fn find_aliase(&'a self, name: &str) -> Option<&'a str> {
+    pub fn find_aliase(&self, name: &str) -> Option<&'a str> {
         let aliases = self.find_nodes("/aliases").next()?;
         for prop in aliases.propertys() {
             if prop.name.eq(name) {
@@ -156,7 +160,7 @@ impl<'a> Fdt<'a> {
 }
 
 pub struct FdtIter<'a> {
-    fdt: &'a Fdt<'a>,
+    fdt: Fdt<'a>,
     current_level: usize,
     reader: FdtReader<'a>,
     stack: [MetaData<'a>; 12],
@@ -221,7 +225,7 @@ impl<'a> FdtIter<'a> {
         let meta = self.stack[self.level_current_index()].clone();
         let meta_parent = self.get_meta_parent();
 
-        let mut node = Node::new(self.fdt, level, self.node_name, reader, meta_parent, meta);
+        let mut node = Node::new(&self.fdt, level, self.node_name, reader, meta_parent, meta);
         let ranges = node.node_ranges();
         self.stack[self.level_current_index()].range = ranges.clone();
         let ph = node.node_interrupt_parent();
@@ -256,7 +260,7 @@ impl<'a> Iterator for FdtIter<'a> {
                     }
                 }
                 Token::Prop => {
-                    let prop = self.reader.take_prop(self.fdt)?;
+                    let prop = self.reader.take_prop(&self.fdt)?;
                     let index = self.level_current_index();
                     macro_rules! update_cell {
                         ($cell:ident) => {

@@ -15,7 +15,7 @@ use crate::{
 pub struct Node<'a> {
     pub level: usize,
     pub name: &'a str,
-    pub(crate) fdt: &'a Fdt<'a>,
+    pub(crate) fdt: Fdt<'a>,
     /// 父节点的元数据
     pub(crate) meta_parents: MetaData<'a>,
     /// 当前节点的元数据
@@ -25,7 +25,7 @@ pub struct Node<'a> {
 
 impl<'a> Node<'a> {
     pub(crate) fn new(
-        fdt: &'a Fdt<'a>,
+        fdt: &Fdt<'a>,
         level: usize,
         name: &'a str,
         reader: FdtReader<'a>,
@@ -33,7 +33,7 @@ impl<'a> Node<'a> {
         meta: MetaData<'a>,
     ) -> Self {
         Self {
-            fdt,
+            fdt: fdt.clone(),
             level,
             body: reader,
             name,
@@ -50,7 +50,7 @@ impl<'a> Node<'a> {
         let reader = self.body.clone();
         PropIter {
             reader,
-            fdt: self.fdt,
+            fdt: self.fdt.clone(),
         }
     }
 
@@ -223,7 +223,7 @@ impl Iterator for RegIter<'_> {
 }
 
 struct PropIter<'a> {
-    fdt: &'a Fdt<'a>,
+    fdt: Fdt<'a>,
     reader: FdtReader<'a>,
 }
 
@@ -241,7 +241,7 @@ impl<'a> Iterator for PropIter<'a> {
                 None => return None,
             }
         }
-        self.reader.take_prop(self.fdt)
+        self.reader.take_prop(&self.fdt)
     }
 }
 

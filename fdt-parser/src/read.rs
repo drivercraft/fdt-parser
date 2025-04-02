@@ -99,7 +99,7 @@ impl<'a> FdtReader<'a> {
         Ok(if unit_name.is_empty() { "/" } else { unit_name })
     }
 
-    pub fn take_prop(&mut self, fdt: &'a Fdt<'a>) -> Option<Property<'a>> {
+    pub fn take_prop(&mut self, fdt: &Fdt<'a>) -> Option<Property<'a>> {
         let len = self.take_u32()?;
         let nameoff = self.take_u32()?;
         let bytes = self.take_aligned(len as _)?;

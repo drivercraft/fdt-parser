@@ -1,13 +1,13 @@
 use crate::{node::Node, read::FdtReader, Fdt, Phandle};
 
 pub struct ClocksIter<'a> {
-    pub fdt: &'a Fdt<'a>,
+    pub fdt: Fdt<'a>,
     pub prop: Option<FdtReader<'a>>,
 }
 
 impl<'a> ClocksIter<'a> {
     pub fn new(node: &'a Node<'a>) -> Self {
-        let fdt = node.fdt;
+        let fdt = node.fdt.clone();
         let prop = node.find_property("clocks");
 
         Self {
