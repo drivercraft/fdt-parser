@@ -5,6 +5,7 @@ mod test {
     const TEST_FDT: &[u8] = include_bytes!("../../dtb/bcm2711-rpi-4-b.dtb");
     const TEST_PHYTIUM_FDT: &[u8] = include_bytes!("../../dtb/phytium.dtb");
     const TEST_QEMU_FDT: &[u8] = include_bytes!("../../dtb/qemu_pci.dtb");
+    const TEST_3568_FDT: &[u8] = include_bytes!("../../dtb/rk3568-firefly-roc-pc-se.dtb");
 
     #[test]
     fn test_find_compatible() {
@@ -232,5 +233,19 @@ mod test {
         for (got, want) in irq.irqs.zip(want.iter()) {
             assert_eq!(got, *want);
         }
+    }
+
+    #[test]
+    fn test_debugcon() {
+        let fdt = Fdt::from_bytes(TEST_QEMU_FDT).unwrap();
+        let node = fdt.chosen().unwrap().debugcon().unwrap();
+        println!("{:?}", node.name);
+    }
+
+    #[test]
+    fn test_debugcon2() {
+        let fdt = Fdt::from_bytes(TEST_3568_FDT).unwrap();
+        let node = fdt.chosen().unwrap().debugcon().unwrap();
+        println!("{:?}", node.name);
     }
 }
