@@ -1,7 +1,4 @@
-use core::{
-    iter,
-    ptr::{slice_from_raw_parts, NonNull},
-};
+use core::{iter, ptr::NonNull};
 
 use crate::{
     chosen::Chosen, error::*, memory::Memory, meta::MetaData, node::Node, read::FdtReader,

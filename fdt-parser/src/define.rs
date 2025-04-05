@@ -35,10 +35,12 @@ impl From<u32> for Token {
 pub struct Fdt32([u8; 4]);
 
 impl Fdt32 {
+    #[inline(always)]
     pub const fn new() -> Self {
         Self([0; 4])
     }
 
+    #[inline(always)]
     pub fn get(self) -> u32 {
         u32::from_be_bytes(self.0)
     }
@@ -117,6 +119,7 @@ pub struct FdtHeader {
 }
 
 impl FdtHeader {
+    #[inline(always)]
     pub(crate) fn valid_magic(&self) -> FdtResult<'static> {
         if self.magic.get() == 0xd00dfeed {
             Ok(())
@@ -125,6 +128,7 @@ impl FdtHeader {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn struct_range(&self) -> core::ops::Range<usize> {
         let start = self.off_dt_struct.get() as usize;
         let end = start + self.size_dt_struct.get() as usize;
@@ -132,12 +136,14 @@ impl FdtHeader {
         start..end
     }
 
+    #[inline(always)]
     pub(crate) fn strings_range(&self) -> core::ops::Range<usize> {
         let start = self.off_dt_strings.get() as usize;
         let end = start + self.size_dt_strings.get() as usize;
         start..end
     }
 
+    #[inline(always)]
     pub fn from_bytes(bytes: &[u8]) -> FdtResult<'static, Self> {
         if bytes.len() < size_of::<FdtHeader>() {
             return Err(FdtError::Eof);
@@ -149,9 +155,18 @@ impl FdtHeader {
         }
     }
 
+    #[inline(always)]
     pub fn from_ptr(ptr: NonNull<u8>) -> FdtResult<'static, Self> {
         let ptr: NonNull<FdtHeader> = ptr.cast();
-        unsafe { Ok(*ptr.as_ref()) }
+        unsafe {
+            ptr.as_ref().valid_magic()?;
+            Ok(*ptr.as_ref())
+        }
+    }
+
+    #[inline(always)]
+    pub fn total_size(&self) -> usize {
+        self.totalsize.get() as _
     }
 }
 

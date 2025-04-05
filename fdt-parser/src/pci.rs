@@ -42,7 +42,7 @@ impl<'a> Pci<'a> {
     ) -> FdtResult<PciChildIrq<'a>> {
         let mask = self.interrupt_map_mask()?;
 
-        let want0 = (bus as u32) << 16 | (device as u32) << 11 | (func as u32) << 8;
+        let want0 = ((bus as u32) << 16) | ((device as u32) << 11) | ((func as u32) << 8);
 
         let mut want = [0; 4];
 
@@ -138,7 +138,7 @@ impl Iterator for PciRangeIter<'_> {
         let low = child.next().unwrap();
 
         let ss = (hi >> 24) & 0b11;
-        let prefetchable = (hi & 1 << 30) > 0;
+        let prefetchable = (hi & (1 << 30)) > 0;
 
         let space = match ss {
             0b00 => PciSpace::Configuration,
@@ -148,7 +148,7 @@ impl Iterator for PciRangeIter<'_> {
             _ => panic!(),
         };
 
-        let child_bus_address = (mid as u64) << 32 | low as u64;
+        let child_bus_address = ((mid as u64) << 32) | low as u64;
 
         Some(PciRange {
             space,
