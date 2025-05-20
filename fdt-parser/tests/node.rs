@@ -8,6 +8,23 @@ mod test {
     const TEST_3568_FDT: &[u8] = include_bytes!("../../dtb/rk3568-firefly-roc-pc-se.dtb");
 
     #[test]
+    fn test_str_list() {
+        let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
+        let uart = fdt.find_nodes("/soc/serial@7e201000").next().unwrap();
+        let caps = uart
+            .find_property("compatible")
+            .unwrap()
+            .str_list()
+            .collect::<Vec<_>>();
+
+        let want = ["arm,pl011", "arm,primecell"];
+
+        for (i, cap) in caps.iter().enumerate() {
+            assert_eq!(*cap, want[i]);
+        }
+    }
+
+    #[test]
     fn test_find_compatible() {
         let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
         let pl011 = fdt

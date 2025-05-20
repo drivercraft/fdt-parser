@@ -1,4 +1,4 @@
-use core::ffi::CStr;
+use core::{ffi::CStr, iter};
 
 use crate::read::FdtReader;
 
@@ -26,5 +26,10 @@ impl<'a> Property<'a> {
             .unwrap()
             .to_str()
             .unwrap()
+    }
+
+    pub fn str_list(&self) -> impl Iterator<Item = &'a str> + 'a {
+        let mut value = self.data.clone();
+        iter::from_fn(move || value.take_str().ok())
     }
 }

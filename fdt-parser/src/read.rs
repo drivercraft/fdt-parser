@@ -121,7 +121,7 @@ impl<'a> FdtReader<'a> {
 
     pub fn take_str(&mut self) -> FdtResult<'a, &'a str> {
         let s = self.peek_str()?;
-        let _ = self.skip(s.bytes().len() + 1);
+        let _ = self.skip(s.len() + 1);
         Ok(s)
     }
 }
