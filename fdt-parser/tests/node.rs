@@ -162,8 +162,34 @@ mod test {
         let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
         let clocks = node.clocks().collect::<Vec<_>>();
         let clock = &clocks[0];
-
+        for clock in &clocks {
+            println!("clock: {:?}", clock);
+        }
         assert_eq!(clock.node.name, "aux@7e215000");
+    }
+
+    #[test]
+    fn test_clocks_cell_1() {
+        let fdt = Fdt::from_bytes(TEST_3568_FDT).unwrap();
+        let node = fdt.find_nodes("/sdhci@fe310000").next().unwrap();
+        let clocks = node.clocks().collect::<Vec<_>>();
+        let clock = &clocks[0];
+
+        for clock in &clocks {
+            println!("clock: {:?}", clock);
+        }
+        assert_eq!(clock.node.name, "clock-controller@fdd20000");
+    }
+
+    #[test]
+    fn test_clocks_cell_0() {
+        let fdt = Fdt::from_bytes(TEST_PHYTIUM_FDT).unwrap();
+        let node = fdt.find_nodes("/soc/uart@2800e000").next().unwrap();
+        let clocks = node.clocks().collect::<Vec<_>>();
+
+        for clock in &clocks {
+            println!("clock: {:?}", clock);
+        }
     }
 
     #[test]
