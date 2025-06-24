@@ -178,6 +178,10 @@ impl<'a> Node<'a> {
 
         None
     }
+
+    pub fn fdt(&self) -> Fdt<'a> {
+        self.fdt.clone()
+    }
 }
 
 struct RegIter<'a> {
