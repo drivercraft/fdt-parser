@@ -1,33 +1,24 @@
-#![cfg_attr(not(test), no_std)]
-#![doc = include_str!("../README.md")]
+#![no_std]
 
-mod chosen;
-mod clocks;
+mod data;
 mod define;
-pub mod error;
-mod fdt;
-mod interrupt;
-mod memory;
-mod meta;
-mod node;
-mod pci;
-mod property;
-mod read;
+mod header;
+mod root;
 
-use define::*;
+pub use define::*;
+pub use header::Header;
+pub use root::Fdt;
 
-pub use chosen::Chosen;
-pub use clocks::ClockRef;
-pub use define::{FdtHeader, MemoryRegion, Phandle};
-pub use error::FdtError;
-pub use fdt::Fdt;
-pub use interrupt::InterruptController;
-pub use node::Node;
-pub use pci::{Pci, PciRange, PciSpace};
-pub use property::Property;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Status {
-    Okay,
-    Disabled,
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum FdtError {
+    #[error("buffer too small at position {pos}")]
+    BufferTooSmall { pos: usize },
+    #[error("invalid magic number {0:#x} != {FDT_MAGIC:#x}")]
+    InvalidMagic(u32),
+    #[error("invalid pointer")]
+    InvalidPtr,
+    #[error("invalid UTF-8 string")]
+    FromBytesUntilNull,
+    #[error("failed to parse UTF-8 string")]
+    Utf8Parse,
 }
