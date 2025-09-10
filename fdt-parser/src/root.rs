@@ -35,28 +35,18 @@ impl<'a> Fdt<'a> {
         self.raw.raw()
     }
 
-    pub fn memory_reservaion_blocks(
-        &self,
-    ) -> Result<impl Iterator<Item = ReserveEntry> + 'a, FdtError> {
+    pub fn memory_reservaion_blocks(&self) -> impl Iterator<Item = ReserveEntry> + 'a {
         let mut buffer = self.raw.buffer_at(self.header.off_mem_rsvmap as usize);
 
-        let ls = core::iter::from_fn(move || {
-            let address = match buffer.take_u64() {
-                Ok(v) => v,
-                Err(e) => return Some(Err(e)),
-            };
-            let size = match buffer.take_u64() {
-                Ok(v) => v,
-                Err(e) => return Some(Err(e)),
-            };
+        core::iter::from_fn(move || {
+            let address = buffer.take_u64().ok()?;
+            let size = buffer.take_u64().ok()?;
 
             if address == 0 && size == 0 {
                 return None;
             }
 
-            Some(Ok(ReserveEntry { address, size }))
-        });
-
-        Ok(ls.flatten())
+            Some(ReserveEntry { address, size })
+        })
     }
 }

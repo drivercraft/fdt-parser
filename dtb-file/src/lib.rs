@@ -4,6 +4,7 @@ const TEST_RPI_4_FDT: &[u8] = include_bytes!("dtb/bcm2711-rpi-4-b.dtb");
 const TEST_PHYTIUM_FDT: &[u8] = include_bytes!("dtb/phytium.dtb");
 const TEST_QEMU_FDT: &[u8] = include_bytes!("dtb/qemu_pci.dtb");
 const TEST_3568_FDT: &[u8] = include_bytes!("dtb/rk3568-firefly-roc-pc-se.dtb");
+const TEST_RESERVE_FDT: &[u8] = include_bytes!("dtb/test_reserve.dtb");
 
 pub fn fdt_rpi_4b() -> Align4Vec {
     Align4Vec::new(TEST_RPI_4_FDT)
@@ -19,6 +20,10 @@ pub fn fdt_qemu() -> Align4Vec {
 
 pub fn fdt_3568() -> Align4Vec {
     Align4Vec::new(TEST_3568_FDT)
+}
+
+pub fn fdt_reserve() -> Align4Vec {
+    Align4Vec::new(TEST_RESERVE_FDT)
 }
 
 pub struct Align4Vec {

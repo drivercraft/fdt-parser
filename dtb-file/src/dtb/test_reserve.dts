@@ -1,0 +1,55 @@
+/dts-v1/;
+
+// Reserve memory blocks
+/memreserve/ 0x40000000 0x04000000;  // Reserve 64MB at 1GB
+/memreserve/ 0x80000000 0x00100000;  // Reserve 1MB at 2GB  
+/memreserve/ 0xA0000000 0x00200000;  // Reserve 2MB at 2.5GB
+
+/ {
+    model = "Test DTB with Memory Reservations";
+    compatible = "test,dtb-with-reservations";
+    
+    #address-cells = <2>;
+    #size-cells = <2>;
+    
+    chosen {
+        bootargs = "console=ttyS0,115200";
+    };
+    
+    memory@0 {
+        device_type = "memory";
+        reg = <0x0 0x40000000 0x0 0x80000000>; // 2GB memory starting at 1GB
+    };
+    
+    cpus {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        
+        cpu@0 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a53";
+            reg = <0>;
+        };
+        
+        cpu@1 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a53";
+            reg = <1>;
+        };
+    };
+    
+    timer {
+        compatible = "arm,armv8-timer";
+        interrupts = <1 13 0xf01>,
+                     <1 14 0xf01>,
+                     <1 11 0xf01>,
+                     <1 10 0xf01>;
+    };
+    
+    uart0: serial@1c28000 {
+        compatible = "snps,dw-apb-uart";
+        reg = <0x0 0x01c28000 0x0 0x400>;
+        interrupts = <0 0 4>;
+        clock-frequency = <24000000>;
+    };
+};

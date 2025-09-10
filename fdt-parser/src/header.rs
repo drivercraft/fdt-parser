@@ -1,6 +1,6 @@
 use core::ptr::NonNull;
 
-use crate::{root::Fdt, FdtError};
+use crate::FdtError;
 
 #[derive(Debug, Clone)]
 pub struct Header {

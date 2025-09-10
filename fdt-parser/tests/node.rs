@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu};
+    use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu, fdt_reserve};
     use fdt_parser::*;
 
     #[test]
@@ -13,15 +13,87 @@ mod test {
     }
 
     #[test]
-    fn test_reserve() {
-        let raw = fdt_qemu();
+    fn test_memory_reservation_blocks() {
+        // Test with custom DTB that has memory reservations
+        let raw = fdt_reserve();
         let ptr = raw.as_ptr() as *mut u8;
         let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
-        let rsv = fdt.memory_reservaion_blocks().unwrap();
+        // Get memory reservation blocks
+        let rsv_result = fdt.memory_reservaion_blocks();
 
-        for one in rsv {
-            println!("one: {:#?}", one);
+        let entries: Vec<_> = rsv_result.collect();
+
+        // Should have exactly 3 reservation blocks as defined in our DTS
+        assert_eq!(
+            entries.len(),
+            3,
+            "Should have exactly 3 memory reservation blocks"
+        );
+
+        // Test the specific values we defined
+        let expected_reservations = [
+            (0x40000000u64, 0x04000000u64), // 64MB at 1GB
+            (0x80000000u64, 0x00100000u64), // 1MB at 2GB
+            (0xA0000000u64, 0x00200000u64), // 2MB at 2.5GB
+        ];
+
+        for (i, (expected_addr, expected_size)) in expected_reservations.iter().enumerate() {
+            assert_eq!(
+                entries[i].address, *expected_addr,
+                "Reservation {} address mismatch: expected {:#x}, got {:#x}",
+                i, expected_addr, entries[i].address
+            );
+            assert_eq!(
+                entries[i].size, *expected_size,
+                "Reservation {} size mismatch: expected {:#x}, got {:#x}",
+                i, expected_size, entries[i].size
+            );
+        }
+
+        // Test iterator behavior - iterate twice to ensure it works correctly
+        let rsv1: Vec<_> = fdt.memory_reservaion_blocks().collect();
+        let rsv2: Vec<_> = fdt.memory_reservaion_blocks().collect();
+        assert_eq!(
+            rsv1.len(),
+            rsv2.len(),
+            "Multiple iterations should yield same results"
+        );
+
+        for (entry1, entry2) in rsv1.iter().zip(rsv2.iter()) {
+            assert_eq!(
+                entry1.address, entry2.address,
+                "Addresses should match between iterations"
+            );
+            assert_eq!(
+                entry1.size, entry2.size,
+                "Sizes should match between iterations"
+            );
+        }
+    }
+
+    #[test]
+    fn test_empty_memory_reservation_blocks() {
+        // Test with DTBs that have no memory reservations
+        let test_cases = [
+            ("QEMU", fdt_qemu()),
+            ("Phytium", fdt_phytium()),
+            ("RK3568", fdt_3568()),
+        ];
+
+        for (name, raw) in test_cases {
+            let ptr = raw.as_ptr() as *mut u8;
+            let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
+
+            let rsv_result = fdt.memory_reservaion_blocks();
+
+            let entries: Vec<_> = rsv_result.collect();
+            assert_eq!(
+                entries.len(),
+                0,
+                "{} DTB should have no memory reservation blocks",
+                name
+            );
         }
     }
 
