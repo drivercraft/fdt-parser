@@ -1,15 +1,20 @@
 #![no_std]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 mod data;
 mod define;
 mod header;
 mod node;
 mod root;
+mod walk;
 
 pub use define::*;
 pub use header::Header;
 pub use node::*;
 pub use root::*;
+pub use walk::*;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum FdtError {

@@ -100,7 +100,7 @@ mod test {
     fn test_node<'a>() -> Option<Node<'a>> {
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-        fdt.all_nodes().next()
+        fdt.all_nodes().get(1).cloned()
     }
 
     #[test]

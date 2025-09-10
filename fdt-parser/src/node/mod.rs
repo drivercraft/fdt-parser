@@ -18,7 +18,7 @@ impl<'a> Node<'a> {
         }
     }
 
-    fn raw(&self) -> Raw<'a> {
+    pub fn raw(&self) -> Raw<'a> {
         self.fdt.raw.begin_at(self.pos).unwrap()
     }
 
@@ -44,8 +44,8 @@ impl<'a> Node<'a> {
         None::<core::iter::Empty<u64>>
     }
 
-    pub fn kind(&self) -> NodeKind {
-        NodeKind::General
+    pub fn to_kind(self) -> NodeKind<'a> {
+        NodeKind::General(self)
     }
 
     /// 检查这个节点是否是根节点
@@ -55,7 +55,7 @@ impl<'a> Node<'a> {
 
     /// 检查节点名称是否匹配指定的模式
     pub fn name_matches(&self, pattern: &str) -> bool {
-        self.name == pattern
+        self.name.eq(pattern)
     }
 
     /// 检查节点名称是否以指定前缀开始
@@ -77,7 +77,9 @@ impl<'a> Node<'a> {
     where
         F: FnMut(&Node<'a>) -> Result<bool, crate::FdtError>,
     {
-        self.fdt.walk_child_nodes(self.name, self.level, callback)
+        self.fdt
+            .walker()
+            .walk_children(self.name, self.level, callback)
     }
 }
 
@@ -89,7 +91,13 @@ pub struct NodeDebugInfo<'a> {
     pub pos: usize,
 }
 
+impl core::fmt::Debug for Node<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Node").field("name", &self.name).finish()
+    }
+}
+
 #[derive(Debug)]
-pub enum NodeKind {
-    General,
+pub enum NodeKind<'a> {
+    General(Node<'a>),
 }
