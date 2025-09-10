@@ -39,6 +39,10 @@ impl Align4Vec {
         unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), ptr, size) };
         Align4Vec { ptr, size }
     }
+
+    pub fn ptr(&self) -> *mut u8 {
+        self.ptr
+    }
 }
 
 impl Drop for Align4Vec {

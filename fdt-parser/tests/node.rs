@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu, fdt_reserve};
+    use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu, fdt_reserve, fdt_rpi_4b};
     use fdt_parser::*;
 
     #[test]
@@ -94,6 +94,20 @@ mod test {
                 "{} DTB should have no memory reservation blocks",
                 name
             );
+        }
+    }
+
+    fn test_node<'a>() -> Option<Node<'a>> {
+        let raw = fdt_rpi_4b();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        fdt.all_nodes().next()
+    }
+
+    #[test]
+    fn test_send_node() {
+        let node = test_node();
+        if let Some(node) = node {
+            println!("{:?}", node.name());
         }
     }
 

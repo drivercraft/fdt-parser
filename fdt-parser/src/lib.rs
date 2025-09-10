@@ -3,11 +3,13 @@
 mod data;
 mod define;
 mod header;
+mod node;
 mod root;
 
 pub use define::*;
 pub use header::Header;
-pub use root::Fdt;
+pub use node::*;
+pub use root::*;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum FdtError {

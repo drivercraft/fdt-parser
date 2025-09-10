@@ -61,6 +61,13 @@ impl<'a> Buffer<'a> {
         }
     }
 
+    fn raw(&self) -> Raw<'a> {
+        Raw {
+            value: self.value,
+            pos: self.pos,
+        }
+    }
+
     fn remain(&self) -> &'a [u8] {
         &self.value[self.pos..]
     }
@@ -90,8 +97,16 @@ impl<'a> Buffer<'a> {
 
         let s = cs.to_str().map_err(|_| FdtError::Utf8Parse)?;
 
-        self.pos += cs.to_bytes_with_nul().len();
+        let str_len = cs.to_bytes_with_nul().len();
+        // Align to 4-byte boundary for FDT format
+        let aligned_len = (str_len + 3) & !3;
+        self.pos += aligned_len;
 
         Ok(s)
+    }
+
+    pub fn skip_4_aligned(&mut self, len: usize) -> Result<(), FdtError> {
+        self.take((len + 3) & !0x3)?;
+        Ok(())
     }
 }

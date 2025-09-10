@@ -28,6 +28,18 @@ pub struct Header {
 }
 
 impl Header {
+    /// Read a header from a byte slice and return an owned `Header` whose
+    /// fields are converted from big-endian (on-disk) to host order.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, FdtError> {
+        if data.len() < core::mem::size_of::<Header>() {
+            return Err(FdtError::BufferTooSmall {
+                pos: core::mem::size_of::<Header>(),
+            });
+        }
+        let ptr = NonNull::new(data.as_ptr() as *mut u8).ok_or(FdtError::InvalidPtr)?;
+        Self::from_ptr(ptr.as_ptr())
+    }
+
     /// Read a header from a raw pointer and return an owned `Header` whose
     /// fields are converted from big-endian (on-disk) to host order.
     pub fn from_ptr(ptr: *mut u8) -> Result<Self, FdtError> {
