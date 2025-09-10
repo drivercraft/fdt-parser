@@ -92,96 +92,287 @@ impl<'a> Fdt<'a> {
         buffer.take_str()
     }
 
-    pub fn all_nodes(&self) -> NodeIterator<'a> {
-        NodeIterator {
-            fdt: self.clone(),
-            buffer: self.raw.buffer_at(self.header.off_dt_struct as usize),
-            current_level: 0,
-            finished: false,
-        }
+    /// 递归遍历所有节点，通过回调函数处理每个节点
+    /// 参考 linux dtc 的实现方式
+    pub fn walk_nodes_recursive<F>(&self, mut callback: F) -> Result<(), FdtError>
+    where
+        F: FnMut(&Node<'a>) -> Result<bool, FdtError>, // 返回 true 继续遍历，false 停止
+    {
+        let mut buffer = self.raw.buffer_at(self.header.off_dt_struct as usize);
+        self.walk_nodes_recursive_impl(&mut buffer, 0, &mut callback)
     }
-}
 
-pub struct NodeIterator<'a> {
-    fdt: Fdt<'a>,
-    buffer: Buffer<'a>,
-    current_level: usize,
-    finished: bool,
-}
+    /// 递归遍历指定深度的节点
+    pub fn walk_nodes_at_depth<F>(
+        &self,
+        target_depth: usize,
+        mut callback: F,
+    ) -> Result<(), FdtError>
+    where
+        F: FnMut(&Node<'a>) -> Result<bool, FdtError>,
+    {
+        let mut buffer = self.raw.buffer_at(self.header.off_dt_struct as usize);
+        self.walk_nodes_at_depth_impl(&mut buffer, 0, target_depth, &mut callback)
+    }
 
-impl<'a> Iterator for NodeIterator<'a> {
-    type Item = Node<'a>;
+    /// 查找并遍历特定节点的子节点
+    pub fn walk_child_nodes<F>(
+        &self,
+        parent_name: &str,
+        parent_level: usize,
+        mut callback: F,
+    ) -> Result<(), FdtError>
+    where
+        F: FnMut(&Node<'a>) -> Result<bool, FdtError>,
+    {
+        let mut buffer = self.raw.buffer_at(self.header.off_dt_struct as usize);
+        self.walk_child_nodes_impl(&mut buffer, parent_name, parent_level, &mut callback)
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.finished {
-            return None;
-        }
-
+    /// 递归遍历的内部实现
+    fn walk_nodes_recursive_impl<F>(
+        &self,
+        buffer: &mut Buffer<'a>,
+        level: usize,
+        callback: &mut F,
+    ) -> Result<(), FdtError>
+    where
+        F: FnMut(&Node<'a>) -> Result<bool, FdtError>,
+    {
         loop {
-            let token = match self.buffer.take_token() {
+            let token = match buffer.take_token() {
                 Ok(token) => token,
-                Err(_) => {
-                    self.finished = true;
-                    return None;
-                }
+                Err(_) => return Ok(()), // 到达缓冲区末尾
             };
 
             match token {
                 Token::BeginNode => {
-                    // Read the node name (null-terminated string)
-                    let node_name = match self.buffer.take_str() {
+                    // 读取节点名称
+                    let node_name = match buffer.take_str() {
                         Ok(name) => name,
-                        Err(_) => {
-                            self.finished = true;
-                            return None;
-                        }
+                        Err(_) => return Ok(()),
                     };
 
-                    let node = Node::new(&self.fdt, node_name, self.current_level, 0);
-                    self.current_level += 1;
+                    let node = Node::new(self, node_name, level, 0);
 
-                    return Some(node);
+                    // 调用回调函数处理当前节点
+                    let should_continue = callback(&node)?;
+                    if !should_continue {
+                        return Ok(());
+                    }
+
+                    // 递归处理子节点
+                    self.walk_nodes_recursive_impl(buffer, level + 1, callback)?;
                 }
                 Token::EndNode => {
-                    if self.current_level > 0 {
-                        self.current_level -= 1;
-                    }
-                    // Continue to next token
+                    // 当前层级结束，返回上一层
+                    return Ok(());
                 }
                 Token::Prop => {
-                    // Skip property: read length, name offset, and data
-                    if let Ok(len) = self.buffer.take_u32() {
-                        // Skip name offset
-                        if self.buffer.take_u32().is_ok() {
-                            // Skip property data, with proper alignment
+                    // 跳过属性：读取长度、名称偏移和数据
+                    if let Ok(len) = buffer.take_u32() {
+                        if buffer.take_u32().is_ok() {
                             let aligned_len = (len + 3) & !3;
-                            if self.buffer.take(aligned_len as usize).is_err() {
-                                self.finished = true;
-                                return None;
-                            }
-                        } else {
-                            self.finished = true;
-                            return None;
+                            let _ = buffer.take(aligned_len as usize);
                         }
-                    } else {
-                        self.finished = true;
-                        return None;
                     }
                 }
                 Token::Nop => {
-                    // Skip NOP token
+                    // 跳过 NOP token
                     continue;
                 }
                 Token::End => {
-                    self.finished = true;
-                    return None;
+                    // 设备树结束
+                    return Ok(());
                 }
                 Token::Data => {
-                    // This shouldn't happen in normal FDT structure
-                    self.finished = true;
-                    return None;
+                    // 在正常的 FDT 结构中不应该出现这种情况
+                    continue;
                 }
             }
         }
+    }
+
+    /// 遍历指定深度节点的内部实现
+    fn walk_nodes_at_depth_impl<F>(
+        &self,
+        buffer: &mut Buffer<'a>,
+        current_level: usize,
+        target_depth: usize,
+        callback: &mut F,
+    ) -> Result<(), FdtError>
+    where
+        F: FnMut(&Node<'a>) -> Result<bool, FdtError>,
+    {
+        loop {
+            let token = match buffer.take_token() {
+                Ok(token) => token,
+                Err(_) => return Ok(()),
+            };
+
+            match token {
+                Token::BeginNode => {
+                    let node_name = match buffer.take_str() {
+                        Ok(name) => name,
+                        Err(_) => return Ok(()),
+                    };
+
+                    if current_level == target_depth {
+                        let node = Node::new(self, node_name, current_level, 0);
+                        let should_continue = callback(&node)?;
+                        if !should_continue {
+                            return Ok(());
+                        }
+                    }
+
+                    // 无论是否匹配深度，都需要递归处理以跳过子节点
+                    self.walk_nodes_at_depth_impl(
+                        buffer,
+                        current_level + 1,
+                        target_depth,
+                        callback,
+                    )?;
+                }
+                Token::EndNode => {
+                    return Ok(());
+                }
+                Token::Prop => {
+                    if let Ok(len) = buffer.take_u32() {
+                        if buffer.take_u32().is_ok() {
+                            let aligned_len = (len + 3) & !3;
+                            let _ = buffer.take(aligned_len as usize);
+                        }
+                    }
+                }
+                Token::Nop => {
+                    continue;
+                }
+                Token::End => {
+                    return Ok(());
+                }
+                Token::Data => {
+                    continue;
+                }
+            }
+        }
+    }
+
+    /// 遍历子节点的内部实现
+    fn walk_child_nodes_impl<F>(
+        &self,
+        buffer: &mut Buffer<'a>,
+        parent_name: &str,
+        parent_level: usize,
+        callback: &mut F,
+    ) -> Result<(), FdtError>
+    where
+        F: FnMut(&Node<'a>) -> Result<bool, FdtError>,
+    {
+        let mut current_level = 0;
+        let mut found_parent = false;
+
+        loop {
+            let token = match buffer.take_token() {
+                Ok(token) => token,
+                Err(_) => return Ok(()),
+            };
+
+            match token {
+                Token::BeginNode => {
+                    let node_name = match buffer.take_str() {
+                        Ok(name) => name,
+                        Err(_) => return Ok(()),
+                    };
+
+                    if !found_parent && current_level == parent_level && node_name == parent_name {
+                        found_parent = true;
+                        current_level += 1;
+                        continue;
+                    }
+
+                    if found_parent && current_level == parent_level + 1 {
+                        // 这是目标父节点的直接子节点
+                        let node = Node::new(self, node_name, current_level, 0);
+                        let should_continue = callback(&node)?;
+                        if !should_continue {
+                            return Ok(());
+                        }
+                        // 跳过这个子节点的子树
+                        self.skip_subtree(buffer)?;
+                    } else if found_parent {
+                        // 在目标父节点内部，但不是直接子节点，跳过整个子树
+                        self.skip_subtree(buffer)?;
+                    } else {
+                        // 还没找到父节点，递归继续查找
+                        current_level += 1;
+                    }
+                }
+                Token::EndNode => {
+                    if found_parent && current_level == parent_level + 1 {
+                        // 父节点结束，完成收集
+                        return Ok(());
+                    }
+                    current_level = current_level.saturating_sub(1);
+                }
+                Token::Prop => {
+                    if let Ok(len) = buffer.take_u32() {
+                        if buffer.take_u32().is_ok() {
+                            let aligned_len = (len + 3) & !3;
+                            let _ = buffer.take(aligned_len as usize);
+                        }
+                    }
+                }
+                Token::Nop => {
+                    continue;
+                }
+                Token::End => {
+                    return Ok(());
+                }
+                Token::Data => {
+                    continue;
+                }
+            }
+        }
+    }
+
+    /// 跳过整个子树
+    fn skip_subtree(&self, buffer: &mut Buffer<'a>) -> Result<(), FdtError> {
+        let mut depth = 1;
+
+        while depth > 0 {
+            let token = match buffer.take_token() {
+                Ok(token) => token,
+                Err(_) => return Ok(()),
+            };
+
+            match token {
+                Token::BeginNode => {
+                    let _ = buffer.take_str(); // 跳过节点名
+                    depth += 1;
+                }
+                Token::EndNode => {
+                    depth -= 1;
+                }
+                Token::Prop => {
+                    if let Ok(len) = buffer.take_u32() {
+                        if buffer.take_u32().is_ok() {
+                            let aligned_len = (len + 3) & !3;
+                            let _ = buffer.take(aligned_len as usize);
+                        }
+                    }
+                }
+                Token::Nop => {
+                    continue;
+                }
+                Token::End => {
+                    return Ok(());
+                }
+                Token::Data => {
+                    continue;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
