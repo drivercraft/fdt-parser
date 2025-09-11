@@ -82,7 +82,7 @@ impl<'a> Buffer<'a> {
         Ok(u64::from_be_bytes(bytes.try_into().unwrap()))
     }
 
-    pub fn take_token(&mut self) -> Result<Token, FdtError> {
+    pub(crate) fn take_token(&mut self) -> Result<Token, FdtError> {
         let u = self.take_u32()?;
         Ok(Token::from(u))
     }

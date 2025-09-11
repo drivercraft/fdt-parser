@@ -9,7 +9,14 @@ pub struct Node<'a> {
     pub(crate) fdt: Fdt<'a>,
     pub level: usize,
     pub(crate) raw: Raw<'a>,
-    pub(crate) parent_name: Option<&'a str>,
+    pub(crate) parent: Option<ParentInfo<'a>>,
+}
+
+#[derive(Clone)]
+struct ParentInfo<'a> {
+    name: &'a str,
+    level: usize,
+    raw: Raw<'a>,
 }
 
 impl<'a> Node<'a> {
@@ -18,25 +25,39 @@ impl<'a> Node<'a> {
         fdt: Fdt<'a>,
         buffer: &Buffer<'a>,
         level: usize,
-        parent_name: Option<&'a str>,
+        parent: Option<&Node<'a>>,
     ) -> Self {
         let name = if name.is_empty() { "/" } else { name };
         Node {
             name,
             fdt,
             level,
-            parent_name,
+            parent: parent.map(|p| ParentInfo {
+                name: p.name(),
+                level: p.level(),
+                raw: p.raw(),
+            }),
             raw: buffer.raw(),
         }
     }
 
     pub fn parent_name(&self) -> Option<&'a str> {
-        self.parent_name
+        self.parent.as_ref().map(|p| p.name)
     }
 
     pub fn parent(&self) -> Option<Node<'a>> {
-        let parent_name = self.parent_name?;
+        let parent_name = self.parent_name()?;
         self.fdt.all_nodes().find(|n| n.name() == parent_name)
+    }
+
+    fn parent_fast(&self) -> Option<Node<'a>> {
+        self.parent.as_ref().map(|p| Node {
+            name: p.name,
+            fdt: self.fdt.clone(),
+            level: p.level,
+            raw: p.raw,
+            parent: None,
+        })
     }
 
     pub fn raw(&self) -> Raw<'a> {

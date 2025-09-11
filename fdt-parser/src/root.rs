@@ -122,7 +122,6 @@ impl<'a> Iterator for NodeIter<'a> {
             match token {
                 Token::BeginNode => {
                     self.level += 1;
-                    debug!("BeginNode at level {}", self.level);
                     let mut finished = None;
                     if let Some(ref p) = self.node {
                         self.parent = Some(p.clone());
@@ -134,7 +133,7 @@ impl<'a> Iterator for NodeIter<'a> {
                         self.fdt.clone(),
                         &self.buffer,
                         self.level as _,
-                        self.parent.as_ref().map(|n| n.name()),
+                        self.parent.as_ref(),
                     );
                     self.node = Some(node);
                     if let Some(f) = finished {
@@ -142,7 +141,6 @@ impl<'a> Iterator for NodeIter<'a> {
                     }
                 }
                 Token::EndNode => {
-                    debug!("EndNode at level {}", self.level);
                     let node = self.node.take();
                     self.level -= 1;
                     if node.is_none() {
@@ -151,7 +149,6 @@ impl<'a> Iterator for NodeIter<'a> {
                         } else {
                             self.parent = None;
                         }
-                        debug!("Set parent to {:?}", self.parent.as_ref().map(|n| n.name()));
                     }
                     if let Some(n) = node {
                         return Some(n);
@@ -161,7 +158,6 @@ impl<'a> Iterator for NodeIter<'a> {
                     self.buffer.take_prop(&self.fdt)?;
                 }
                 Token::End => {
-                    debug!("End of structure");
                     return None;
                 }
                 _ => continue,

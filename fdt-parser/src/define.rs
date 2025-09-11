@@ -1,6 +1,6 @@
 use core::fmt::Display;
 
-use crate::data::{Buffer, U32Iter};
+use crate::data::U32Iter;
 
 pub const FDT_MAGIC: u32 = 0xd00dfeed;
 
