@@ -8,13 +8,13 @@ mod define;
 mod header;
 mod node;
 mod root;
-mod walk;
+mod property;
 
 pub use define::*;
 pub use header::Header;
 pub use node::*;
 pub use root::*;
-pub use walk::*;
+pub use property::Property;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum FdtError {

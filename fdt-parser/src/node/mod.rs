@@ -1,25 +1,46 @@
-use crate::{data::Raw, Fdt};
+use crate::{
+    data::{Buffer, Raw},
+    Fdt,
+};
 
 #[derive(Clone)]
 pub struct Node<'a> {
+    name: &'a str,
     pub(crate) fdt: Fdt<'a>,
-    pub(crate) name: &'a str,
-    pub(crate) level: usize,
-    pub(crate) pos: usize,
+    pub level: usize,
+    pub(crate) raw: Raw<'a>,
+    pub(crate) parent_name: Option<&'a str>,
 }
 
 impl<'a> Node<'a> {
-    pub(crate) fn new(fdt: &Fdt<'a>, name: &'a str, level: usize, pos: usize) -> Self {
+    pub(crate) fn new(
+        name: &'a str,
+        fdt: Fdt<'a>,
+        buffer: &Buffer<'a>,
+        level: usize,
+        parent_name: Option<&'a str>,
+    ) -> Self {
+        let name = if name.is_empty() { "/" } else { name };
         Node {
-            fdt: fdt.clone(),
             name,
+            fdt,
             level,
-            pos,
+            parent_name,
+            raw: buffer.raw(),
         }
     }
 
+    pub fn parent_name(&self) -> Option<&'a str> {
+        self.parent_name
+    }
+
+    pub fn parent(&self) -> Option<Node<'a>> {
+        let parent_name = self.parent_name?;
+        self.fdt.all_nodes().find(|n| n.name() == parent_name)
+    }
+
     pub fn raw(&self) -> Raw<'a> {
-        self.fdt.raw.begin_at(self.pos).unwrap()
+        self.raw
     }
 
     /// Get the name of this node
@@ -55,31 +76,21 @@ impl<'a> Node<'a> {
 
     /// 检查节点名称是否匹配指定的模式
     pub fn name_matches(&self, pattern: &str) -> bool {
-        self.name.eq(pattern)
+        self.name().eq(pattern)
     }
 
     /// 检查节点名称是否以指定前缀开始
     pub fn name_starts_with(&self, prefix: &str) -> bool {
-        self.name.starts_with(prefix)
+        self.name().starts_with(prefix)
     }
 
     /// 获取节点的完整路径信息（仅限调试用途）
     pub fn debug_info(&self) -> NodeDebugInfo<'a> {
         NodeDebugInfo {
-            name: self.name,
+            name: self.name(),
             level: self.level,
-            pos: self.pos,
+            pos: self.raw.pos,
         }
-    }
-
-    /// 遍历这个节点的所有子节点
-    pub fn walk_children<F>(&self, callback: F) -> Result<(), crate::FdtError>
-    where
-        F: FnMut(&Node<'a>) -> Result<bool, crate::FdtError>,
-    {
-        self.fdt
-            .walker()
-            .walk_children(self.name, self.level, callback)
     }
 }
 
@@ -93,7 +104,7 @@ pub struct NodeDebugInfo<'a> {
 
 impl core::fmt::Debug for Node<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Node").field("name", &self.name).finish()
+        f.debug_struct("Node").field("name", &self.name()).finish()
     }
 }
 

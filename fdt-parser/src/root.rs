@@ -1,4 +1,10 @@
-use crate::{data::Raw, node::Node, walk::Walker, FdtError, Header, ReserveEntry};
+use log::debug;
+
+use crate::{
+    data::{Buffer, Raw},
+    node::Node,
+    FdtError, Header, ReserveEntry, Token,
+};
 
 #[derive(Clone)]
 pub struct Fdt<'a> {
@@ -88,19 +94,78 @@ impl<'a> Fdt<'a> {
         buffer.take_str()
     }
 
-    /// 创建一个Walker实例用于各种遍历操作
-    pub fn walker(&self) -> Walker<'a> {
-        Walker::new(self.clone())
+    pub fn all_nodes(&self) -> NodeIter<'a> {
+        NodeIter {
+            buffer: self.raw.buffer_at(self.header.off_dt_struct as usize),
+            fdt: self.clone(),
+            level: -1,
+            parent: None,
+            node: None,
+        }
     }
+}
 
-    #[cfg(feature = "alloc")]
-    pub fn all_nodes(&self) -> alloc::vec::Vec<Node<'a>> {
-        let mut nodes = alloc::vec![];
-        let walker = self.walker();
-        let _ = walker.walk_all(|node| {
-            nodes.push(node.clone());
-            Ok(true)
-        });
-        nodes
+pub struct NodeIter<'a> {
+    buffer: Buffer<'a>,
+    fdt: Fdt<'a>,
+    level: isize,
+    parent: Option<Node<'a>>,
+    node: Option<Node<'a>>,
+}
+
+impl<'a> Iterator for NodeIter<'a> {
+    type Item = Node<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let token = self.buffer.take_token().ok()?;
+            match token {
+                Token::BeginNode => {
+                    self.level += 1;
+                    debug!("BeginNode at level {}", self.level);
+                    let mut finished = None;
+                    if let Some(ref p) = self.node {
+                        self.parent = Some(p.clone());
+                        finished = Some(p.clone());
+                    }
+                    let name = self.buffer.take_str().ok()?;
+                    let node = Node::new(
+                        name,
+                        self.fdt.clone(),
+                        &self.buffer,
+                        self.level as _,
+                        self.parent.as_ref().map(|n| n.name()),
+                    );
+                    self.node = Some(node);
+                    if let Some(f) = finished {
+                        return Some(f);
+                    }
+                }
+                Token::EndNode => {
+                    debug!("EndNode at level {}", self.level);
+                    let node = self.node.take();
+                    self.level -= 1;
+                    if node.is_none() {
+                        if let Some(ref p) = self.parent {
+                            self.parent = p.parent().clone();
+                        } else {
+                            self.parent = None;
+                        }
+                        debug!("Set parent to {:?}", self.parent.as_ref().map(|n| n.name()));
+                    }
+                    if let Some(n) = node {
+                        return Some(n);
+                    }
+                }
+                Token::Prop => {
+                    self.buffer.take_prop(&self.fdt)?;
+                }
+                Token::End => {
+                    debug!("End of structure");
+                    return None;
+                }
+                _ => continue,
+            }
+        }
     }
 }

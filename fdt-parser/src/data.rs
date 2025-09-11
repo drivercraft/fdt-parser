@@ -1,6 +1,6 @@
 use core::ffi::CStr;
 
-use crate::{FdtError, Token};
+use crate::{Fdt, FdtError, Property, Token};
 
 #[derive(Clone, Copy)]
 pub struct Raw<'a> {
@@ -61,7 +61,7 @@ impl<'a> Buffer<'a> {
         }
     }
 
-    fn raw(&self) -> Raw<'a> {
+    pub fn raw(&self) -> Raw<'a> {
         Raw {
             value: self.value,
             pos: self.pos,
@@ -108,5 +108,48 @@ impl<'a> Buffer<'a> {
     pub fn skip_4_aligned(&mut self, len: usize) -> Result<(), FdtError> {
         self.take((len + 3) & !0x3)?;
         Ok(())
+    }
+
+    pub fn take_aligned(&mut self, len: usize) -> Result<&'a [u8], FdtError> {
+        let bytes = (len + 3) & !0x3;
+        self.take(bytes)
+    }
+
+    pub fn take_by_cell_size(&mut self, cell_size: u8) -> Option<u64> {
+        match cell_size {
+            1 => self.take_u32().map(|s| s as _).ok(),
+            2 => self.take_u64().ok(),
+            _ => panic!("invalid cell size {}", cell_size),
+        }
+    }
+
+    pub fn take_prop(&mut self, fdt: &Fdt<'a>) -> Option<Property<'a>> {
+        let len = self.take_u32().ok()?;
+        let nameoff = self.take_u32().ok()?;
+        self.take_aligned(len as _).ok()?;
+        Some(Property {
+            name: fdt.get_str(nameoff as _).unwrap_or("<error>"),
+            data: self.raw(),
+        })
+    }
+}
+
+pub struct U32Iter<'a> {
+    buffer: Buffer<'a>,
+}
+
+impl<'a> U32Iter<'a> {
+    pub fn new(raw: &'a [u8]) -> Self {
+        Self {
+            buffer: Buffer { value: raw, pos: 0 },
+        }
+    }
+}
+
+impl<'a> Iterator for U32Iter<'a> {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.buffer.take_u32().ok()
     }
 }

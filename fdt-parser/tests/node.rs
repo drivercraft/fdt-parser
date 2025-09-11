@@ -100,7 +100,7 @@ mod test {
     fn test_node<'a>() -> Option<Node<'a>> {
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-        fdt.all_nodes().get(1).cloned()
+        fdt.all_nodes().next()
     }
 
     #[test]
@@ -108,6 +108,30 @@ mod test {
         let node = test_node();
         if let Some(node) = node {
             println!("{:?}", node.name());
+        }
+    }
+
+    #[test]
+    fn test_all_nodes() {
+        env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Debug)
+            .init();
+        let raw = fdt_reserve();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        for node in fdt.all_nodes() {
+            println!(
+                "{}{} l{} parent={:?}",
+                match node.level {
+                    0 => "",
+                    1 => "  ",
+                    2 => "    ",
+                    _ => "       ",
+                },
+                node.name(),
+                node.level(),
+                node.parent_name()
+            );
         }
     }
 
