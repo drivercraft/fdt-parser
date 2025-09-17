@@ -34,12 +34,12 @@ impl<'a> Property<'a> {
         iter::from_fn(move || value.take_str().ok())
     }
 
-    pub fn u32_list(&self) -> impl Iterator<Item = u32> + '_ {
+    pub fn u32_list(&self) -> impl Iterator<Item = u32> + 'a {
         let mut value = self.data.buffer();
         iter::from_fn(move || value.take_u32().ok())
     }
 
-    pub fn u64_list(&self) -> impl Iterator<Item = u64> + '_ {
+    pub fn u64_list(&self) -> impl Iterator<Item = u64> + 'a {
         let mut value = self.data.buffer();
         iter::from_fn(move || value.take_u64().ok())
     }

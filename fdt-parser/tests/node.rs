@@ -169,6 +169,27 @@ mod test {
             assert_eq!(*cap, want[i]);
         }
     }
+    #[test]
+    fn test_find_nodes() {
+        let raw = fdt_rpi_4b();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+
+        let uart = fdt.find_nodes("/soc/serial");
+
+        let want = [
+            "serial@7e201000",
+            "serial@7e215040",
+            "serial@7e201400",
+            "serial@7e201600",
+            "serial@7e201800",
+            "serial@7e201a00",
+        ];
+
+        for (act, want) in uart.zip(want.iter()) {
+            let act = act.unwrap();
+            assert_eq!(act.name(), *want);
+        }
+    }
 
     #[test]
     fn test_find_compatible() {
@@ -182,93 +203,113 @@ mod test {
         assert_eq!(pl011.name(), "serial@7e201000");
     }
 
-    // #[test]
-    // fn test_compatibles() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let uart = fdt.find_nodes("/soc/serial@7e201000").next().unwrap();
-    //     let caps = uart.compatibles().collect::<Vec<_>>();
+    #[test]
+    fn test_compatibles() {
+        let raw = fdt_rpi_4b();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        let uart = fdt
+            .find_nodes("/soc/serial@7e201000")
+            .next()
+            .unwrap()
+            .unwrap();
+        let caps = uart.compatibles().unwrap().unwrap();
 
-    //     let want = ["arm,pl011", "arm,primecell"];
+        let want = ["arm,pl011", "arm,primecell"];
 
-    //     for (i, cap) in caps.iter().enumerate() {
-    //         assert_eq!(*cap, want[i]);
-    //     }
-    // }
+        for (act, want) in caps.zip(want.iter()) {
+            assert_eq!(act, *want);
+        }
+    }
 
-    // #[test]
-    // fn test_all_compatibles() {
-    //     let fdt = Fdt::from_bytes(TEST_QEMU_FDT).unwrap();
-    //     for node in fdt.all_nodes() {
-    //         println!("{}", node.name);
-    //         for cam in node.compatibles() {
-    //             println!("   {}", cam);
-    //         }
-    //     }
-    // }
+    #[test]
+    fn test_all_compatibles() {
+        let raw = fdt_qemu();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    // #[test]
-    // fn test_find_nodes() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let uart = fdt.find_nodes("/soc/serial");
-    //     let want = [
-    //         "serial@7e201000",
-    //         "serial@7e215040",
-    //         "serial@7e201400",
-    //         "serial@7e201600",
-    //         "serial@7e201800",
-    //         "serial@7e201a00",
-    //     ];
+        for node in fdt.all_nodes() {
+            let node = node.unwrap();
+            println!("{}", node.name());
+            for cam in node.compatibles_flatten() {
+                println!("   {}", cam);
+            }
+        }
+    }
 
-    //     for (i, timer) in uart.enumerate() {
-    //         assert_eq!(timer.name, want[i]);
-    //     }
-    // }
+    #[test]
+    fn test_find_node2() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt
+            .find_nodes("/soc/serial@7e215040")
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(node.name(), "serial@7e215040");
+    }
+    #[test]
+    fn test_find_aliases() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let path = fdt.find_aliase("serial0").unwrap();
+        assert_eq!(path, "/soc/serial@7e215040");
+    }
 
-    // #[test]
-    // fn test_find_node2() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
-    //     assert_eq!(node.name, "serial@7e215040");
-    // }
-    // #[test]
-    // fn test_find_aliases() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let path = fdt.find_aliase("serial0").unwrap();
-    //     assert_eq!(path, "/soc/serial@7e215040");
-    // }
-    // #[test]
-    // fn test_find_node_aliases() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let node = fdt.find_nodes("serial0").next().unwrap();
-    //     assert_eq!(node.name, "serial@7e215040");
-    // }
+    #[test]
+    fn test_find_node_aliases() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt.find_nodes("serial0").next().unwrap().unwrap();
+        assert_eq!(node.name(), "serial@7e215040");
+    }
 
-    // #[test]
-    // fn test_chosen() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let chosen = fdt.chosen().unwrap();
-    //     let bootargs = chosen.bootargs().unwrap();
-    //     assert_eq!(
-    //         bootargs,
-    //         "coherent_pool=1M 8250.nr_uarts=1 snd_bcm2835.enable_headphones=0"
-    //     );
+    #[test]
+    fn test_chosen() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let chosen = fdt.chosen().unwrap().unwrap();
+        let bootargs = chosen.bootargs().unwrap().unwrap();
+        assert_eq!(
+            bootargs,
+            "coherent_pool=1M 8250.nr_uarts=1 snd_bcm2835.enable_headphones=0"
+        );
 
-    //     let stdout = chosen.stdout().unwrap();
-    //     assert_eq!(stdout.params, Some("115200n8"));
-    //     assert_eq!(stdout.node.name, "serial@7e215040");
-    // }
+        let stdout = chosen.stdout().unwrap().unwrap();
+        assert_eq!(stdout.params, Some("115200n8"));
+        assert_eq!(stdout.name(), "serial@7e215040");
+    }
 
-    // #[test]
-    // fn test_reg() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
+    #[test]
+    fn test_reg() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    //     let reg = node.reg().unwrap().next().unwrap();
+        let node = fdt
+            .find_nodes("/soc/serial@7e215040")
+            .next()
+            .unwrap()
+            .unwrap();
 
-    //     assert_eq!(reg.address, 0xfe215040);
-    //     assert_eq!(reg.child_bus_address, 0x7e215040);
-    //     assert_eq!(reg.size, Some(0x40));
-    // }
+        let reg = node.reg().unwrap().unwrap().next().unwrap();
+
+        println!("reg: {:?}", reg);
+
+        assert_eq!(
+            reg.address, 0xfe215040,
+            "want 0xfe215040, got {:#x}",
+            reg.address
+        );
+        assert_eq!(
+            reg.child_bus_address, 0x7e215040,
+            "want 0x7e215040, got {:#x}",
+            reg.child_bus_address
+        );
+        assert_eq!(
+            reg.size,
+            Some(0x40),
+            "want 0x40, got {:#x}",
+            reg.size.unwrap()
+        );
+    }
 
     // #[test]
     // fn test_interrupt() {

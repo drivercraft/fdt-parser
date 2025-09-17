@@ -65,6 +65,7 @@ impl<'a> Deref for Raw<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct Buffer<'a> {
     raw: Raw<'a>,
     iter: usize,
@@ -181,6 +182,15 @@ impl<'a> U32Iter<'a> {
     pub fn new(raw: Raw<'a>) -> Self {
         Self {
             buffer: raw.buffer(),
+        }
+    }
+
+    pub fn as_u64(&mut self) -> u64 {
+        let h = self.buffer.take_u32().unwrap();
+        if let Ok(l) = self.buffer.take_u32() {
+            ((h as u64) << 32) + l as u64
+        } else {
+            h as _
         }
     }
 }

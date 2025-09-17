@@ -1,6 +1,6 @@
-use core::fmt::Display;
+use core::fmt::{Debug, Display};
 
-use crate::data::{Raw, U32Iter};
+use crate::data::{Buffer, Raw, U32Iter};
 
 pub const FDT_MAGIC: u32 = 0xd00dfeed;
 
@@ -60,6 +60,30 @@ impl Display for Phandle {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct FdtReg {
+    /// parent bus address
+    pub address: u64,
+    /// child bus address
+    pub child_bus_address: u64,
+    pub size: Option<usize>,
+}
+
+impl Debug for FdtReg {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("<{:#x}", self.address))?;
+        if self.child_bus_address != self.address {
+            f.write_fmt(format_args!("({:#x})", self.child_bus_address))?;
+        }
+        f.write_fmt(format_args!(", "))?;
+        if let Some(s) = self.size {
+            f.write_fmt(format_args!("{:#x}>", s))
+        } else {
+            f.write_str("None>")
+        }
+    }
+}
+
 /// Range mapping child bus addresses to parent bus addresses
 #[derive(Clone)]
 pub struct FdtRange<'a> {
@@ -90,5 +114,56 @@ impl core::fmt::Debug for FdtRange<'_> {
             f.write_fmt(format_args!("{:#x} ", addr))?;
         }
         f.write_fmt(format_args!("], size: {:#x}", self.size))
+    }
+}
+
+#[derive(Clone)]
+pub struct FdtRangeSilce<'a> {
+    address_cell: u8,
+    address_cell_parent: u8,
+    size_cell: u8,
+    reader: Buffer<'a>,
+}
+
+impl<'a> FdtRangeSilce<'a> {
+    pub(crate) fn new(
+        address_cell: u8,
+        address_cell_parent: u8,
+        size_cell: u8,
+        reader: Buffer<'a>,
+    ) -> Self {
+        Self {
+            address_cell,
+            address_cell_parent,
+            size_cell,
+            reader,
+        }
+    }
+
+    pub fn iter(&self) -> FdtRangeIter<'a> {
+        FdtRangeIter { s: self.clone() }
+    }
+}
+#[derive(Clone)]
+pub struct FdtRangeIter<'a> {
+    s: FdtRangeSilce<'a>,
+}
+
+impl<'a> Iterator for FdtRangeIter<'a> {
+    type Item = FdtRange<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let child_address_bytes = self.s.address_cell as usize * size_of::<u32>();
+        let data_child = self.s.reader.take(child_address_bytes).ok()?;
+
+        let parent_address_bytes = self.s.address_cell_parent as usize * size_of::<u32>();
+        let data_parent = self.s.reader.take(parent_address_bytes).ok()?;
+
+        let size = self.s.reader.take_by_cell_size(self.s.size_cell)?;
+        Some(FdtRange {
+            size,
+            data_child,
+            data_parent,
+        })
     }
 }

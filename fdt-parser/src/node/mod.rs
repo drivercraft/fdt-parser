@@ -1,4 +1,12 @@
-use crate::{data::Raw, property::PropIter, Fdt, FdtError, Property};
+use crate::{
+    data::{Buffer, Raw},
+    property::PropIter,
+    Fdt, FdtError, FdtRangeSilce, FdtReg, Property,
+};
+
+mod chosen;
+
+pub use chosen::*;
 
 #[derive(Clone)]
 pub struct Node<'a> {
@@ -75,20 +83,38 @@ impl<'a> Node<'a> {
     }
 
     /// Get compatible strings for this node (placeholder implementation)
-    pub fn compatible(&self) -> Result<Option<impl Iterator<Item = &'a str> + 'a>, FdtError> {
+    pub fn compatibles(&self) -> Result<Option<impl Iterator<Item = &'a str> + 'a>, FdtError> {
         let prop = self.find_property("compatible")?;
-        if let Some(prop) = &prop {
-            return Ok(Some(prop.str_list()));
-        }
-        Ok(None)
+        Ok(prop.map(|p| p.str_list()))
     }
 
-    /// Get register values for this node (placeholder implementation)
-    pub fn reg(&self) -> Option<impl Iterator<Item = u64>> {
-        // This is a placeholder - would need to parse properties
-        None::<core::iter::Empty<u64>>
+    pub fn compatibles_flatten(&self) -> impl Iterator<Item = &'a str> + 'a {
+        self.compatibles().ok().flatten().into_iter().flatten()
     }
 
+    pub fn reg(&self) -> Result<Option<impl Iterator<Item = FdtReg> + 'a>, FdtError> {
+        let prop = none_ok!(self.find_property("reg")?);
+        let parent = self.parent_fast().ok_or(FdtError::NodeNotFound("parent"))?;
+
+        let address_cell = parent
+            .find_property("#address-cells")?
+            .ok_or(FdtError::PropertyNotFound("#address-cells"))?
+            .u32()? as u8;
+
+        let size_cell = parent
+            .find_property("#size-cells")?
+            .ok_or(FdtError::PropertyNotFound("#size-cells"))?
+            .u32()? as u8;
+
+        let ranges = parent.node_ranges(address_cell)?;
+
+        Ok(Some(RegIter {
+            size_cell,
+            address_cell,
+            buff: prop.data.buffer(),
+            ranges,
+        }))
+    }
     pub fn to_kind(self) -> NodeKind<'a> {
         NodeKind::General(self)
     }
@@ -121,6 +147,29 @@ impl<'a> Node<'a> {
         }
         Ok(None)
     }
+
+    pub(crate) fn node_ranges(
+        &self,
+        address_cell_parent: u8,
+    ) -> Result<Option<FdtRangeSilce<'a>>, FdtError> {
+        let prop = none_ok!(self.find_property("ranges")?);
+
+        let address_cell = self
+            .find_property("#address-cells")?
+            .ok_or(FdtError::PropertyNotFound("#address-cells"))?
+            .u32()? as u8;
+        let size_cell = self
+            .find_property("#size-cells")?
+            .ok_or(FdtError::PropertyNotFound("#size-cells"))?
+            .u32()? as u8;
+
+        Ok(Some(FdtRangeSilce::new(
+            address_cell,
+            address_cell_parent,
+            size_cell,
+            prop.data.buffer(),
+        )))
+    }
 }
 
 /// 节点调试信息
@@ -137,7 +186,50 @@ impl core::fmt::Debug for Node<'_> {
     }
 }
 
+struct RegIter<'a> {
+    size_cell: u8,
+    address_cell: u8,
+    buff: Buffer<'a>,
+    ranges: Option<FdtRangeSilce<'a>>,
+}
+impl Iterator for RegIter<'_> {
+    type Item = FdtReg;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let child_bus_address = self.buff.take_by_cell_size(self.address_cell)?;
+
+        let mut address = child_bus_address;
+
+        if let Some(ranges) = &self.ranges {
+            for one in ranges.iter() {
+                let range_child_bus_address = one.child_bus_address().as_u64();
+                let range_parent_bus_address = one.parent_bus_address().as_u64();
+
+                if child_bus_address >= range_child_bus_address
+                    && child_bus_address < range_child_bus_address + one.size
+                {
+                    address =
+                        child_bus_address - range_child_bus_address + range_parent_bus_address;
+                    break;
+                }
+            }
+        }
+
+        let size = if self.size_cell > 0 {
+            Some(self.buff.take_by_cell_size(self.size_cell)? as usize)
+        } else {
+            None
+        };
+        Some(FdtReg {
+            address,
+            child_bus_address,
+            size,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub enum NodeKind<'a> {
     General(Node<'a>),
+    Chosen(Chosen<'a>),
 }

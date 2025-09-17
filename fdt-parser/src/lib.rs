@@ -1,7 +1,17 @@
 #![no_std]
 
 #[cfg(feature = "alloc")]
+#[macro_use]
 extern crate alloc;
+
+macro_rules! none_ok {
+    ($e:expr) => {{
+        let Some(v) = $e else {
+            return Ok(None);
+        };
+        v
+    }};
+}
 
 mod data;
 mod define;
@@ -32,6 +42,12 @@ pub enum FdtError {
     Utf8Parse,
     #[error("no aliase found")]
     NoAlias,
+    #[error("system out of memory")]
+    NoMemory,
+    #[error("node `{0}` not found")]
+    NodeNotFound(&'static str),
+    #[error("property `{0}` not found")]
+    PropertyNotFound(&'static str),
 }
 
 impl From<core::str::Utf8Error> for FdtError {

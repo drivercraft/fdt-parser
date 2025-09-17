@@ -3,7 +3,7 @@ use core::iter;
 use crate::{
     data::{Buffer, Raw},
     node::Node,
-    FdtError, Header, ReserveEntry, Token,
+    Chosen, FdtError, Header, ReserveEntry, Token,
 };
 
 #[derive(Clone)]
@@ -159,7 +159,7 @@ impl<'a> Fdt<'a> {
                     }
                 }
             };
-            let comp = match node.compatible() {
+            let comp = match node.compatibles() {
                 Ok(c) => c,
                 Err(e) => {
                     return {
@@ -177,6 +177,11 @@ impl<'a> Fdt<'a> {
                 }
             }
         })
+    }
+
+    pub fn chosen(&self) -> Result<Option<Chosen<'a>>, FdtError> {
+        let node = none_ok!(self.find_nodes("/chosen").next())?;
+        Ok(Some(Chosen::new(node)))
     }
 }
 
@@ -316,5 +321,16 @@ impl<'a> Iterator for IterFindNode<'a> {
                 out = Some(Ok(node));
             }
         }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> Fdt<'a> {
+    pub fn all_nodes_vec(&self) -> Result<alloc::vec::Vec<Node<'a>>, FdtError> {
+        let mut nodes = vec![];
+        for node in self.all_nodes() {
+            nodes.push(node?);
+        }
+        Ok(nodes)
     }
 }
