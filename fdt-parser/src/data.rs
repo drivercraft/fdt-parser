@@ -147,12 +147,12 @@ impl<'a> Buffer<'a> {
         }
     }
 
-    pub fn take_prop(&mut self, fdt: &Fdt<'a>) -> Option<Property<'a>> {
-        let len = self.take_u32().ok()?;
-        let nameoff = self.take_u32().ok()?;
-        let data = self.take_aligned(len as _).ok()?;
-        Some(Property {
-            name: fdt.get_str(nameoff as _).unwrap_or("<error>"),
+    pub fn take_prop(&mut self, fdt: &Fdt<'a>) -> Result<Property<'a>, FdtError> {
+        let len = self.take_u32()?;
+        let nameoff = self.take_u32()?;
+        let data = self.take_aligned(len as _)?;
+        Ok(Property {
+            name: fdt.get_str(nameoff as _)?,
             data,
         })
     }

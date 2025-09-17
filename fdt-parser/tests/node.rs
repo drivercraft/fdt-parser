@@ -100,7 +100,7 @@ mod test {
     fn test_node<'a>() -> Option<Node<'a>> {
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-        fdt.all_nodes().next()
+        fdt.all_nodes().next().and_then(|n| n.ok())
     }
 
     #[test]
@@ -119,7 +119,7 @@ mod test {
             .init();
         let raw = fdt_reserve();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-        for node in fdt.all_nodes() {
+        for node in fdt.all_nodes().flatten() {
             println!(
                 "{}{} l{} parent={:?}",
                 match node.level {
@@ -139,9 +139,9 @@ mod test {
     fn test_property() {
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-        for node in fdt.all_nodes() {
+        for node in fdt.all_nodes().flatten() {
             println!("{}:", node.name());
-            for prop in node.properties() {
+            for prop in node.properties().flatten() {
                 println!("  {:?}", prop);
             }
         }

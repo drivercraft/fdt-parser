@@ -10,6 +10,8 @@ mod node;
 mod property;
 mod root;
 
+use core::ffi::FromBytesUntilNulError;
+
 pub use define::*;
 pub use header::Header;
 pub use node::*;
@@ -24,8 +26,19 @@ pub enum FdtError {
     InvalidMagic(u32),
     #[error("invalid pointer")]
     InvalidPtr,
-    #[error("invalid UTF-8 string")]
+    #[error("data provided does not contain a nul")]
     FromBytesUntilNull,
     #[error("failed to parse UTF-8 string")]
     Utf8Parse,
+}
+
+impl From<core::str::Utf8Error> for FdtError {
+    fn from(_: core::str::Utf8Error) -> Self {
+        FdtError::Utf8Parse
+    }
+}
+impl From<FromBytesUntilNulError> for FdtError {
+    fn from(_: FromBytesUntilNulError) -> Self {
+        FdtError::FromBytesUntilNull
+    }
 }

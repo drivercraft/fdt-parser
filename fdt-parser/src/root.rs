@@ -105,6 +105,7 @@ impl<'a> Fdt<'a> {
             level: -1,
             parent: None,
             node: None,
+            has_err: false,
         }
     }
 }
@@ -115,14 +116,13 @@ pub struct NodeIter<'a> {
     level: isize,
     parent: Option<Node<'a>>,
     node: Option<Node<'a>>,
+    has_err: bool,
 }
 
-impl<'a> Iterator for NodeIter<'a> {
-    type Item = Node<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> NodeIter<'a> {
+    fn try_next(&mut self) -> Result<Option<Node<'a>>, FdtError> {
         loop {
-            let token = self.buffer.take_token().ok()?;
+            let token = self.buffer.take_token()?;
             match token {
                 Token::BeginNode => {
                     self.level += 1;
@@ -131,7 +131,7 @@ impl<'a> Iterator for NodeIter<'a> {
                         self.parent = Some(p.clone());
                         finished = Some(p.clone());
                     }
-                    let name = self.buffer.take_str().ok()?;
+                    let name = self.buffer.take_str()?;
                     let node = Node::new(
                         name,
                         self.fdt.clone(),
@@ -141,7 +141,7 @@ impl<'a> Iterator for NodeIter<'a> {
                     );
                     self.node = Some(node);
                     if let Some(f) = finished {
-                        return Some(f);
+                        return Ok(Some(f));
                     }
                 }
                 Token::EndNode => {
@@ -155,16 +155,34 @@ impl<'a> Iterator for NodeIter<'a> {
                         }
                     }
                     if let Some(n) = node {
-                        return Some(n);
+                        return Ok(Some(n));
                     }
                 }
                 Token::Prop => {
                     self.buffer.take_prop(&self.fdt)?;
                 }
                 Token::End => {
-                    return None;
+                    return Ok(None);
                 }
                 _ => continue,
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for NodeIter<'a> {
+    type Item = Result<Node<'a>, FdtError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.has_err {
+            return None;
+        }
+        match self.try_next() {
+            Ok(Some(node)) => Some(Ok(node)),
+            Ok(None) => None,
+            Err(e) => {
+                self.has_err = true;
+                Some(Err(e))
             }
         }
     }

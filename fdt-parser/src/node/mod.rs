@@ -1,7 +1,8 @@
 use crate::{
     data::{Buffer, Raw},
+    node,
     property::PropIter,
-    Fdt, Property,
+    Fdt, FdtError, Property,
 };
 
 #[derive(Clone)]
@@ -43,12 +44,19 @@ impl<'a> Node<'a> {
     }
 
     pub fn parent_name(&self) -> Option<&'a str> {
-        self.parent.as_ref().map(|p| p.name)
+        self.parent_fast().map(|p| p.name())
     }
 
     pub fn parent(&self) -> Option<Node<'a>> {
         let parent_name = self.parent_name()?;
-        self.fdt.all_nodes().find(|n| n.name() == parent_name)
+        for node in self.fdt.all_nodes() {
+            if let Ok(node) = node {
+                if node.name() == parent_name {
+                    return Some(node);
+                }
+            }
+        }
+        None
     }
 
     fn parent_fast(&self) -> Option<Node<'a>> {
@@ -96,16 +104,6 @@ impl<'a> Node<'a> {
         self.level == 0
     }
 
-    /// 检查节点名称是否匹配指定的模式
-    pub fn name_matches(&self, pattern: &str) -> bool {
-        self.name().eq(pattern)
-    }
-
-    /// 检查节点名称是否以指定前缀开始
-    pub fn name_starts_with(&self, prefix: &str) -> bool {
-        self.name().starts_with(prefix)
-    }
-
     /// 获取节点的完整路径信息（仅限调试用途）
     pub fn debug_info(&self) -> NodeDebugInfo<'a> {
         NodeDebugInfo {
@@ -115,12 +113,9 @@ impl<'a> Node<'a> {
         }
     }
 
-    pub fn properties(&self) -> impl Iterator<Item = Property<'a>> + '_ {
+    pub fn properties(&self) -> impl Iterator<Item = Result<Property<'a>, FdtError>> + '_ {
         let reader = self.raw.buffer();
-        PropIter {
-            reader,
-            fdt: self.fdt.clone(),
-        }
+        PropIter::new(self.fdt.clone(), reader)
     }
 }
 

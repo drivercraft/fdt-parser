@@ -2,7 +2,7 @@ use core::{ffi::CStr, iter};
 
 use crate::{
     data::{Buffer, Raw},
-    Fdt, Token,
+    Fdt, FdtError, Token,
 };
 
 #[derive(Clone)]
@@ -16,19 +16,17 @@ impl<'a> Property<'a> {
         self.data.value()
     }
 
-    pub fn u32(&self) -> u32 {
-        self.data.buffer().take_u32().unwrap()
+    pub fn u32(&self) -> Result<u32, FdtError> {
+        self.data.buffer().take_u32()
     }
 
-    pub fn u64(&self) -> u64 {
-        self.data.buffer().take_u64().unwrap()
+    pub fn u64(&self) -> Result<u64, FdtError> {
+        self.data.buffer().take_u64()
     }
 
-    pub fn str(&self) -> &'a str {
-        CStr::from_bytes_until_nul(self.data.value())
-            .unwrap()
-            .to_str()
-            .unwrap()
+    pub fn str(&self) -> Result<&'a str, FdtError> {
+        let res = CStr::from_bytes_until_nul(self.data.value())?.to_str()?;
+        Ok(res)
     }
 
     pub fn str_list(&self) -> impl Iterator<Item = &'a str> + '_ {
@@ -59,24 +57,47 @@ impl core::fmt::Debug for Property<'_> {
 }
 
 pub(crate) struct PropIter<'a> {
-    pub fdt: Fdt<'a>,
-    pub reader: Buffer<'a>,
+    fdt: Fdt<'a>,
+    reader: Buffer<'a>,
+    has_err: bool,
+}
+
+impl<'a> PropIter<'a> {
+    pub fn new(fdt: Fdt<'a>, reader: Buffer<'a>) -> Self {
+        Self {
+            fdt,
+            reader,
+            has_err: false,
+        }
+    }
+
+    fn try_next(&mut self) -> Result<Option<Property<'a>>, FdtError> {
+        loop {
+            match self.reader.take_token()? {
+                Token::Prop => break,
+                Token::Nop => {}
+                _ => return Ok(None),
+            }
+        }
+        let prop = self.reader.take_prop(&self.fdt)?;
+        Ok(Some(prop))
+    }
 }
 
 impl<'a> Iterator for PropIter<'a> {
-    type Item = Property<'a>;
+    type Item = Result<Property<'a>, FdtError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.reader.take_token().ok() {
-                Some(token) => match token {
-                    Token::Prop => break,
-                    Token::Nop => {}
-                    _ => return None,
-                },
-                None => return None,
+        if self.has_err {
+            return None;
+        }
+        match self.try_next() {
+            Ok(Some(prop)) => Some(Ok(prop)),
+            Ok(None) => None,
+            Err(e) => {
+                self.has_err = true;
+                Some(Err(e))
             }
         }
-        self.reader.take_prop(&self.fdt)
     }
 }
