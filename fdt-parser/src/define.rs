@@ -1,6 +1,6 @@
 use core::fmt::Display;
 
-use crate::data::U32Iter;
+use crate::data::{Raw, U32Iter};
 
 pub const FDT_MAGIC: u32 = 0xd00dfeed;
 
@@ -63,8 +63,8 @@ impl Display for Phandle {
 /// Range mapping child bus addresses to parent bus addresses
 #[derive(Clone)]
 pub struct FdtRange<'a> {
-    data_child: &'a [u8],
-    data_parent: &'a [u8],
+    data_child: Raw<'a>,
+    data_parent: Raw<'a>,
     /// Size of range
     pub size: u64,
 }

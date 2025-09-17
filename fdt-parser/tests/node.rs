@@ -135,6 +135,18 @@ mod test {
         }
     }
 
+    #[test]
+    fn test_property() {
+        let raw = fdt_rpi_4b();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        for node in fdt.all_nodes() {
+            println!("{}:", node.name());
+            for prop in node.properties() {
+                println!("  {:?}", prop);
+            }
+        }
+    }
+
     // #[test]
     // fn test_str_list() {
     //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();

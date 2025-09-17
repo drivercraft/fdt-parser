@@ -1,5 +1,3 @@
-use log::debug;
-
 use crate::{
     data::{Buffer, Raw},
     node::Node,
@@ -36,7 +34,7 @@ impl<'a> Fdt<'a> {
     /// memory region of at least `size` bytes that contains a valid device tree
     /// blob.
     pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Fdt<'a>, FdtError> {
-        let header = Header::from_ptr(ptr)?;
+        let header = unsafe { Header::from_ptr(ptr)? };
 
         let raw = Raw::new(core::slice::from_raw_parts(ptr, header.totalsize as _));
 
@@ -60,7 +58,7 @@ impl<'a> Fdt<'a> {
 
     /// Get a reference to the underlying buffer.
     pub fn raw(&self) -> &'a [u8] {
-        self.raw.raw()
+        self.raw.value()
     }
 
     /// Get the FDT version
@@ -69,7 +67,10 @@ impl<'a> Fdt<'a> {
     }
 
     pub fn memory_reservaion_blocks(&self) -> impl Iterator<Item = ReserveEntry> + 'a {
-        let mut buffer = self.raw.buffer_at(self.header.off_mem_rsvmap as usize);
+        let mut buffer = self
+            .raw
+            .begin_at(self.header.off_mem_rsvmap as usize)
+            .buffer();
 
         core::iter::from_fn(move || {
             let address = buffer.take_u64().ok()?;
@@ -90,13 +91,16 @@ impl<'a> Fdt<'a> {
 
     pub(crate) fn get_str(&self, offset: usize) -> Result<&'a str, FdtError> {
         let start = self.header.off_dt_strings as usize + offset;
-        let mut buffer = self.raw.buffer_at(start);
+        let mut buffer = self.raw.begin_at(start).buffer();
         buffer.take_str()
     }
 
     pub fn all_nodes(&self) -> NodeIter<'a> {
         NodeIter {
-            buffer: self.raw.buffer_at(self.header.off_dt_struct as usize),
+            buffer: self
+                .raw
+                .begin_at(self.header.off_dt_struct as usize)
+                .buffer(),
             fdt: self.clone(),
             level: -1,
             parent: None,
@@ -131,7 +135,7 @@ impl<'a> Iterator for NodeIter<'a> {
                     let node = Node::new(
                         name,
                         self.fdt.clone(),
-                        &self.buffer,
+                        self.buffer.remain(),
                         self.level as _,
                         self.parent.as_ref(),
                     );

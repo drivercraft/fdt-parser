@@ -1,6 +1,7 @@
 use crate::{
     data::{Buffer, Raw},
-    Fdt,
+    property::PropIter,
+    Fdt, Property,
 };
 
 #[derive(Clone)]
@@ -13,7 +14,7 @@ pub struct Node<'a> {
 }
 
 #[derive(Clone)]
-struct ParentInfo<'a> {
+pub(crate) struct ParentInfo<'a> {
     name: &'a str,
     level: usize,
     raw: Raw<'a>,
@@ -23,7 +24,7 @@ impl<'a> Node<'a> {
     pub(crate) fn new(
         name: &'a str,
         fdt: Fdt<'a>,
-        buffer: &Buffer<'a>,
+        raw: Raw<'a>,
         level: usize,
         parent: Option<&Node<'a>>,
     ) -> Self {
@@ -37,7 +38,7 @@ impl<'a> Node<'a> {
                 level: p.level(),
                 raw: p.raw(),
             }),
-            raw: buffer.raw(),
+            raw,
         }
     }
 
@@ -110,7 +111,15 @@ impl<'a> Node<'a> {
         NodeDebugInfo {
             name: self.name(),
             level: self.level,
-            pos: self.raw.pos,
+            pos: self.raw.pos(),
+        }
+    }
+
+    pub fn properties(&self) -> impl Iterator<Item = Property<'a>> + '_ {
+        let reader = self.raw.buffer();
+        PropIter {
+            reader,
+            fdt: self.fdt.clone(),
         }
     }
 }

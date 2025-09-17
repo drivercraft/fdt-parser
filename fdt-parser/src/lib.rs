@@ -7,14 +7,14 @@ mod data;
 mod define;
 mod header;
 mod node;
-mod root;
 mod property;
+mod root;
 
 pub use define::*;
 pub use header::Header;
 pub use node::*;
-pub use root::*;
 pub use property::Property;
+pub use root::*;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum FdtError {

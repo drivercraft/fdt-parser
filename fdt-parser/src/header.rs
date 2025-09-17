@@ -2,6 +2,9 @@ use core::ptr::NonNull;
 
 use crate::FdtError;
 
+#[repr(align(4))]
+struct AlignedHeader([u8; size_of::<Header>()]);
+
 #[derive(Debug, Clone)]
 pub struct Header {
     /// FDT header magic
@@ -37,12 +40,37 @@ impl Header {
             });
         }
         let ptr = NonNull::new(data.as_ptr() as *mut u8).ok_or(FdtError::InvalidPtr)?;
-        Self::from_ptr(ptr.as_ptr())
+        unsafe { Self::from_ptr(ptr.as_ptr()) }
     }
 
     /// Read a header from a raw pointer and return an owned `Header` whose
     /// fields are converted from big-endian (on-disk) to host order.
-    pub fn from_ptr(ptr: *mut u8) -> Result<Self, FdtError> {
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the pointer is valid and points to a
+    /// memory region of at least `size_of::<Header>()` bytes that contains a
+    /// valid device tree blob.
+    pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Self, FdtError> {
+        if (ptr as usize) % core::mem::align_of::<Header>() != 0 {
+            // Pointer is not aligned, so we need to copy the data to an aligned
+            // buffer first.
+            let mut aligned = AlignedHeader([0u8; core::mem::size_of::<Header>()]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    ptr,
+                    aligned.0.as_mut_ptr(),
+                    core::mem::size_of::<Header>(),
+                );
+            }
+            Self::from_aligned_ptr(aligned.0.as_mut_ptr())
+        } else {
+            // Pointer is aligned, we can read directly from it.
+            Self::from_aligned_ptr(ptr)
+        }
+    }
+
+    fn from_aligned_ptr(ptr: *mut u8) -> Result<Self, FdtError> {
         let ptr = NonNull::new(ptr).ok_or(FdtError::InvalidPtr)?;
 
         // SAFETY: caller provided a valid pointer to the beginning of a device
