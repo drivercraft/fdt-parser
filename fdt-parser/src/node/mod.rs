@@ -1,9 +1,4 @@
-use crate::{
-    data::{Buffer, Raw},
-    node,
-    property::PropIter,
-    Fdt, FdtError, Property,
-};
+use crate::{data::Raw, property::PropIter, Fdt, FdtError, Property};
 
 #[derive(Clone)]
 pub struct Node<'a> {
@@ -49,14 +44,10 @@ impl<'a> Node<'a> {
 
     pub fn parent(&self) -> Option<Node<'a>> {
         let parent_name = self.parent_name()?;
-        for node in self.fdt.all_nodes() {
-            if let Ok(node) = node {
-                if node.name() == parent_name {
-                    return Some(node);
-                }
-            }
-        }
-        None
+        self.fdt
+            .all_nodes()
+            .flatten()
+            .find(|node| node.name() == parent_name)
     }
 
     fn parent_fast(&self) -> Option<Node<'a>> {
@@ -84,9 +75,12 @@ impl<'a> Node<'a> {
     }
 
     /// Get compatible strings for this node (placeholder implementation)
-    pub fn compatible(&self) -> Option<impl Iterator<Item = &'a str>> {
-        // This is a placeholder - would need to parse properties
-        None::<core::iter::Empty<&str>>
+    pub fn compatible(&self) -> Result<Option<impl Iterator<Item = &'a str> + 'a>, FdtError> {
+        let prop = self.find_property("compatible")?;
+        if let Some(prop) = &prop {
+            return Ok(Some(prop.str_list()));
+        }
+        Ok(None)
     }
 
     /// Get register values for this node (placeholder implementation)
@@ -116,6 +110,16 @@ impl<'a> Node<'a> {
     pub fn properties(&self) -> impl Iterator<Item = Result<Property<'a>, FdtError>> + '_ {
         let reader = self.raw.buffer();
         PropIter::new(self.fdt.clone(), reader)
+    }
+
+    pub fn find_property(&self, name: &str) -> Result<Option<Property<'a>>, FdtError> {
+        for prop in self.properties() {
+            let prop = prop?;
+            if prop.name.eq(name) {
+                return Ok(Some(prop));
+            }
+        }
+        Ok(None)
     }
 }
 

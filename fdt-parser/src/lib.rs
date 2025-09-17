@@ -30,6 +30,8 @@ pub enum FdtError {
     FromBytesUntilNull,
     #[error("failed to parse UTF-8 string")]
     Utf8Parse,
+    #[error("no aliase found")]
+    NoAlias,
 }
 
 impl From<core::str::Utf8Error> for FdtError {

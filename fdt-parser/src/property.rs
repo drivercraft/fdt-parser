@@ -29,7 +29,7 @@ impl<'a> Property<'a> {
         Ok(res)
     }
 
-    pub fn str_list(&self) -> impl Iterator<Item = &'a str> + '_ {
+    pub fn str_list(&self) -> impl Iterator<Item = &'a str> + 'a {
         let mut value = self.data.buffer();
         iter::from_fn(move || value.take_str().ok())
     }

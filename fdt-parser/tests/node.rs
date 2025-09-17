@@ -147,32 +147,40 @@ mod test {
         }
     }
 
-    // #[test]
-    // fn test_str_list() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let uart = fdt.find_nodes("/soc/serial@7e201000").next().unwrap();
-    //     let caps = uart
-    //         .find_property("compatible")
-    //         .unwrap()
-    //         .str_list()
-    //         .collect::<Vec<_>>();
+    #[test]
+    fn test_str_list() {
+        let raw = fdt_rpi_4b();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        let uart = fdt
+            .find_nodes("/soc/serial@7e201000")
+            .next()
+            .unwrap()
+            .unwrap();
+        let caps = uart
+            .find_property("compatible")
+            .unwrap()
+            .unwrap()
+            .str_list()
+            .collect::<Vec<_>>();
 
-    //     let want = ["arm,pl011", "arm,primecell"];
+        let want = ["arm,pl011", "arm,primecell"];
 
-    //     for (i, cap) in caps.iter().enumerate() {
-    //         assert_eq!(*cap, want[i]);
-    //     }
-    // }
+        for (i, cap) in caps.iter().enumerate() {
+            assert_eq!(*cap, want[i]);
+        }
+    }
 
-    // #[test]
-    // fn test_find_compatible() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let pl011 = fdt
-    //         .find_compatible(&["arm,pl011", "arm,primecell"])
-    //         .next()
-    //         .unwrap();
-    //     assert_eq!(pl011.name, "serial@7e201000");
-    // }
+    #[test]
+    fn test_find_compatible() {
+        let raw = fdt_rpi_4b();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        let pl011 = fdt
+            .find_compatible(&["arm,pl011", "arm,primecell"])
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(pl011.name(), "serial@7e201000");
+    }
 
     // #[test]
     // fn test_compatibles() {

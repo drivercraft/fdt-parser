@@ -17,7 +17,10 @@ impl<'a> Raw<'a> {
     }
 
     pub fn buffer(&self) -> Buffer<'a> {
-        Buffer { raw: *self, pos: 0 }
+        Buffer {
+            raw: *self,
+            iter: 0,
+        }
     }
 
     pub fn value(&self) -> &'a [u8] {
@@ -64,34 +67,34 @@ impl<'a> Deref for Raw<'a> {
 
 pub struct Buffer<'a> {
     raw: Raw<'a>,
-    pos: usize,
+    iter: usize,
 }
 
 impl<'a> Buffer<'a> {
     pub fn take(&mut self, size: usize) -> Result<Raw<'a>, FdtError> {
-        let start = self.pos;
+        let start = self.iter;
         let end = start + size;
         if end <= self.raw.value.len() {
-            self.pos = end;
+            self.iter = end;
             Ok(Raw {
                 value: &self.raw.value[start..end],
-                pos: self.raw.pos + start,
+                pos: self.pos(),
             })
         } else {
             Err(FdtError::BufferTooSmall {
-                pos: self.raw.pos + end,
+                pos: self.pos() + size,
             })
         }
     }
 
-    pub fn raw(&self) -> Raw<'a> {
-        self.raw
+    fn pos(&self) -> usize {
+        self.raw.pos + self.iter
     }
 
     pub fn remain(&self) -> Raw<'a> {
         Raw {
-            value: &self.raw.value[self.pos..],
-            pos: self.raw.pos + self.pos,
+            value: &self.raw.value[self.iter..],
+            pos: self.pos(),
         }
     }
 
@@ -113,18 +116,18 @@ impl<'a> Buffer<'a> {
     pub fn take_str(&mut self) -> Result<&'a str, FdtError> {
         let remain = self.remain();
         if remain.is_empty() {
-            return Err(FdtError::BufferTooSmall { pos: self.pos });
+            return Err(FdtError::BufferTooSmall { pos: self.iter });
         }
 
         let cs = CStr::from_bytes_until_nul(remain.as_ref())
             .map_err(|_| FdtError::FromBytesUntilNull)?;
 
-        let s = cs.to_str().map_err(|_| FdtError::Utf8Parse)?;
+        let s = cs.to_str()?;
 
         let str_len = cs.to_bytes_with_nul().len();
         // Align to 4-byte boundary for FDT format
-        let aligned_len = (str_len + 3) & !3;
-        self.pos += aligned_len;
+        // let aligned_len = (str_len + 3) & !3;
+        self.iter += str_len;
 
         Ok(s)
     }
@@ -137,6 +140,18 @@ impl<'a> Buffer<'a> {
     pub fn take_aligned(&mut self, len: usize) -> Result<Raw<'a>, FdtError> {
         let bytes = (len + 3) & !0x3;
         self.take(bytes)
+    }
+
+    pub fn take_to_aligned(&mut self) {
+        let remain = self.iter % 4;
+        if remain != 0 {
+            let add = 4 - remain;
+            if self.iter + add <= self.raw.value.len() {
+                self.iter += 4 - remain;
+            } else {
+                self.iter = self.raw.value.len();
+            }
+        }
     }
 
     pub fn take_by_cell_size(&mut self, cell_size: u8) -> Option<u64> {
