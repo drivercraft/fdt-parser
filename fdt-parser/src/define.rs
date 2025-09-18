@@ -33,10 +33,19 @@ pub enum Status {
     Disabled,
 }
 
-#[derive(Debug, Clone)]
-pub struct ReserveEntry {
-    pub address: u64,
-    pub size: u64,
+#[derive(Clone, Copy)]
+pub struct MemoryRegion {
+    pub address: *mut u8,
+    pub size: usize,
+}
+
+impl Debug for MemoryRegion {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!(
+            "MemoryRegion {{ address: {:p}, size: {:#x} }}",
+            self.address, self.size
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

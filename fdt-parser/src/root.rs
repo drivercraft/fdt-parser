@@ -3,7 +3,7 @@ use core::iter;
 use crate::{
     data::{Buffer, Raw},
     node::Node,
-    Chosen, FdtError, Header, ReserveEntry, Token,
+    Chosen, FdtError, Header, Memory, MemoryRegion, Phandle, Token,
 };
 
 #[derive(Clone)]
@@ -68,7 +68,7 @@ impl<'a> Fdt<'a> {
         self.header.version
     }
 
-    pub fn memory_reservaion_blocks(&self) -> impl Iterator<Item = ReserveEntry> + 'a {
+    pub fn memory_reservaion_blocks(&self) -> impl Iterator<Item = MemoryRegion> + 'a {
         let mut buffer = self
             .raw
             .begin_at(self.header.off_mem_rsvmap as usize)
@@ -82,12 +82,15 @@ impl<'a> Fdt<'a> {
                 return None;
             }
 
-            Some(ReserveEntry { address, size })
+            Some(MemoryRegion {
+                address: address as usize as _,
+                size: size as _,
+            })
         })
     }
 
     /// Alias for memory_reservaion_blocks for compatibility
-    pub fn memory_reservation_block(&self) -> impl Iterator<Item = ReserveEntry> + 'a {
+    pub fn memory_reservation_block(&self) -> impl Iterator<Item = MemoryRegion> + 'a {
         self.memory_reservaion_blocks()
     }
 
@@ -182,6 +185,34 @@ impl<'a> Fdt<'a> {
     pub fn chosen(&self) -> Result<Option<Chosen<'a>>, FdtError> {
         let node = none_ok!(self.find_nodes("/chosen").next())?;
         Ok(Some(Chosen::new(node)))
+    }
+
+    pub fn get_node_by_phandle(&self, phandle: Phandle) -> Result<Option<Node<'a>>, FdtError> {
+        for node in self.all_nodes() {
+            let node = node?;
+            let phandle2 = node.phandle()?;
+            if let Some(p) = phandle2 {
+                if p == phandle {
+                    return Ok(Some(node));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn get_node_by_name(&'a self, name: &str) -> Result<Option<Node<'a>>, FdtError> {
+        for node in self.all_nodes() {
+            let node = node?;
+            if node.name() == name {
+                return Ok(Some(node));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn memory(&'a self) -> impl Iterator<Item = Result<Memory<'a>, FdtError>> + 'a {
+        self.find_nodes("/memory")
+            .map(|o| o.map(|n| Memory::new(n)))
     }
 }
 

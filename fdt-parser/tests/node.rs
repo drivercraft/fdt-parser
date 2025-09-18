@@ -38,14 +38,14 @@ mod test {
             (0xA0000000u64, 0x00200000u64), // 2MB at 2.5GB
         ];
 
-        for (i, (expected_addr, expected_size)) in expected_reservations.iter().enumerate() {
+        for (i, &(expected_addr, expected_size)) in expected_reservations.iter().enumerate() {
             assert_eq!(
-                entries[i].address, *expected_addr,
-                "Reservation {} address mismatch: expected {:#x}, got {:#x}",
+                entries[i].address as usize, expected_addr as usize,
+                "Reservation {} address mismatch: expected {:#x}, got {:#p}",
                 i, expected_addr, entries[i].address
             );
             assert_eq!(
-                entries[i].size, *expected_size,
+                entries[i].size, expected_size as usize,
                 "Reservation {} size mismatch: expected {:#x}, got {:#x}",
                 i, expected_size, entries[i].size
             );
@@ -311,10 +311,36 @@ mod test {
         );
     }
 
+    #[test]
+    fn test_memory() {
+        let raw = fdt_qemu();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+
+        let node = fdt.memory();
+
+        for node in node {
+            let node = node.unwrap();
+            println!("memory node: {:?}", node.name());
+            for reg in node.reg().unwrap().unwrap() {
+                println!("  reg: {:?}", reg);
+            }
+
+            for region in node.regions() {
+                let region = region.unwrap();
+                println!("  region: {:?}", region);
+            }
+        }
+    }
+
     // #[test]
     // fn test_interrupt() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
+    //     let raw = fdt_rpi_4b();
+    //     let fdt = Fdt::from_bytes(&raw).unwrap();
+    //     let node = fdt
+    //         .find_nodes("/soc/serial@7e215040")
+    //         .next()
+    //         .unwrap()
+    //         .unwrap();
 
     //     let itr_ctrl = node.interrupt_parent().unwrap();
 
@@ -467,12 +493,13 @@ mod test {
     //     }
     // }
 
-    // #[test]
-    // fn test_debugcon() {
-    //     let fdt = Fdt::from_bytes(TEST_QEMU_FDT).unwrap();
-    //     let node = fdt.chosen().unwrap().debugcon().unwrap();
-    //     println!("{:?}", node.name);
-    // }
+    #[test]
+    fn test_debugcon() {
+        let raw = fdt_qemu();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt.chosen().unwrap().unwrap().debugcon().unwrap().unwrap();
+        println!("{:?}", node.name());
+    }
 
     // #[test]
     // fn test_debugcon2() {

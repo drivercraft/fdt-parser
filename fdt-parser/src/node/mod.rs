@@ -1,12 +1,14 @@
 use crate::{
     data::{Buffer, Raw},
     property::PropIter,
-    Fdt, FdtError, FdtRangeSilce, FdtReg, Property,
+    Fdt, FdtError, FdtRangeSilce, FdtReg, Phandle, Property,
 };
 
 mod chosen;
+mod memory;
 
 pub use chosen::*;
+pub use memory::*;
 
 #[derive(Clone)]
 pub struct Node<'a> {
@@ -22,6 +24,9 @@ pub(crate) struct ParentInfo<'a> {
     name: &'a str,
     level: usize,
     raw: Raw<'a>,
+    parent_address_cell: Option<u8>,
+    parent_size_cell: Option<u8>,
+    parent_name: Option<&'a str>,
 }
 
 impl<'a> Node<'a> {
@@ -37,10 +42,32 @@ impl<'a> Node<'a> {
             name,
             fdt,
             level,
-            parent: parent.map(|p| ParentInfo {
-                name: p.name(),
-                level: p.level(),
-                raw: p.raw(),
+            parent: parent.map(|p| {
+                let pp = p.parent_fast();
+
+                let parent_address_cell = pp.as_ref().and_then(|pn| {
+                    pn.find_property("#address-cells")
+                        .ok()
+                        .flatten()
+                        .and_then(|prop| prop.u32().ok())
+                        .map(|v| v as u8)
+                });
+                let parent_size_cell = pp.as_ref().and_then(|pn| {
+                    pn.find_property("#size-cells")
+                        .ok()
+                        .flatten()
+                        .and_then(|prop| prop.u32().ok())
+                        .map(|v| v as u8)
+                });
+
+                ParentInfo {
+                    name: p.name(),
+                    level: p.level(),
+                    raw: p.raw(),
+                    parent_address_cell,
+                    parent_size_cell,
+                    parent_name: pp.as_ref().and_then(|pn| pn.parent_name()),
+                }
             }),
             raw,
         }
@@ -92,10 +119,15 @@ impl<'a> Node<'a> {
         self.compatibles().ok().flatten().into_iter().flatten()
     }
 
-    pub fn reg(&self) -> Result<Option<impl Iterator<Item = FdtReg> + 'a>, FdtError> {
+    pub fn reg(&self) -> Result<Option<RegIter<'a>>, FdtError> {
+        let pp_address_cell = self.parent.as_ref().and_then(|p| p.parent_address_cell);
+
         let prop = none_ok!(self.find_property("reg")?);
+
+        // Use full parent resolution to retain its ancestor chain
         let parent = self.parent_fast().ok_or(FdtError::NodeNotFound("parent"))?;
 
+        // reg parsing uses the immediate parent's cells
         let address_cell = parent
             .find_property("#address-cells")?
             .ok_or(FdtError::PropertyNotFound("#address-cells"))?
@@ -106,7 +138,7 @@ impl<'a> Node<'a> {
             .ok_or(FdtError::PropertyNotFound("#size-cells"))?
             .u32()? as u8;
 
-        let ranges = parent.node_ranges(address_cell)?;
+        let ranges = parent.node_ranges(pp_address_cell)?;
 
         Ok(Some(RegIter {
             size_cell,
@@ -115,8 +147,15 @@ impl<'a> Node<'a> {
             ranges,
         }))
     }
+
     pub fn to_kind(self) -> NodeKind<'a> {
-        NodeKind::General(self)
+        if self.name() == "chosen" {
+            NodeKind::Chosen(Chosen::new(self))
+        } else if self.name().starts_with("memory") {
+            NodeKind::Memory(Memory::new(self))
+        } else {
+            NodeKind::General(self)
+        }
     }
 
     /// 检查这个节点是否是根节点
@@ -150,7 +189,7 @@ impl<'a> Node<'a> {
 
     pub(crate) fn node_ranges(
         &self,
-        address_cell_parent: u8,
+        address_cell_parent: Option<u8>,
     ) -> Result<Option<FdtRangeSilce<'a>>, FdtError> {
         let prop = none_ok!(self.find_property("ranges")?);
 
@@ -162,6 +201,8 @@ impl<'a> Node<'a> {
             .find_property("#size-cells")?
             .ok_or(FdtError::PropertyNotFound("#size-cells"))?
             .u32()? as u8;
+        let address_cell_parent = address_cell_parent
+            .ok_or(FdtError::PropertyNotFound("parent.parent.#address-cells"))?;
 
         Ok(Some(FdtRangeSilce::new(
             address_cell,
@@ -169,6 +210,14 @@ impl<'a> Node<'a> {
             size_cell,
             prop.data.buffer(),
         )))
+    }
+
+    pub fn phandle(&self) -> Result<Option<Phandle>, FdtError> {
+        let prop = self.find_property("phandle")?;
+        match prop {
+            Some(p) => Ok(Some(p.u32()?.into())),
+            None => Ok(None),
+        }
     }
 }
 
@@ -186,7 +235,7 @@ impl core::fmt::Debug for Node<'_> {
     }
 }
 
-struct RegIter<'a> {
+pub struct RegIter<'a> {
     size_cell: u8,
     address_cell: u8,
     buff: Buffer<'a>,
@@ -232,4 +281,5 @@ impl Iterator for RegIter<'_> {
 pub enum NodeKind<'a> {
     General(Node<'a>),
     Chosen(Chosen<'a>),
+    Memory(Memory<'a>),
 }
