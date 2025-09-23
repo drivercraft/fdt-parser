@@ -19,6 +19,7 @@ doctest = false
 
 [dependencies]
 thiserror = "2"
+heapless = "0.9"
 
 [dev-dependencies]
 dtb-file = {path = "../dtb-file"}

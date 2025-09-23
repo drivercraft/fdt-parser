@@ -5,9 +5,11 @@ use crate::{
 };
 
 mod chosen;
+mod interrupt_controller;
 mod memory;
 
 pub use chosen::*;
+pub use interrupt_controller::*;
 pub use memory::*;
 
 #[derive(Clone)]
@@ -17,6 +19,7 @@ pub struct Node<'a> {
     pub level: usize,
     pub(crate) raw: Raw<'a>,
     pub(crate) parent: Option<ParentInfo<'a>>,
+    interrupt_parent: Option<Phandle>,
 }
 
 #[derive(Clone)]
@@ -36,6 +39,7 @@ impl<'a> Node<'a> {
         raw: Raw<'a>,
         level: usize,
         parent: Option<&Node<'a>>,
+        interrupt_parent: Option<Phandle>,
     ) -> Self {
         let name = if name.is_empty() { "/" } else { name };
         Node {
@@ -69,6 +73,7 @@ impl<'a> Node<'a> {
                     parent_name: pp.as_ref().and_then(|pn| pn.parent_name()),
                 }
             }),
+            interrupt_parent,
             raw,
         }
     }
@@ -92,6 +97,7 @@ impl<'a> Node<'a> {
             level: p.level,
             raw: p.raw,
             parent: None,
+            interrupt_parent: None,
         })
     }
 
@@ -218,6 +224,24 @@ impl<'a> Node<'a> {
             Some(p) => Ok(Some(p.u32()?.into())),
             None => Ok(None),
         }
+    }
+
+    /// Find [InterruptController] from current node or its parent
+    pub fn interrupt_parent(&self) -> Result<Option<InterruptController<'a>>, FdtError> {
+        // First try to get the interrupt parent phandle from the node itself
+        let phandle = match self.interrupt_parent {
+            Some(p) => p,
+            None => return Ok(None),
+        };
+
+        // Find the node with this phandle
+        let node = self.fdt.get_node_by_phandle(phandle)?;
+        Ok(node.map(InterruptController::new))
+    }
+
+    /// Get the interrupt parent phandle for this node
+    pub fn get_interrupt_parent_phandle(&self) -> Option<Phandle> {
+        self.interrupt_parent
     }
 }
 

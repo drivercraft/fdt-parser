@@ -52,7 +52,7 @@ impl Header {
     /// memory region of at least `size_of::<Header>()` bytes that contains a
     /// valid device tree blob.
     pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Self, FdtError> {
-        if (ptr as usize) % core::mem::align_of::<Header>() != 0 {
+        if !(ptr as usize).is_multiple_of(core::mem::align_of::<Header>()) {
             // Pointer is not aligned, so we need to copy the data to an aligned
             // buffer first.
             let mut aligned = AlignedHeader([0u8; core::mem::size_of::<Header>()]);

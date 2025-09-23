@@ -111,6 +111,7 @@ impl<'a> Fdt<'a> {
             parent: None,
             node: None,
             has_err: false,
+            interrupt_parent_stack: heapless::Vec::new(),
         }
     }
 
@@ -211,8 +212,7 @@ impl<'a> Fdt<'a> {
     }
 
     pub fn memory(&'a self) -> impl Iterator<Item = Result<Memory<'a>, FdtError>> + 'a {
-        self.find_nodes("/memory")
-            .map(|o| o.map(|n| Memory::new(n)))
+        self.find_nodes("/memory").map(|o| o.map(Memory::new))
     }
 }
 
@@ -223,50 +223,140 @@ pub struct NodeIter<'a> {
     parent: Option<Node<'a>>,
     node: Option<Node<'a>>,
     has_err: bool,
+    // (level, phandle)
+    interrupt_parent_stack: heapless::Vec<(usize, Phandle), 8>,
 }
 
 impl<'a> NodeIter<'a> {
+    /// Get the current effective interrupt parent phandle from the stack
+    fn current_interrupt_parent(&self) -> Option<Phandle> {
+        self.interrupt_parent_stack
+            .last()
+            .map(|(_, phandle)| *phandle)
+    }
+
+    /// Push an interrupt parent to the stack for the given level
+    fn push_interrupt_parent(&mut self, level: usize, phandle: Phandle) -> Result<(), FdtError> {
+        self.interrupt_parent_stack
+            .push((level, phandle))
+            .map_err(|_| FdtError::BufferTooSmall {
+                pos: self.interrupt_parent_stack.len(),
+            })
+    }
+
+    /// Pop interrupt parents from the stack that are at or below the given level
+    fn pop_interrupt_parents(&mut self, level: usize) {
+        while let Some(&(stack_level, _)) = self.interrupt_parent_stack.last() {
+            if stack_level >= level {
+                self.interrupt_parent_stack.pop();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Scan ahead to find interrupt-parent property for the current node
+    fn scan_node_interrupt_parent(&self) -> Result<Option<Phandle>, FdtError> {
+        let mut node_interrupt_parent = self.current_interrupt_parent();
+        let mut temp_buffer = self.buffer.clone();
+
+        // Look for interrupt-parent property in this node
+        loop {
+            match temp_buffer.take_token() {
+                Ok(Token::Prop) => {
+                    let prop = temp_buffer.take_prop(&self.fdt)?;
+                    if prop.name == "interrupt-parent" {
+                        if let Ok(phandle_value) = prop.u32() {
+                            node_interrupt_parent = Some(Phandle::from(phandle_value));
+                        }
+                    }
+                }
+                Ok(Token::BeginNode) | Ok(Token::EndNode) | Ok(Token::End) => {
+                    break;
+                }
+                _ => continue,
+            }
+        }
+
+        Ok(node_interrupt_parent)
+    }
+
+    /// Handle BeginNode token and create a new node
+    fn handle_begin_node(&mut self) -> Result<Option<Node<'a>>, FdtError> {
+        self.level += 1;
+        let mut finished = None;
+        if let Some(ref p) = self.node {
+            self.parent = Some(p.clone());
+            finished = Some(p.clone());
+        }
+
+        let name = self.buffer.take_str()?;
+        self.buffer.take_to_aligned();
+
+        let node_interrupt_parent = self.scan_node_interrupt_parent()?;
+
+        let node = Node::new(
+            name,
+            self.fdt.clone(),
+            self.buffer.remain(),
+            self.level as _,
+            self.parent.as_ref(),
+            node_interrupt_parent,
+        );
+
+        // If this node has an interrupt-parent, push it to stack for children
+        if let Some(phandle) = node_interrupt_parent {
+            if phandle != self.current_interrupt_parent().unwrap_or(Phandle::from(0)) {
+                self.push_interrupt_parent(self.level as usize, phandle)?;
+            }
+        }
+
+        self.node = Some(node);
+        Ok(finished)
+    }
+
+    /// Handle EndNode token and return the completed node
+    fn handle_end_node(&mut self) -> Option<Node<'a>> {
+        let node = self.node.take();
+
+        // Pop interrupt parents when exiting a node
+        self.pop_interrupt_parents(self.level as usize);
+
+        self.level -= 1;
+        if node.is_none() {
+            if let Some(ref p) = self.parent {
+                self.parent = p.parent().clone();
+            } else {
+                self.parent = None;
+            }
+        }
+
+        node
+    }
+
+    /// Handle Prop token
+    fn handle_prop(&mut self) -> Result<(), FdtError> {
+        let _prop = self.buffer.take_prop(&self.fdt)?;
+        // Property handling is now done in BeginNode scanning
+        Ok(())
+    }
+
     fn try_next(&mut self) -> Result<Option<Node<'a>>, FdtError> {
         loop {
             let token = self.buffer.take_token()?;
             match token {
                 Token::BeginNode => {
-                    self.level += 1;
-                    let mut finished = None;
-                    if let Some(ref p) = self.node {
-                        self.parent = Some(p.clone());
-                        finished = Some(p.clone());
-                    }
-                    let name = self.buffer.take_str()?;
-                    self.buffer.take_to_aligned();
-                    let node = Node::new(
-                        name,
-                        self.fdt.clone(),
-                        self.buffer.remain(),
-                        self.level as _,
-                        self.parent.as_ref(),
-                    );
-                    self.node = Some(node);
-                    if let Some(f) = finished {
-                        return Ok(Some(f));
+                    if let Some(finished_node) = self.handle_begin_node()? {
+                        return Ok(Some(finished_node));
                     }
                 }
                 Token::EndNode => {
-                    let node = self.node.take();
-                    self.level -= 1;
-                    if node.is_none() {
-                        if let Some(ref p) = self.parent {
-                            self.parent = p.parent().clone();
-                        } else {
-                            self.parent = None;
-                        }
-                    }
-                    if let Some(n) = node {
-                        return Ok(Some(n));
+                    if let Some(node) = self.handle_end_node() {
+                        return Ok(Some(node));
                     }
                 }
                 Token::Prop => {
-                    self.buffer.take_prop(&self.fdt)?;
+                    self.handle_prop()?;
                 }
                 Token::End => {
                     return Ok(None);

@@ -332,30 +332,39 @@ mod test {
         }
     }
 
-    // #[test]
-    // fn test_interrupt() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
-    //     let node = fdt
-    //         .find_nodes("/soc/serial@7e215040")
-    //         .next()
-    //         .unwrap()
-    //         .unwrap();
+    #[test]
+    fn test_interrupt() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt
+            .find_nodes("/soc/serial@7e215040")
+            .next()
+            .unwrap()
+            .unwrap();
 
-    //     let itr_ctrl = node.interrupt_parent().unwrap();
+        let itr_ctrl = node.interrupt_parent().unwrap().unwrap();
+        println!("itr_ctrl: {:?}", itr_ctrl.name());
+        let interrupt_cells = itr_ctrl.interrupt_cells().unwrap();
+        assert_eq!(interrupt_cells, 3);
+    }
 
-    //     assert_eq!(itr_ctrl.interrupt_cells(), 3);
-    // }
+    #[test]
+    fn test_interrupt2() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    // #[test]
-    // fn test_interrupt2() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
+        let node = fdt
+            .find_compatible(&["brcm,bcm2711-hdmi0"])
+            .next()
+            .unwrap()
+            .unwrap();
 
-    //     let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).next().unwrap();
-    //     let itr_ctrl = node.interrupt_parent().unwrap();
+        let itr_ctrl_ph = node.get_interrupt_parent_phandle().unwrap();
+        assert_eq!(itr_ctrl_ph, 0x2c.into());
 
-    //     assert_eq!(itr_ctrl.node.name, "interrupt-controller@7ef00100");
-    // }
+        let itr_ctrl = node.interrupt_parent().unwrap().unwrap();
+        assert_eq!(itr_ctrl.name(), "interrupt-controller@7ef00100");
+    }
 
     // #[test]
     // fn test_interrupts() {
