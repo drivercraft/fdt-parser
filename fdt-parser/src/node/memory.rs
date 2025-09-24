@@ -1,13 +1,14 @@
 use core::{iter, ops::Deref};
 
-use crate::{node::RegIter, FdtError, MemoryRegion, Node};
+use crate::{node::RegIter, FdtError, MemoryRegion, NodeBase};
 
+#[derive(Clone)]
 pub struct Memory<'a> {
-    node: Node<'a>,
+    node: NodeBase<'a>,
 }
 
 impl<'a> Memory<'a> {
-    pub(crate) fn new(node: Node<'a>) -> Self {
+    pub(crate) fn new(node: NodeBase<'a>) -> Self {
         Memory { node }
     }
 
@@ -63,7 +64,7 @@ impl core::fmt::Debug for Memory<'_> {
 }
 
 impl<'a> Deref for Memory<'a> {
-    type Target = Node<'a>;
+    type Target = NodeBase<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.node

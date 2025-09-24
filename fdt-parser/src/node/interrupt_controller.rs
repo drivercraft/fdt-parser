@@ -1,13 +1,14 @@
-use core::{iter, ops::Deref};
+use core::ops::Deref;
 
-use crate::{FdtError, Node};
+use crate::{FdtError, NodeBase};
 
+#[derive(Clone)]
 pub struct InterruptController<'a> {
-    node: Node<'a>,
+    node: NodeBase<'a>,
 }
 
 impl<'a> InterruptController<'a> {
-    pub(crate) fn new(node: Node<'a>) -> Self {
+    pub(crate) fn new(node: NodeBase<'a>) -> Self {
         InterruptController { node }
     }
 
@@ -27,15 +28,14 @@ impl<'a> InterruptController<'a> {
 
 impl core::fmt::Debug for InterruptController<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut st = f.debug_struct("Memory");
+        let mut st = f.debug_struct("InterruptController");
         st.field("name", &self.name());
-
         st.finish()
     }
 }
 
 impl<'a> Deref for InterruptController<'a> {
-    type Target = Node<'a>;
+    type Target = NodeBase<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.node

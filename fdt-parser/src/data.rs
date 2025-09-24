@@ -202,3 +202,29 @@ impl<'a> Iterator for U32Iter<'a> {
         self.buffer.take_u32().ok()
     }
 }
+
+pub struct U32Iter2D<'a> {
+    reader: Buffer<'a>,
+    row_len: u8,
+}
+
+impl<'a> U32Iter2D<'a> {
+    pub fn new(bytes: &Raw<'a>, row_len: u8) -> Self {
+        Self {
+            reader: bytes.buffer(),
+            row_len,
+        }
+    }
+}
+
+impl<'a> Iterator for U32Iter2D<'a> {
+    type Item = U32Iter<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let bytes = self
+            .reader
+            .take(self.row_len as usize * size_of::<u32>())
+            .ok()?;
+        Some(U32Iter::new(bytes))
+    }
+}

@@ -18,8 +18,8 @@ default = ["alloc"]
 doctest = false
 
 [dependencies]
-thiserror = "2"
 heapless = "0.9"
+thiserror = "2"
 
 [dev-dependencies]
 dtb-file = {path = "../dtb-file"}

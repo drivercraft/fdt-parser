@@ -366,31 +366,46 @@ mod test {
         assert_eq!(itr_ctrl.name(), "interrupt-controller@7ef00100");
     }
 
-    // #[test]
-    // fn test_interrupts() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
+    #[test]
+    fn test_interrupts() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    //     let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"]).next().unwrap();
-    //     let itr = node.interrupts().unwrap();
-    //     let want_itrs = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5];
+        let node = fdt
+            .find_compatible(&["brcm,bcm2711-hdmi0"])
+            .next()
+            .unwrap()
+            .unwrap();
+        let itr = node.interrupts().unwrap().unwrap();
+        let want_itrs = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5];
 
-    //     for (i, o) in itr.enumerate() {
-    //         let itr = o.collect::<Vec<_>>();
-    //         assert_eq!(itr[0], want_itrs[i]);
-    //     }
-    // }
+        for (i, o) in itr.enumerate() {
+            let itr = o.collect::<Vec<_>>();
+            assert_eq!(itr[0], want_itrs[i]);
+        }
+    }
 
-    // #[test]
-    // fn test_clocks() {
-    //     let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-    //     let node = fdt.find_nodes("/soc/serial@7e215040").next().unwrap();
-    //     let clocks = node.clocks().collect::<Vec<_>>();
-    //     let clock = &clocks[0];
-    //     for clock in &clocks {
-    //         println!("clock: {:?}", clock);
-    //     }
-    //     assert_eq!(clock.node.name, "aux@7e215000");
-    // }
+    #[test]
+    fn test_clocks() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+
+        let node = fdt
+            .find_nodes("/soc/serial@7e215040")
+            .next()
+            .unwrap()
+            .unwrap();
+        let clocks = node
+            .clocks()
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        for clock in &clocks {
+            println!("clock: {:?}", clock);
+        }
+        let clock = &clocks[0];
+        assert_eq!(clock.node.name(), "aux@7e215000");
+    }
 
     // #[test]
     // fn test_clocks_cell_1() {

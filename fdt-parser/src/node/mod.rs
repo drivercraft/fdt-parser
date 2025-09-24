@@ -1,19 +1,23 @@
+use core::ops::Deref;
+
 use crate::{
-    data::{Buffer, Raw},
+    data::{Buffer, Raw, U32Iter2D},
     property::PropIter,
     Fdt, FdtError, FdtRangeSilce, FdtReg, Phandle, Property,
 };
 
 mod chosen;
+mod clock;
 mod interrupt_controller;
 mod memory;
 
 pub use chosen::*;
+pub use clock::*;
 pub use interrupt_controller::*;
 pub use memory::*;
 
 #[derive(Clone)]
-pub struct Node<'a> {
+pub struct NodeBase<'a> {
     name: &'a str,
     pub(crate) fdt: Fdt<'a>,
     pub level: usize,
@@ -32,17 +36,17 @@ pub(crate) struct ParentInfo<'a> {
     parent_name: Option<&'a str>,
 }
 
-impl<'a> Node<'a> {
+impl<'a> NodeBase<'a> {
     pub(crate) fn new(
         name: &'a str,
         fdt: Fdt<'a>,
         raw: Raw<'a>,
         level: usize,
-        parent: Option<&Node<'a>>,
+        parent: Option<&NodeBase<'a>>,
         interrupt_parent: Option<Phandle>,
     ) -> Self {
         let name = if name.is_empty() { "/" } else { name };
-        Node {
+        NodeBase {
             name,
             fdt,
             level,
@@ -90,8 +94,8 @@ impl<'a> Node<'a> {
             .find(|node| node.name() == parent_name)
     }
 
-    fn parent_fast(&self) -> Option<Node<'a>> {
-        self.parent.as_ref().map(|p| Node {
+    fn parent_fast(&self) -> Option<NodeBase<'a>> {
+        self.parent.as_ref().map(|p| NodeBase {
             name: p.name,
             fdt: self.fdt.clone(),
             level: p.level,
@@ -154,14 +158,8 @@ impl<'a> Node<'a> {
         }))
     }
 
-    pub fn to_kind(self) -> NodeKind<'a> {
-        if self.name() == "chosen" {
-            NodeKind::Chosen(Chosen::new(self))
-        } else if self.name().starts_with("memory") {
-            NodeKind::Memory(Memory::new(self))
-        } else {
-            NodeKind::General(self)
-        }
+    fn is_interrupt_controller(&self) -> bool {
+        self.find_property("#interrupt-controller").is_ok()
     }
 
     /// 检查这个节点是否是根节点
@@ -236,12 +234,39 @@ impl<'a> Node<'a> {
 
         // Find the node with this phandle
         let node = self.fdt.get_node_by_phandle(phandle)?;
-        Ok(node.map(InterruptController::new))
+        let Some(node) = node else {
+            return Ok(None);
+        };
+        match node {
+            Node::InterruptController(ic) => Ok(Some(ic)),
+            _ => Err(FdtError::NodeNotFound("interrupt-parent")),
+        }
     }
 
     /// Get the interrupt parent phandle for this node
     pub fn get_interrupt_parent_phandle(&self) -> Option<Phandle> {
         self.interrupt_parent
+    }
+
+    pub fn interrupts(
+        &self,
+    ) -> Result<Option<impl Iterator<Item = impl Iterator<Item = u32> + 'a> + 'a>, FdtError> {
+        let prop = none_ok!(self.find_property("interrupts")?);
+        let irq_parent = self.interrupt_parent()?;
+        let irq_parent = irq_parent.ok_or(FdtError::NodeNotFound("interrupt-parent"))?;
+        let cell_size = irq_parent.interrupt_cells()?;
+        let iter = U32Iter2D::new(&prop.data, cell_size);
+
+        Ok(Some(iter))
+    }
+
+    pub fn clock_frequency(&self) -> Result<Option<u32>, FdtError> {
+        let prop = none_ok!(self.find_property("clock-frequency")?);
+        Ok(Some(prop.u32()?))
+    }
+
+    pub fn clocks(&self) -> Result<ClocksIter<'a>, FdtError> {
+        ClocksIter::new(self)
     }
 }
 
@@ -253,7 +278,7 @@ pub struct NodeDebugInfo<'a> {
     pub pos: usize,
 }
 
-impl core::fmt::Debug for Node<'_> {
+impl core::fmt::Debug for NodeBase<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Node").field("name", &self.name()).finish()
     }
@@ -301,9 +326,43 @@ impl Iterator for RegIter<'_> {
     }
 }
 
-#[derive(Debug)]
-pub enum NodeKind<'a> {
-    General(Node<'a>),
+#[derive(Debug, Clone)]
+pub enum Node<'a> {
+    General(NodeBase<'a>),
     Chosen(Chosen<'a>),
     Memory(Memory<'a>),
+    InterruptController(InterruptController<'a>),
+}
+
+impl<'a> Node<'a> {
+    pub fn node(&self) -> &NodeBase<'a> {
+        self.deref()
+    }
+}
+
+impl<'a> From<NodeBase<'a>> for Node<'a> {
+    fn from(node: NodeBase<'a>) -> Self {
+        if node.name() == "chosen" {
+            Node::Chosen(Chosen::new(node))
+        } else if node.name().starts_with("memory@") {
+            Node::Memory(Memory::new(node))
+        } else if node.is_interrupt_controller() {
+            Node::InterruptController(InterruptController::new(node))
+        } else {
+            Node::General(node)
+        }
+    }
+}
+
+impl<'a> Deref for Node<'a> {
+    type Target = NodeBase<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Node::General(n) => n,
+            Node::Chosen(n) => n,
+            Node::Memory(n) => n,
+            Node::InterruptController(n) => n,
+        }
+    }
 }

@@ -1,13 +1,14 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, ops::Deref};
 
-use crate::{FdtError, Node};
+use crate::{FdtError, Node, NodeBase};
 
+#[derive(Clone)]
 pub struct Chosen<'a> {
-    node: Node<'a>,
+    node: NodeBase<'a>,
 }
 
 impl<'a> Chosen<'a> {
-    pub(crate) fn new(node: Node<'a>) -> Self {
+    pub(crate) fn new(node: NodeBase<'a>) -> Self {
         Chosen { node }
     }
 
@@ -39,12 +40,15 @@ impl<'a> Chosen<'a> {
             .next()
             .ok_or(FdtError::NodeNotFound("path"))??;
 
-        Ok(Some(Stdout { params, node }))
+        Ok(Some(Stdout {
+            params,
+            node: node.deref().clone(),
+        }))
     }
 
     pub fn debugcon(&self) -> Result<Option<Node<'a>>, FdtError> {
         if let Some(node) = self.stdout()? {
-            Ok(Some(node.node))
+            Ok(Some(Node::General(node.node)))
         } else {
             self.fdt_bootargs_find_debugcon_node()
         }
@@ -104,16 +108,21 @@ impl Debug for Chosen<'_> {
     }
 }
 
-pub struct Stdout<'a> {
-    pub params: Option<&'a str>,
-    pub node: Node<'a>,
-}
+impl<'a> Deref for Chosen<'a> {
+    type Target = NodeBase<'a>;
 
-impl<'a> Stdout<'a> {
-    pub fn name(&self) -> &'a str {
-        self.node.name()
+    fn deref(&self) -> &Self::Target {
+        &self.node
     }
 }
+
+#[derive(Clone)]
+pub struct Stdout<'a> {
+    pub params: Option<&'a str>,
+    pub node: NodeBase<'a>,
+}
+
+impl<'a> Stdout<'a> {}
 
 impl Debug for Stdout<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -121,5 +130,13 @@ impl Debug for Stdout<'_> {
             .field("name", &self.node.name())
             .field("params", &self.params)
             .finish()
+    }
+}
+
+impl<'a> Deref for Stdout<'a> {
+    type Target = NodeBase<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.node
     }
 }

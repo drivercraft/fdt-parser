@@ -2,8 +2,8 @@ use core::iter;
 
 use crate::{
     data::{Buffer, Raw},
-    node::Node,
-    Chosen, FdtError, Header, Memory, MemoryRegion, Phandle, Token,
+    node::NodeBase,
+    Chosen, FdtError, Header, Memory, MemoryRegion, Node, Phandle, Token,
 };
 
 #[derive(Clone)]
@@ -185,7 +185,11 @@ impl<'a> Fdt<'a> {
 
     pub fn chosen(&self) -> Result<Option<Chosen<'a>>, FdtError> {
         let node = none_ok!(self.find_nodes("/chosen").next())?;
-        Ok(Some(Chosen::new(node)))
+        let node = match node {
+            Node::Chosen(c) => c,
+            _ => return Err(FdtError::NodeNotFound("chosen")),
+        };
+        Ok(Some(node))
     }
 
     pub fn get_node_by_phandle(&self, phandle: Phandle) -> Result<Option<Node<'a>>, FdtError> {
@@ -212,7 +216,12 @@ impl<'a> Fdt<'a> {
     }
 
     pub fn memory(&'a self) -> impl Iterator<Item = Result<Memory<'a>, FdtError>> + 'a {
-        self.find_nodes("/memory").map(|o| o.map(Memory::new))
+        self.find_nodes("/memory@").map(|o| {
+            o.map(|o| match o {
+                Node::Memory(m) => m,
+                _ => unreachable!(),
+            })
+        })
     }
 }
 
@@ -220,8 +229,8 @@ pub struct NodeIter<'a> {
     buffer: Buffer<'a>,
     fdt: Fdt<'a>,
     level: isize,
-    parent: Option<Node<'a>>,
-    node: Option<Node<'a>>,
+    parent: Option<NodeBase<'a>>,
+    node: Option<NodeBase<'a>>,
     has_err: bool,
     // (level, phandle)
     interrupt_parent_stack: heapless::Vec<(usize, Phandle), 8>,
@@ -282,7 +291,7 @@ impl<'a> NodeIter<'a> {
     }
 
     /// Handle BeginNode token and create a new node
-    fn handle_begin_node(&mut self) -> Result<Option<Node<'a>>, FdtError> {
+    fn handle_begin_node(&mut self) -> Result<Option<NodeBase<'a>>, FdtError> {
         self.level += 1;
         let mut finished = None;
         if let Some(ref p) = self.node {
@@ -295,7 +304,7 @@ impl<'a> NodeIter<'a> {
 
         let node_interrupt_parent = self.scan_node_interrupt_parent()?;
 
-        let node = Node::new(
+        let node = NodeBase::new(
             name,
             self.fdt.clone(),
             self.buffer.remain(),
@@ -316,7 +325,7 @@ impl<'a> NodeIter<'a> {
     }
 
     /// Handle EndNode token and return the completed node
-    fn handle_end_node(&mut self) -> Option<Node<'a>> {
+    fn handle_end_node(&mut self) -> Option<NodeBase<'a>> {
         let node = self.node.take();
 
         // Pop interrupt parents when exiting a node
@@ -325,7 +334,7 @@ impl<'a> NodeIter<'a> {
         self.level -= 1;
         if node.is_none() {
             if let Some(ref p) = self.parent {
-                self.parent = p.parent().clone();
+                self.parent = p.parent().map(|n| n.node().clone());
             } else {
                 self.parent = None;
             }
@@ -341,7 +350,7 @@ impl<'a> NodeIter<'a> {
         Ok(())
     }
 
-    fn try_next(&mut self) -> Result<Option<Node<'a>>, FdtError> {
+    fn try_next(&mut self) -> Result<Option<NodeBase<'a>>, FdtError> {
         loop {
             let token = self.buffer.take_token()?;
             match token {
@@ -375,7 +384,7 @@ impl<'a> Iterator for NodeIter<'a> {
             return None;
         }
         match self.try_next() {
-            Ok(Some(node)) => Some(Ok(node)),
+            Ok(Some(node)) => Some(Ok(node.into())),
             Ok(None) => None,
             Err(e) => {
                 self.has_err = true;
@@ -442,16 +451,5 @@ impl<'a> Iterator for IterFindNode<'a> {
                 out = Some(Ok(node));
             }
         }
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<'a> Fdt<'a> {
-    pub fn all_nodes_vec(&self) -> Result<alloc::vec::Vec<Node<'a>>, FdtError> {
-        let mut nodes = vec![];
-        for node in self.all_nodes() {
-            nodes.push(node?);
-        }
-        Ok(nodes)
     }
 }
