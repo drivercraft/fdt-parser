@@ -1,6 +1,5 @@
 #![no_std]
 
-#[macro_use]
 extern crate alloc;
 
 macro_rules! none_ok {
@@ -23,11 +22,11 @@ mod root;
 use core::ffi::FromBytesUntilNulError;
 
 pub use define::*;
+pub use fdt_no_mem::FdtNoMem;
 pub use header::Header;
 pub use node::*;
 pub use property::Property;
 pub use root::*;
-pub use fdt_no_mem::FdtNoMem;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum FdtError {

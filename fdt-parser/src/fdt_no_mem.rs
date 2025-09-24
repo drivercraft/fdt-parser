@@ -219,11 +219,80 @@ impl<'a> FdtNoMem<'a> {
         })
     }
 
-    /// Reserved memory is specified as a node under the `/reserved-memory` node. The operating system shall exclude reserved
-    /// memory from normal usage. One can create child nodes describing particular reserved (excluded from normal use) memory
-    /// regions. Such memory regions are usually designed for the special usage by various device drivers.
-    pub fn reserved_memory(&self) -> impl Iterator<Item = Result<Node<'a>, FdtError>> + 'a {
-        self.find_nodes("/reserved-memory")
+    /// Get the reserved-memory node
+    fn reserved_memory_node(&self) -> Result<Option<Node<'a>>, FdtError> {
+        self.find_nodes("/reserved-memory").next().transpose()
+    }
+
+    /// Get all reserved-memory child nodes (memory regions)
+    pub fn reserved_memory_regions(&self) -> Result<ReservedMemoryRegionsIter<'a>, FdtError> {
+        match self.reserved_memory_node()? {
+            Some(reserved_memory_node) => Ok(ReservedMemoryRegionsIter::new(reserved_memory_node)),
+            None => Ok(ReservedMemoryRegionsIter::empty()),
+        }
+    }
+}
+
+/// Iterator for reserved memory regions (child nodes of reserved-memory)
+pub struct ReservedMemoryRegionsIter<'a> {
+    child_iter: Option<crate::node::NodeChildIter<'a>>,
+}
+
+impl<'a> ReservedMemoryRegionsIter<'a> {
+    /// Create a new iterator for reserved memory regions
+    fn new(reserved_memory_node: Node<'a>) -> Self {
+        ReservedMemoryRegionsIter {
+            child_iter: Some(reserved_memory_node.children()),
+        }
+    }
+
+    /// Create an empty iterator
+    fn empty() -> Self {
+        ReservedMemoryRegionsIter { child_iter: None }
+    }
+
+    /// Find a reserved memory region by name
+    pub fn find_by_name(self, name: &str) -> Result<Option<Node<'a>>, FdtError> {
+        for region_result in self {
+            let region = region_result?;
+            if region.name() == name {
+                return Ok(Some(region));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Find reserved memory regions by compatible string
+    pub fn find_by_compatible(
+        self,
+        compatible: &str,
+    ) -> Result<alloc::vec::Vec<Node<'a>>, FdtError> {
+        let mut matching_regions = alloc::vec::Vec::new();
+
+        for region_result in self {
+            let region = region_result?;
+            if let Some(compatibles) = region.compatibles()? {
+                for comp in compatibles {
+                    if comp == compatible {
+                        matching_regions.push(region);
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(matching_regions)
+    }
+}
+
+impl<'a> Iterator for ReservedMemoryRegionsIter<'a> {
+    type Item = Result<Node<'a>, FdtError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.child_iter {
+            Some(iter) => iter.next(),
+            None => None,
+        }
     }
 }
 

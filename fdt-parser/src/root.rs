@@ -1,18 +1,14 @@
-use core::iter;
-
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
 
-use crate::{
-    data::{Buffer, Raw},
-    fdt_no_mem::FdtNoMem,
-    node::NodeBase,
-    Chosen, FdtError, Header, Memory, MemoryRegion, Node, Phandle, Token,
-};
+use crate::{fdt_no_mem::FdtNoMem, FdtError, Header, MemoryRegion, Node, Phandle};
 
 #[derive(Clone)]
 pub struct Fdt<'a> {
     inner: FdtNoMem<'a>,
     phandle_cache: BTreeMap<Phandle, Node<'a>>,
+    /// compatible -> (name -> node)
+    compatible_cache: BTreeMap<&'a str, BTreeMap<&'a str, Node<'a>>>,
+    name_cache: BTreeMap<&'a str, Node<'a>>,
 }
 
 impl<'a> Fdt<'a> {
@@ -22,6 +18,8 @@ impl<'a> Fdt<'a> {
         Ok(Fdt {
             inner,
             phandle_cache: BTreeMap::new(),
+            compatible_cache: BTreeMap::new(),
+            name_cache: BTreeMap::new(),
         })
     }
 
@@ -37,6 +35,8 @@ impl<'a> Fdt<'a> {
         Ok(Fdt {
             inner,
             phandle_cache: BTreeMap::new(),
+            compatible_cache: BTreeMap::new(),
+            name_cache: BTreeMap::new(),
         })
     }
 
@@ -69,18 +69,22 @@ impl<'a> Fdt<'a> {
         self.inner.memory_reservaion_blocks()
     }
 
-    pub(crate) fn get_str(&self, offset: usize) -> Result<&'a str, FdtError> {
-        self.inner.get_str(offset)
-    }
-
+    /// With caching
     pub fn all_nodes(&mut self) -> Result<Vec<Node<'a>>, FdtError> {
         let nodes = self.inner.all_nodes().collect::<Result<Vec<_>, _>>()?;
         for node in &nodes {
             if let Some(phandle) = node.phandle()? {
-                if !self.phandle_cache.contains_key(&phandle) {
-                    self.phandle_cache.insert(phandle, node.clone());
-                }
+                self.phandle_cache
+                    .entry(phandle)
+                    .or_insert_with(|| node.clone());
             }
+            for compatibles in node.compatibles_flatten() {
+                let map = self.compatible_cache.entry(compatibles).or_default();
+                map.entry(node.name()).or_insert_with(|| node.clone());
+            }
+            self.name_cache
+                .entry(node.name())
+                .or_insert_with(|| node.clone());
         }
         Ok(nodes)
     }
@@ -92,5 +96,28 @@ impl<'a> Fdt<'a> {
 
     pub fn find_aliase(&self, name: &str) -> Result<&'a str, FdtError> {
         self.inner.find_aliase(name)
+    }
+
+    pub fn get_node_by_phandle(&self, phandle: Phandle) -> Result<Option<Node<'a>>, FdtError> {
+        if let Some(node) = self.phandle_cache.get(&phandle) {
+            return Ok(Some(node.clone()));
+        }
+        self.inner.get_node_by_phandle(phandle)
+    }
+
+    pub fn find_compatible(&self, with: &[&str]) -> Result<Vec<Node<'a>>, FdtError> {
+        if self.compatible_cache.is_empty() {
+            self.inner.find_compatible(with).collect()
+        } else {
+            let mut result = Vec::new();
+            for &c in with {
+                if let Some(map) = self.compatible_cache.get(c) {
+                    for node in map.values() {
+                        result.push(node.clone());
+                    }
+                }
+            }
+            Ok(result)
+        }
     }
 }

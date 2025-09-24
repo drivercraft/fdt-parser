@@ -293,11 +293,20 @@ mod test {
         let raw = fdt_rpi_4b();
         let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
         let ls = fdt
-            .reserved_memory()
+            .reserved_memory_regions()
+            .unwrap()
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
+
+        let want_names = ["linux,cma", "nvram@0", "nvram@1"];
+
         for node in &ls {
             println!("reserved memory node: {:?}", node);
+        }
+
+        assert_eq!(ls.len(), want_names.len());
+        for (i, node) in ls.iter().enumerate() {
+            assert_eq!(node.name(), want_names[i]);
         }
     }
 

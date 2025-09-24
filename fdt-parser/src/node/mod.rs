@@ -4,7 +4,7 @@ use crate::{
     data::{Buffer, Raw, U32Iter2D},
     fdt_no_mem::FdtNoMem,
     property::PropIter,
-    Fdt, FdtError, FdtRangeSilce, FdtReg, Phandle, Property,
+    FdtError, FdtRangeSilce, FdtReg, Phandle, Property, Status,
 };
 
 mod chosen;
@@ -272,6 +272,31 @@ impl<'a> NodeBase<'a> {
     pub fn clocks(&self) -> Result<ClocksIter<'a>, FdtError> {
         ClocksIter::new(self)
     }
+
+    pub fn children(&self) -> NodeChildIter<'a> {
+        NodeChildIter {
+            fdt: self.fdt.clone(),
+            parent: self.clone(),
+            all_nodes: None,
+            target_level: 0,
+            found_parent: false,
+        }
+    }
+
+    pub fn status(&self) -> Result<Option<Status>, FdtError> {
+        let prop = none_ok!(self.find_property("status")?);
+        let s = prop.str()?;
+
+        if s.contains("disabled") {
+            return Ok(Some(Status::Disabled));
+        }
+
+        if s.contains("okay") {
+            return Ok(Some(Status::Okay));
+        }
+
+        Ok(None)
+    }
 }
 
 /// 节点调试信息
@@ -367,6 +392,219 @@ impl<'a> Deref for Node<'a> {
             Node::Chosen(n) => n,
             Node::Memory(n) => n,
             Node::InterruptController(n) => n,
+        }
+    }
+}
+
+pub struct NodeChildIter<'a> {
+    fdt: FdtNoMem<'a>,
+    parent: NodeBase<'a>,
+    all_nodes: Option<crate::fdt_no_mem::NodeIter<'a>>,
+    target_level: usize,
+    found_parent: bool,
+}
+
+impl<'a> Iterator for NodeChildIter<'a> {
+    type Item = Result<Node<'a>, FdtError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // 懒初始化节点迭代器
+        if self.all_nodes.is_none() {
+            self.all_nodes = Some(self.fdt.all_nodes());
+        }
+
+        let all_nodes = self.all_nodes.as_mut()?;
+
+        // 寻找子节点
+        loop {
+            let node = match all_nodes.next()? {
+                Ok(node) => node,
+                Err(e) => return Some(Err(e)),
+            };
+
+            // 首先找到父节点
+            if !self.found_parent {
+                if node.name() == self.parent.name() && node.level() == self.parent.level() {
+                    self.found_parent = true;
+                    self.target_level = node.level() + 1;
+                }
+                continue;
+            }
+
+            // 已经找到父节点，现在查找子节点
+            let current_level = node.level();
+
+            // 如果当前节点的级别等于目标级别，并且在树结构中紧跟在父节点之后，
+            // 那么它就是父节点的直接子节点
+            if current_level == self.target_level {
+                return Some(Ok(node));
+            }
+
+            // 如果当前节点的级别小于或等于父节点级别，说明我们已经离开了父节点的子树
+            if current_level <= self.parent.level() {
+                break;
+            }
+        }
+
+        None
+    }
+}
+
+impl<'a> NodeChildIter<'a> {
+    /// 创建一个新的子节点迭代器
+    pub fn new(fdt: FdtNoMem<'a>, parent: NodeBase<'a>) -> Self {
+        NodeChildIter {
+            fdt,
+            parent,
+            all_nodes: None,
+            target_level: 0,
+            found_parent: false,
+        }
+    }
+
+    /// 获取父节点的引用
+    pub fn parent(&self) -> &NodeBase<'a> {
+        &self.parent
+    }
+
+    /// 收集所有子节点到一个 Vec 中
+    pub fn collect_children(self) -> Result<alloc::vec::Vec<Node<'a>>, FdtError> {
+        self.collect()
+    }
+
+    /// 查找具有特定名称的子节点
+    pub fn find_child_by_name(self, name: &str) -> Result<Option<Node<'a>>, FdtError> {
+        for child_result in self {
+            let child = child_result?;
+            if child.name() == name {
+                return Ok(Some(child));
+            }
+        }
+        Ok(None)
+    }
+
+    /// 查找具有特定兼容性字符串的子节点
+    pub fn find_child_by_compatible(self, compatible: &str) -> Result<Option<Node<'a>>, FdtError> {
+        for child_result in self {
+            let child = child_result?;
+            if let Some(compatibles) = child.compatibles()? {
+                for comp in compatibles {
+                    if comp == compatible {
+                        return Ok(Some(child));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::FdtNoMem;
+
+    #[test]
+    fn test_node_child_iter_basic() {
+        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
+        let fdt = FdtNoMem::from_bytes(dtb_data).unwrap();
+
+        // 查找根节点
+        let root_node = fdt
+            .all_nodes()
+            .find(|node| node.as_ref().map_or(false, |n| n.name() == "/"))
+            .unwrap()
+            .unwrap();
+
+        // 测试子节点迭代器
+        let children: Result<alloc::vec::Vec<_>, _> = root_node.children().collect();
+        let children = children.unwrap();
+
+        // 根节点应该有子节点
+        assert!(!children.is_empty(), "根节点应该有子节点");
+
+        // 所有子节点的 level 应该是 1
+        for child in &children {
+            assert_eq!(child.level(), 1, "根节点的直接子节点应该在 level 1");
+        }
+
+        // 检查是否包含一些预期的子节点
+        let child_names: alloc::vec::Vec<_> = children.iter().map(|c| c.name()).collect();
+        assert!(child_names.contains(&"chosen"), "应该包含 chosen 节点");
+        assert!(child_names.contains(&"memory@0"), "应该包含 memory@0 节点");
+    }
+
+    #[test]
+    fn test_find_child_by_name() {
+        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
+        let fdt = FdtNoMem::from_bytes(dtb_data).unwrap();
+
+        // 查找根节点
+        let root_node = fdt
+            .all_nodes()
+            .find(|node| node.as_ref().map_or(false, |n| n.name() == "/"))
+            .unwrap()
+            .unwrap();
+
+        // 测试通过名称查找子节点
+        let memory_node = root_node.children().find_child_by_name("memory@0").unwrap();
+
+        assert!(memory_node.is_some(), "应该找到 memory@0 节点");
+        assert_eq!(memory_node.unwrap().name(), "memory@0");
+
+        // 测试查找不存在的节点
+        let nonexistent = root_node
+            .children()
+            .find_child_by_name("nonexistent")
+            .unwrap();
+        assert!(nonexistent.is_none(), "不存在的节点应该返回 None");
+    }
+
+    #[test]
+    fn test_child_iter_empty() {
+        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
+        let fdt = FdtNoMem::from_bytes(dtb_data).unwrap();
+
+        // 查找一个叶子节点（没有子节点的节点）
+        let leaf_node = fdt
+            .all_nodes()
+            .find(|node| node.as_ref().map_or(false, |n| n.name() == "chosen"))
+            .unwrap()
+            .unwrap();
+
+        // 测试叶子节点的子节点迭代器
+        let children: Result<alloc::vec::Vec<_>, _> = leaf_node.children().collect();
+        let children = children.unwrap();
+
+        assert!(children.is_empty(), "叶子节点不应该有子节点");
+    }
+
+    #[test]
+    fn test_child_iter_multiple_levels() {
+        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
+        let fdt = FdtNoMem::from_bytes(dtb_data).unwrap();
+
+        // 查找 reserved-memory 节点，它应该有子节点
+        let reserved_memory = fdt
+            .all_nodes()
+            .find(|node| {
+                node.as_ref()
+                    .map_or(false, |n| n.name() == "reserved-memory")
+            })
+            .unwrap()
+            .unwrap();
+
+        // 测试子节点迭代器
+        let children: Result<alloc::vec::Vec<_>, _> = reserved_memory.children().collect();
+        let children = children.unwrap();
+
+        // 确保子节点的 level 正确
+        for child in &children {
+            assert_eq!(
+                child.level(),
+                reserved_memory.level() + 1,
+                "子节点的 level 应该比父节点高 1"
+            );
         }
     }
 }

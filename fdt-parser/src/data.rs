@@ -3,7 +3,7 @@ use core::{
     ops::{Deref, Range},
 };
 
-use crate::{fdt_no_mem::FdtNoMem, Fdt, FdtError, Property, Token};
+use crate::{fdt_no_mem::FdtNoMem, FdtError, Property, Token};
 
 #[derive(Clone, Copy)]
 pub struct Raw<'a> {

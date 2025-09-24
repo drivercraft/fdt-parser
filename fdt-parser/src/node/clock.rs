@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 
-use crate::{data::Buffer, fdt_no_mem::FdtNoMem, Fdt, FdtError, Node, NodeBase, Phandle};
+use crate::{data::Buffer, fdt_no_mem::FdtNoMem, FdtError, Node, NodeBase, Phandle};
 
 pub struct ClocksIter<'a> {
     pub fdt: FdtNoMem<'a>,

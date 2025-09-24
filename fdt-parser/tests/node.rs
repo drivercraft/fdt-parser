@@ -287,35 +287,32 @@ mod test {
     //         }
     //     }
     // }
-    // #[test]
-    // fn test_find_compatible() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-    //     let pl011 = fdt
-    //         .find_compatible(&["arm,pl011", "arm,primecell"])
-    //         .next()
-    //         .unwrap()
-    //         .unwrap();
-    //     assert_eq!(pl011.name(), "serial@7e201000");
-    // }
+    #[test]
+    fn test_find_compatible() {
+        let raw = fdt_rpi_4b();
+        let mut fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        fdt.all_nodes().unwrap();
+        let ls = fdt
+            .find_compatible(&["arm,pl011", "arm,primecell"])
+            .unwrap();
 
-    // #[test]
-    // fn test_compatibles() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-    //     let uart = fdt
-    //         .find_nodes("/soc/serial@7e201000")
-    //         .next()
-    //         .unwrap()
-    //         .unwrap();
-    //     let caps = uart.compatibles().unwrap().unwrap();
+        assert_eq!(ls[0].name(), "serial@7e201000");
+    }
 
-    //     let want = ["arm,pl011", "arm,primecell"];
+    #[test]
+    fn test_compatibles() {
+        let raw = fdt_rpi_4b();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        let mut ls = fdt.find_nodes("/soc/serial@7e201000").unwrap();
+        let uart = ls.pop().unwrap();
+        let caps = uart.compatibles().unwrap().unwrap();
 
-    //     for (act, want) in caps.zip(want.iter()) {
-    //         assert_eq!(act, *want);
-    //     }
-    // }
+        let want = ["arm,pl011", "arm,primecell"];
+
+        for (act, want) in caps.zip(want.iter()) {
+            assert_eq!(act, *want);
+        }
+    }
 
     // #[test]
     // fn test_all_compatibles() {
@@ -516,13 +513,13 @@ mod test {
     //     }
     // }
 
-    #[test]
-    fn test_debugcon() {
-        let raw = fdt_qemu();
-        let fdt = Fdt::from_bytes(&raw).unwrap();
-        let node = fdt.chosen().unwrap().unwrap().debugcon().unwrap().unwrap();
-        println!("{:?}", node.name());
-    }
+    // #[test]
+    // fn test_debugcon() {
+    //     let raw = fdt_qemu();
+    //     let fdt = Fdt::from_bytes(&raw).unwrap();
+    //     let node = fdt.chosen().unwrap().unwrap().debugcon().unwrap().unwrap();
+    //     println!("{:?}", node.name());
+    // }
 
     // #[test]
     // fn test_debugcon2() {
