@@ -1,6 +1,5 @@
 #![no_std]
 
-#[cfg(feature = "alloc")]
 #[macro_use]
 extern crate alloc;
 
@@ -15,6 +14,7 @@ macro_rules! none_ok {
 
 mod data;
 mod define;
+mod fdt_no_mem;
 mod header;
 mod node;
 mod property;
@@ -27,6 +27,7 @@ pub use header::Header;
 pub use node::*;
 pub use property::Property;
 pub use root::*;
+pub use fdt_no_mem::FdtNoMem;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum FdtError {

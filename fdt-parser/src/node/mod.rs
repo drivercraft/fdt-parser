@@ -2,6 +2,7 @@ use core::ops::Deref;
 
 use crate::{
     data::{Buffer, Raw, U32Iter2D},
+    fdt_no_mem::FdtNoMem,
     property::PropIter,
     Fdt, FdtError, FdtRangeSilce, FdtReg, Phandle, Property,
 };
@@ -19,7 +20,7 @@ pub use memory::*;
 #[derive(Clone)]
 pub struct NodeBase<'a> {
     name: &'a str,
-    pub(crate) fdt: Fdt<'a>,
+    pub(crate) fdt: FdtNoMem<'a>,
     pub level: usize,
     pub(crate) raw: Raw<'a>,
     pub(crate) parent: Option<ParentInfo<'a>>,
@@ -39,7 +40,7 @@ pub(crate) struct ParentInfo<'a> {
 impl<'a> NodeBase<'a> {
     pub(crate) fn new(
         name: &'a str,
-        fdt: Fdt<'a>,
+        fdt: FdtNoMem<'a>,
         raw: Raw<'a>,
         level: usize,
         parent: Option<&NodeBase<'a>>,
@@ -159,7 +160,10 @@ impl<'a> NodeBase<'a> {
     }
 
     fn is_interrupt_controller(&self) -> bool {
-        self.find_property("#interrupt-controller").is_ok()
+        let Ok(prop) = self.find_property("#interrupt-controller") else {
+            return false;
+        };
+        prop.is_some()
     }
 
     /// 检查这个节点是否是根节点

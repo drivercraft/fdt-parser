@@ -10,9 +10,6 @@ name = "fdt-parser"
 repository = "https://github.com/qclic/fdt-parser"
 version = "0.5.0"
 
-[features]
-alloc = []
-default = ["alloc"]
 
 [lib]
 doctest = false

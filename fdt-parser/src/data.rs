@@ -3,7 +3,7 @@ use core::{
     ops::{Deref, Range},
 };
 
-use crate::{Fdt, FdtError, Property, Token};
+use crate::{fdt_no_mem::FdtNoMem, Fdt, FdtError, Property, Token};
 
 #[derive(Clone, Copy)]
 pub struct Raw<'a> {
@@ -163,7 +163,7 @@ impl<'a> Buffer<'a> {
         }
     }
 
-    pub fn take_prop(&mut self, fdt: &Fdt<'a>) -> Result<Property<'a>, FdtError> {
+    pub fn take_prop(&mut self, fdt: &FdtNoMem<'a>) -> Result<Property<'a>, FdtError> {
         let len = self.take_u32()?;
         let nameoff = self.take_u32()?;
         let data = self.take_aligned(len as _)?;

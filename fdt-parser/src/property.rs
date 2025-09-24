@@ -2,7 +2,8 @@ use core::{ffi::CStr, iter};
 
 use crate::{
     data::{Buffer, Raw},
-    Fdt, FdtError, Token,
+    fdt_no_mem::FdtNoMem,
+    FdtError, Token,
 };
 
 #[derive(Clone)]
@@ -57,13 +58,13 @@ impl core::fmt::Debug for Property<'_> {
 }
 
 pub(crate) struct PropIter<'a> {
-    fdt: Fdt<'a>,
+    fdt: FdtNoMem<'a>,
     reader: Buffer<'a>,
     has_err: bool,
 }
 
 impl<'a> PropIter<'a> {
-    pub fn new(fdt: Fdt<'a>, reader: Buffer<'a>) -> Self {
+    pub fn new(fdt: FdtNoMem<'a>, reader: Buffer<'a>) -> Self {
         Self {
             fdt,
             reader,
