@@ -13,6 +13,12 @@ pub struct Fdt<'a> {
 }
 
 impl<'a> Fdt<'a> {
+    
+    /// Get the raw data as a byte slice.
+    pub fn as_slice(&self) -> &'a [u8] {
+        self.data
+    }
+
     /// Create a new FDT from raw data.
     pub fn from_bytes(data: &'a [u8]) -> FdtResult<'a, Self> {
         let header = FdtHeader::from_bytes(data)?;
