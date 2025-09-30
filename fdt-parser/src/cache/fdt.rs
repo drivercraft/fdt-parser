@@ -1,5 +1,3 @@
-use core::ops::Deref;
-
 use alloc::{
     collections::{btree_map::BTreeMap, btree_set::BTreeSet},
     string::String,
@@ -23,13 +21,17 @@ impl Fdt {
             raw: Align4Vec::new(data),
             phandle_cache: BTreeMap::new(),
             compatible_cache: BTreeMap::new(),
-            name_cache: BTreeMap::new(),
+            path_cache: BTreeMap::new(),
         };
         let mut node_vec = Vec::new();
         for node in b.all_nodes() {
             let node = node?;
+            for prop in node.properties() {
+                let _ = prop?;
+            }
+
             inner
-                .name_cache
+                .path_cache
                 .entry(node.name().into())
                 .or_insert_with(|| NodeMeta::new(&node));
 
@@ -74,7 +76,7 @@ impl Fdt {
     /// With caching
     pub fn all_nodes(&self) -> Vec<Node> {
         self.inner
-            .name_cache
+            .path_cache
             .values()
             .map(|meta| Node::new(self, meta))
             .collect()
@@ -98,7 +100,7 @@ impl Fdt {
 
     pub fn get_node_by_phandle(&self, phandle: Phandle) -> Option<Node> {
         let name = self.inner.phandle_cache.get(&phandle)?;
-        let meta = self.inner.name_cache.get(name)?;
+        let meta = self.inner.path_cache.get(name)?;
         Some(Node::new(self, meta))
     }
 
@@ -113,7 +115,7 @@ impl Fdt {
         }
         let mut out = Vec::new();
         for name in names {
-            if let Some(meta) = self.inner.name_cache.get(name) {
+            if let Some(meta) = self.inner.path_cache.get(name) {
                 out.push(Node::new(self, meta));
             }
         }
@@ -135,7 +137,7 @@ struct Inner {
     phandle_cache: BTreeMap<Phandle, String>,
     /// compatible -> set(name)
     compatible_cache: BTreeMap<String, BTreeSet<String>>,
-    name_cache: BTreeMap<String, NodeMeta>,
+    path_cache: BTreeMap<String, NodeMeta>,
 }
 
 unsafe impl Send for Inner {}

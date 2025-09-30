@@ -99,7 +99,7 @@ mod test {
 
     fn test_node<'a>() -> Option<Node> {
         let raw = fdt_rpi_4b();
-        let mut fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         fdt.all_nodes().into_iter().next()
     }
 
@@ -141,7 +141,7 @@ mod test {
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         for node in fdt.all_nodes() {
             println!("{}:", node.name());
-            for prop in node.properties().unwrap() {
+            for prop in node.properties() {
                 println!("  {:?}", prop);
             }
         }

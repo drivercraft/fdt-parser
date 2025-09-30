@@ -1,7 +1,9 @@
 use core::{fmt::Debug, ops::Deref};
 
 use super::Fdt;
-use crate::{base, data::Raw, property::PropIter, FdtError, Phandle, Property};
+use crate::{
+    base, data::Raw, property::PropIter, FdtError, FdtRangeSilce, FdtReg, Phandle, Property,
+};
 
 mod chosen;
 
@@ -62,30 +64,29 @@ impl NodeBase {
             .and_then(|p| p.parent_name.as_deref())
     }
 
-    pub fn properties<'a>(&'a self) -> Result<Vec<Property<'a>>, FdtError> {
-        let reader = self.raw().buffer();
-        PropIter::new(self.fdt.fdt_base(), reader).collect()
+    pub fn parent(&self) -> Option<Node> {
+        let name = self.parent_name()?;
+        self.fdt.find_nodes(name).pop()
     }
 
-    pub fn find_property<'a>(
-        &'a self,
-        name: impl AsRef<str>,
-    ) -> Result<Option<Property<'a>>, FdtError> {
-        for prop in self.properties()? {
-            if prop.name == name.as_ref() {
-                return Ok(Some(prop));
-            }
-        }
-        Ok(None)
+    pub fn properties<'a>(&'a self) -> Vec<Property<'a>> {
+        let reader = self.raw().buffer();
+        PropIter::new(self.fdt.fdt_base(), reader)
+            .flatten()
+            .collect()
+    }
+
+    pub fn find_property<'a>(&'a self, name: impl AsRef<str>) -> Option<Property<'a>> {
+        self.properties()
+            .into_iter()
+            .find(|prop| prop.name == name.as_ref())
     }
 
     /// Get compatible strings for this node (placeholder implementation)
     pub fn compatibles(&self) -> Vec<String> {
-        let mut out = Vec::new();
-        if let Ok(Some(p)) = self.find_property("compatible") {
-            out = p.str_list().map(|s| s.into()).collect();
-        }
-        out
+        self.find_property("compatible")
+            .map(|p| p.str_list().map(|s| s.into()).collect())
+            .unwrap_or_default()
     }
 }
 

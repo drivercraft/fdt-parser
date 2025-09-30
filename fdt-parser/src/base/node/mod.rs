@@ -150,7 +150,7 @@ impl<'a> NodeBase<'a> {
             .ok_or(FdtError::PropertyNotFound("#size-cells"))?
             .u32()? as u8;
 
-        let ranges = parent.node_ranges(pp_address_cell)?;
+        let ranges = parent.node_ranges(pp_address_cell).transpose()?;
 
         Ok(Some(RegIter {
             size_cell,
@@ -199,21 +199,32 @@ impl<'a> NodeBase<'a> {
     pub(crate) fn node_ranges(
         &self,
         address_cell_parent: Option<u8>,
-    ) -> Result<Option<FdtRangeSilce<'a>>, FdtError> {
-        let prop = none_ok!(self.find_property("ranges")?);
+    ) -> Option<Result<FdtRangeSilce<'a>, FdtError>> {
+        macro_rules! bail {
+            ($e:expr) => {
+                match $e {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                }
+            };
+        }
 
-        let address_cell = self
-            .find_property("#address-cells")?
-            .ok_or(FdtError::PropertyNotFound("#address-cells"))?
-            .u32()? as u8;
-        let size_cell = self
-            .find_property("#size-cells")?
-            .ok_or(FdtError::PropertyNotFound("#size-cells"))?
-            .u32()? as u8;
-        let address_cell_parent = address_cell_parent
-            .ok_or(FdtError::PropertyNotFound("parent.parent.#address-cells"))?;
+        let prop = bail!(self.find_property("ranges").transpose()?);
 
-        Ok(Some(FdtRangeSilce::new(
+        let mut address_cell = 2;
+        let address_cell_parent = address_cell_parent.unwrap_or(2);
+        let mut size_cell = 1;
+
+        if let Some(v) = bail!(self.find_property("#address-cells")) {
+            let u = bail!(v.u32()) as u8;
+            address_cell = u;
+        }
+        if let Some(v) = bail!(self.find_property("#size-cells")) {
+            let u = bail!(v.u32()) as u8;
+            size_cell = u;
+        }
+
+        Some(Ok(FdtRangeSilce::new(
             address_cell,
             address_cell_parent,
             size_cell,
@@ -315,10 +326,10 @@ impl core::fmt::Debug for NodeBase<'_> {
 }
 
 pub struct RegIter<'a> {
-    size_cell: u8,
-    address_cell: u8,
-    buff: Buffer<'a>,
-    ranges: Option<FdtRangeSilce<'a>>,
+    pub(crate) size_cell: u8,
+    pub(crate) address_cell: u8,
+    pub(crate) buff: Buffer<'a>,
+    pub(crate) ranges: Option<FdtRangeSilce<'a>>,
 }
 impl Iterator for RegIter<'_> {
     type Item = FdtReg;
