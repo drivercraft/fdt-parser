@@ -1,20 +1,20 @@
 use core::iter;
 
+use super::node::*;
 use crate::{
     data::{Buffer, Raw},
-    node::NodeBase,
-    Chosen, FdtError, Header, Memory, MemoryRegion, Node, Phandle, Token,
+    FdtError, Header, MemoryRegion, Phandle, Token,
 };
 
 #[derive(Clone)]
-pub struct FdtNoMem<'a> {
+pub struct Fdt<'a> {
     header: Header,
     pub(crate) raw: Raw<'a>,
 }
 
-impl<'a> FdtNoMem<'a> {
+impl<'a> Fdt<'a> {
     /// Create a new `Fdt` from byte slice.
-    pub fn from_bytes(data: &'a [u8]) -> Result<FdtNoMem<'a>, FdtError> {
+    pub fn from_bytes(data: &'a [u8]) -> Result<Fdt<'a>, FdtError> {
         let header = Header::from_bytes(data)?;
         if data.len() < header.totalsize as usize {
             return Err(FdtError::BufferTooSmall {
@@ -22,7 +22,7 @@ impl<'a> FdtNoMem<'a> {
             });
         }
         let buffer = Raw::new(data);
-        Ok(FdtNoMem {
+        Ok(Fdt {
             header,
             raw: buffer,
         })
@@ -35,12 +35,16 @@ impl<'a> FdtNoMem<'a> {
     /// The caller must ensure that the pointer is valid and points to a
     /// memory region of at least `size` bytes that contains a valid device tree
     /// blob.
-    pub unsafe fn from_ptr(ptr: *mut u8) -> Result<FdtNoMem<'a>, FdtError> {
+    pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Fdt<'a>, FdtError> {
         let header = unsafe { Header::from_ptr(ptr)? };
 
         let raw = Raw::new(core::slice::from_raw_parts(ptr, header.totalsize as _));
 
-        Ok(FdtNoMem { header, raw })
+        Ok(Fdt { header, raw })
+    }
+
+    pub fn as_slice(&self) -> &'a [u8] {
+        self.raw.value()
     }
 
     /// Get a reference to the FDT header.
@@ -235,7 +239,7 @@ impl<'a> FdtNoMem<'a> {
 
 /// Iterator for reserved memory regions (child nodes of reserved-memory)
 pub struct ReservedMemoryRegionsIter<'a> {
-    child_iter: Option<crate::node::NodeChildIter<'a>>,
+    child_iter: Option<NodeChildIter<'a>>,
 }
 
 impl<'a> ReservedMemoryRegionsIter<'a> {
@@ -298,7 +302,7 @@ impl<'a> Iterator for ReservedMemoryRegionsIter<'a> {
 
 pub struct NodeIter<'a> {
     buffer: Buffer<'a>,
-    fdt: FdtNoMem<'a>,
+    fdt: Fdt<'a>,
     level: isize,
     parent: Option<NodeBase<'a>>,
     node: Option<NodeBase<'a>>,

@@ -1,9 +1,10 @@
 use core::fmt::Debug;
 
-use crate::{data::Buffer, fdt_no_mem::FdtNoMem, FdtError, Node, NodeBase, Phandle};
+use super::{Fdt, Node, NodeBase};
+use crate::{data::Buffer, FdtError, Phandle};
 
 pub struct ClocksIter<'a> {
-    pub fdt: FdtNoMem<'a>,
+    pub fdt: Fdt<'a>,
     pub id_list: Option<Buffer<'a>>,
     pub name_list: Option<Buffer<'a>>,
     has_error: bool,

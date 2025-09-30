@@ -13,20 +13,18 @@ macro_rules! none_ok {
 
 mod data;
 mod define;
-mod fdt_no_mem;
 mod header;
-mod node;
 mod property;
-mod root;
+
+pub mod base;
+pub mod cache;
 
 use core::ffi::FromBytesUntilNulError;
 
+pub use cache::*;
 pub use define::*;
-pub use fdt_no_mem::FdtNoMem;
 pub use header::Header;
-pub use node::*;
 pub use property::Property;
-pub use root::*;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum FdtError {

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu, fdt_reserve, fdt_rpi_4b};
-    use fdt_parser::*;
+    use fdt_parser::base::*;
 
     #[test]
     fn test_new() {
@@ -17,7 +17,7 @@ mod test {
         // Test with custom DTB that has memory reservations
         let raw = fdt_reserve();
         let ptr = raw.as_ptr() as *mut u8;
-        let fdt = unsafe { FdtNoMem::from_ptr(ptr).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
         // Get memory reservation blocks
         let rsv_result = fdt.memory_reservaion_blocks();
@@ -83,7 +83,7 @@ mod test {
 
         for (name, raw) in test_cases {
             let ptr = raw.as_ptr() as *mut u8;
-            let fdt = unsafe { FdtNoMem::from_ptr(ptr).unwrap() };
+            let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
             let rsv_result = fdt.memory_reservaion_blocks();
 
@@ -99,7 +99,7 @@ mod test {
 
     fn test_node<'a>() -> Option<Node<'a>> {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         fdt.all_nodes().next().and_then(|n| n.ok())
     }
 
@@ -118,7 +118,7 @@ mod test {
             .filter_level(log::LevelFilter::Debug)
             .init();
         let raw = fdt_reserve();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         for node in fdt.all_nodes().flatten() {
             println!(
                 "{}{} l{} parent={:?}",
@@ -138,7 +138,7 @@ mod test {
     #[test]
     fn test_property() {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         for node in fdt.all_nodes().flatten() {
             println!("{}:", node.name());
             for prop in node.properties().flatten() {
@@ -150,7 +150,7 @@ mod test {
     #[test]
     fn test_str_list() {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         let uart = fdt
             .find_nodes("/soc/serial@7e201000")
             .next()
@@ -172,7 +172,7 @@ mod test {
     #[test]
     fn test_find_nodes() {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
 
         let uart = fdt.find_nodes("/soc/serial");
 
@@ -194,7 +194,7 @@ mod test {
     #[test]
     fn test_find_node2() {
         let raw = fdt_rpi_4b();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let node = fdt
             .find_nodes("/soc/serial@7e215040")
             .next()
@@ -206,14 +206,14 @@ mod test {
     #[test]
     fn test_find_aliases() {
         let raw = fdt_rpi_4b();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let path = fdt.find_aliase("serial0").unwrap();
         assert_eq!(path, "/soc/serial@7e215040");
     }
     #[test]
     fn test_find_node_aliases() {
         let raw = fdt_rpi_4b();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let node = fdt.find_nodes("serial0").next().unwrap().unwrap();
         assert_eq!(node.name(), "serial@7e215040");
     }
@@ -221,7 +221,7 @@ mod test {
     #[test]
     fn test_chosen() {
         let raw = fdt_rpi_4b();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let chosen = fdt.chosen().unwrap().unwrap();
         let bootargs = chosen.bootargs().unwrap().unwrap();
         assert_eq!(
@@ -237,7 +237,7 @@ mod test {
     #[test]
     fn test_reg() {
         let raw = fdt_rpi_4b();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
         let node = fdt
             .find_nodes("/soc/serial@7e215040")
@@ -270,7 +270,7 @@ mod test {
     #[test]
     fn test_memory() {
         let raw = fdt_qemu();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
         let node = fdt.memory();
 
@@ -291,7 +291,7 @@ mod test {
     #[test]
     fn test_reserved_memory() {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         let ls = fdt
             .reserved_memory_regions()
             .unwrap()
@@ -313,7 +313,7 @@ mod test {
     #[test]
     fn test_debugcon() {
         let raw = fdt_qemu();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let node = fdt.chosen().unwrap().unwrap().debugcon().unwrap().unwrap();
         println!("{:?}", node.name());
     }
@@ -321,7 +321,7 @@ mod test {
     #[test]
     fn test_debugcon2() {
         let raw = fdt_3568();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let node = fdt.chosen().unwrap().unwrap().debugcon().unwrap().unwrap();
         println!("{:?}", node.name());
     }

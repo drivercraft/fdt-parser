@@ -7,7 +7,7 @@ mod test {
     fn test_new() {
         let raw = fdt_qemu();
         let ptr = raw.as_ptr() as *mut u8;
-        let fdt: Fdt<'static> = unsafe { Fdt::from_ptr(ptr).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
         println!("ver: {:#?}", fdt.header().version);
     }
@@ -17,12 +17,12 @@ mod test {
         // Test with custom DTB that has memory reservations
         let raw = fdt_reserve();
         let ptr = raw.as_ptr() as *mut u8;
-        let fdt = unsafe { FdtNoMem::from_ptr(ptr).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
         // Get memory reservation blocks
         let rsv_result = fdt.memory_reservaion_blocks();
 
-        let entries: Vec<_> = rsv_result.collect();
+        let entries = rsv_result;
 
         // Should have exactly 3 reservation blocks as defined in our DTS
         assert_eq!(
@@ -52,8 +52,8 @@ mod test {
         }
 
         // Test iterator behavior - iterate twice to ensure it works correctly
-        let rsv1: Vec<_> = fdt.memory_reservaion_blocks().collect();
-        let rsv2: Vec<_> = fdt.memory_reservaion_blocks().collect();
+        let rsv1: Vec<_> = fdt.memory_reservaion_blocks();
+        let rsv2: Vec<_> = fdt.memory_reservaion_blocks();
         assert_eq!(
             rsv1.len(),
             rsv2.len(),
@@ -83,11 +83,11 @@ mod test {
 
         for (name, raw) in test_cases {
             let ptr = raw.as_ptr() as *mut u8;
-            let fdt = unsafe { FdtNoMem::from_ptr(ptr).unwrap() };
+            let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
             let rsv_result = fdt.memory_reservaion_blocks();
 
-            let entries: Vec<_> = rsv_result.collect();
+            let entries = rsv_result;
             assert_eq!(
                 entries.len(),
                 0,
@@ -97,10 +97,10 @@ mod test {
         }
     }
 
-    fn test_node<'a>() -> Option<Node<'a>> {
+    fn test_node<'a>() -> Option<Node> {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
-        fdt.all_nodes().next().and_then(|n| n.ok())
+        let mut fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        fdt.all_nodes().into_iter().next()
     }
 
     #[test]
@@ -118,11 +118,11 @@ mod test {
             .filter_level(log::LevelFilter::Debug)
             .init();
         let raw = fdt_reserve();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
-        for node in fdt.all_nodes().flatten() {
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        for node in fdt.all_nodes() {
             println!(
                 "{}{} l{} parent={:?}",
-                match node.level {
+                match node.level() {
                     0 => "",
                     1 => "  ",
                     2 => "    ",
@@ -138,10 +138,10 @@ mod test {
     #[test]
     fn test_property() {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
-        for node in fdt.all_nodes().flatten() {
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        for node in fdt.all_nodes() {
             println!("{}:", node.name());
-            for prop in node.properties().flatten() {
+            for prop in node.properties().unwrap() {
                 println!("  {:?}", prop);
             }
         }
@@ -150,18 +150,9 @@ mod test {
     #[test]
     fn test_str_list() {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
-        let uart = fdt
-            .find_nodes("/soc/serial@7e201000")
-            .next()
-            .unwrap()
-            .unwrap();
-        let caps = uart
-            .find_property("compatible")
-            .unwrap()
-            .unwrap()
-            .str_list()
-            .collect::<Vec<_>>();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+        let uart = fdt.find_nodes("/soc/serial@7e201000")[0].clone();
+        let caps = uart.compatibles();
 
         let want = ["arm,pl011", "arm,primecell"];
 
@@ -172,7 +163,7 @@ mod test {
     #[test]
     fn test_find_nodes() {
         let raw = fdt_rpi_4b();
-        let fdt = unsafe { FdtNoMem::from_ptr(raw.ptr()).unwrap() };
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
 
         let uart = fdt.find_nodes("/soc/serial");
 
@@ -185,54 +176,33 @@ mod test {
             "serial@7e201a00",
         ];
 
-        for (act, want) in uart.zip(want.iter()) {
-            let act = act.unwrap();
-            assert_eq!(act.name(), *want);
+        for (act, &want) in uart.iter().zip(want.iter()) {
+            assert_eq!(act.name(), want);
         }
     }
 
     #[test]
     fn test_find_node2() {
         let raw = fdt_rpi_4b();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
-        let node = fdt
-            .find_nodes("/soc/serial@7e215040")
-            .next()
-            .unwrap()
-            .unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt.find_nodes("/soc/serial@7e215040")[0].clone();
         assert_eq!(node.name(), "serial@7e215040");
     }
 
     #[test]
     fn test_find_aliases() {
         let raw = fdt_rpi_4b();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let path = fdt.find_aliase("serial0").unwrap();
         assert_eq!(path, "/soc/serial@7e215040");
     }
     #[test]
     fn test_find_node_aliases() {
         let raw = fdt_rpi_4b();
-        let fdt = FdtNoMem::from_bytes(&raw).unwrap();
-        let node = fdt.find_nodes("serial0").next().unwrap().unwrap();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt.find_nodes("serial0")[0].clone();
         assert_eq!(node.name(), "serial@7e215040");
     }
-
-    // #[test]
-    // fn test_chosen() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
-    //     let chosen = fdt.chosen().unwrap().unwrap();
-    //     let bootargs = chosen.bootargs().unwrap().unwrap();
-    //     assert_eq!(
-    //         bootargs,
-    //         "coherent_pool=1M 8250.nr_uarts=1 snd_bcm2835.enable_headphones=0"
-    //     );
-
-    //     let stdout = chosen.stdout().unwrap().unwrap();
-    //     assert_eq!(stdout.params, Some("115200n8"));
-    //     assert_eq!(stdout.name(), "serial@7e215040");
-    // }
 
     // #[test]
     // fn test_reg() {
@@ -290,11 +260,9 @@ mod test {
     #[test]
     fn test_find_compatible() {
         let raw = fdt_rpi_4b();
-        let mut fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-        fdt.all_nodes().unwrap();
-        let ls = fdt
-            .find_compatible(&["arm,pl011", "arm,primecell"])
-            .unwrap();
+        let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
+
+        let ls = fdt.find_compatible(&["arm,pl011", "arm,primecell"]);
 
         assert_eq!(ls[0].name(), "serial@7e201000");
     }
@@ -303,13 +271,13 @@ mod test {
     fn test_compatibles() {
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
-        let mut ls = fdt.find_nodes("/soc/serial@7e201000").unwrap();
+        let mut ls = fdt.find_nodes("/soc/serial@7e201000");
         let uart = ls.pop().unwrap();
-        let caps = uart.compatibles().unwrap().unwrap();
+        let caps = uart.compatibles();
 
         let want = ["arm,pl011", "arm,primecell"];
 
-        for (act, want) in caps.zip(want.iter()) {
+        for (act, want) in caps.iter().zip(want.iter()) {
             assert_eq!(act, *want);
         }
     }

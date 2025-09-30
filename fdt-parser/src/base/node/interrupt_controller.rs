@@ -1,6 +1,7 @@
 use core::ops::Deref;
 
-use crate::{FdtError, NodeBase};
+use super::NodeBase;
+use crate::FdtError;
 
 #[derive(Clone)]
 pub struct InterruptController<'a> {

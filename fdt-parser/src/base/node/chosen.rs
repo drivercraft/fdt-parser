@@ -1,6 +1,9 @@
 use core::{fmt::Debug, ops::Deref};
 
-use crate::{FdtError, Node, NodeBase};
+use crate::{
+    base::{Node, NodeBase},
+    FdtError,
+};
 
 #[derive(Clone)]
 pub struct Chosen<'a> {

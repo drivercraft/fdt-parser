@@ -1,8 +1,9 @@
 use core::ops::Deref;
 
+use super::Fdt;
 use crate::{
+    base::NodeIter,
     data::{Buffer, Raw, U32Iter2D},
-    fdt_no_mem::FdtNoMem,
     property::PropIter,
     FdtError, FdtRangeSilce, FdtReg, Phandle, Property, Status,
 };
@@ -20,7 +21,7 @@ pub use memory::*;
 #[derive(Clone)]
 pub struct NodeBase<'a> {
     name: &'a str,
-    pub(crate) fdt: FdtNoMem<'a>,
+    pub(crate) fdt: Fdt<'a>,
     pub level: usize,
     pub(crate) raw: Raw<'a>,
     pub(crate) parent: Option<ParentInfo<'a>>,
@@ -29,18 +30,18 @@ pub struct NodeBase<'a> {
 
 #[derive(Clone)]
 pub(crate) struct ParentInfo<'a> {
-    name: &'a str,
-    level: usize,
-    raw: Raw<'a>,
-    parent_address_cell: Option<u8>,
-    parent_size_cell: Option<u8>,
-    parent_name: Option<&'a str>,
+    pub name: &'a str,
+    pub level: usize,
+    pub raw: Raw<'a>,
+    pub parent_address_cell: Option<u8>,
+    pub parent_size_cell: Option<u8>,
+    pub parent_name: Option<&'a str>,
 }
 
 impl<'a> NodeBase<'a> {
     pub(crate) fn new(
         name: &'a str,
-        fdt: FdtNoMem<'a>,
+        fdt: Fdt<'a>,
         raw: Raw<'a>,
         level: usize,
         parent: Option<&NodeBase<'a>>,
@@ -397,9 +398,9 @@ impl<'a> Deref for Node<'a> {
 }
 
 pub struct NodeChildIter<'a> {
-    fdt: FdtNoMem<'a>,
+    fdt: Fdt<'a>,
     parent: NodeBase<'a>,
-    all_nodes: Option<crate::fdt_no_mem::NodeIter<'a>>,
+    all_nodes: Option<NodeIter<'a>>,
     target_level: usize,
     found_parent: bool,
 }
@@ -452,7 +453,7 @@ impl<'a> Iterator for NodeChildIter<'a> {
 
 impl<'a> NodeChildIter<'a> {
     /// 创建一个新的子节点迭代器
-    pub fn new(fdt: FdtNoMem<'a>, parent: NodeBase<'a>) -> Self {
+    pub fn new(fdt: Fdt<'a>, parent: NodeBase<'a>) -> Self {
         NodeChildIter {
             fdt,
             parent,
@@ -501,18 +502,17 @@ impl<'a> NodeChildIter<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::FdtNoMem;
+    use super::Fdt;
 
     #[test]
     fn test_node_child_iter_basic() {
-        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
-        let fdt = FdtNoMem::from_bytes(dtb_data).unwrap();
+        let dtb_data = include_bytes!("../../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
+        let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
         // 查找根节点
         let root_node = fdt
             .all_nodes()
-            .find(|node| node.as_ref().map_or(false, |n| n.name() == "/"))
+            .find(|node| node.as_ref().is_ok_and(|n| n.name() == "/"))
             .unwrap()
             .unwrap();
 
@@ -536,13 +536,13 @@ mod tests {
 
     #[test]
     fn test_find_child_by_name() {
-        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
-        let fdt = FdtNoMem::from_bytes(dtb_data).unwrap();
+        let dtb_data = include_bytes!("../../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
+        let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
         // 查找根节点
         let root_node = fdt
             .all_nodes()
-            .find(|node| node.as_ref().map_or(false, |n| n.name() == "/"))
+            .find(|node| node.as_ref().is_ok_and(|n| n.name() == "/"))
             .unwrap()
             .unwrap();
 
@@ -562,13 +562,13 @@ mod tests {
 
     #[test]
     fn test_child_iter_empty() {
-        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
-        let fdt = FdtNoMem::from_bytes(dtb_data).unwrap();
+        let dtb_data = include_bytes!("../../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
+        let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
         // 查找一个叶子节点（没有子节点的节点）
         let leaf_node = fdt
             .all_nodes()
-            .find(|node| node.as_ref().map_or(false, |n| n.name() == "chosen"))
+            .find(|node| node.as_ref().is_ok_and(|n| n.name() == "chosen"))
             .unwrap()
             .unwrap();
 
@@ -581,16 +581,13 @@ mod tests {
 
     #[test]
     fn test_child_iter_multiple_levels() {
-        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
-        let fdt = FdtNoMem::from_bytes(dtb_data).unwrap();
+        let dtb_data = include_bytes!("../../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
+        let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
         // 查找 reserved-memory 节点，它应该有子节点
         let reserved_memory = fdt
             .all_nodes()
-            .find(|node| {
-                node.as_ref()
-                    .map_or(false, |n| n.name() == "reserved-memory")
-            })
+            .find(|node| node.as_ref().is_ok_and(|n| n.name() == "reserved-memory"))
             .unwrap()
             .unwrap();
 

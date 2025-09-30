@@ -1,6 +1,9 @@
 use core::{iter, ops::Deref};
 
-use crate::{node::RegIter, FdtError, MemoryRegion, NodeBase};
+use crate::{
+    base::{NodeBase, RegIter},
+    FdtError, MemoryRegion,
+};
 
 #[derive(Clone)]
 pub struct Memory<'a> {
