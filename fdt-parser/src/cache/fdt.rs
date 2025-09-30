@@ -1,6 +1,6 @@
 use alloc::{
     collections::{btree_map::BTreeMap, btree_set::BTreeSet},
-    string::String,
+    string::{String, ToString},
     sync::Arc,
     vec::Vec,
 };
@@ -21,19 +21,35 @@ impl Fdt {
             raw: Align4Vec::new(data),
             phandle_cache: BTreeMap::new(),
             compatible_cache: BTreeMap::new(),
+            all_nodes: Vec::new(),
             path_cache: BTreeMap::new(),
         };
         let mut node_vec = Vec::new();
+        let mut path_stack = Vec::new();
         for node in b.all_nodes() {
             let node = node?;
+            let node_name = node.name();
+            let level = node.level();
+
+            if level < path_stack.len() {
+                path_stack.truncate(level);
+            }
+            path_stack.push(node_name.trim_start_matches("/"));
+            let full_path = if path_stack.len() > 1 {
+                alloc::format!("/{}", path_stack[1..].join("/"))
+            } else {
+                "/".to_string()
+            };
             for prop in node.properties() {
                 let _ = prop?;
             }
 
             inner
+                .all_nodes
+                .push(NodeMeta::new(&node, full_path.clone()));
+            inner
                 .path_cache
-                .entry(node.name().into())
-                .or_insert_with(|| NodeMeta::new(&node));
+                .insert(full_path, inner.all_nodes.len() - 1);
 
             if let Some(phandle) = node.phandle()? {
                 inner
@@ -84,11 +100,22 @@ impl Fdt {
 
     /// if path start with '/' then search by path, else search by aliases
     pub fn find_nodes(&self, path: impl AsRef<str>) -> Vec<Node> {
-        let fdt = self.fdt_base();
+        let path = path.as_ref();
+        let path = if path.starts_with("/") {
+            path.to_string()
+        } else {
+            self.find_aliase(path).unwrap()
+        };
         let mut out = Vec::new();
-        for n in fdt.find_nodes(path.as_ref()).flatten() {
-            out.push(Node::new(self, &NodeMeta::new(&n)));
+        for node in self.all_nodes() {
+            if node.full_path().starts_with(path.as_str()) {
+                let right = node.full_path().trim_start_matches(&path);
+                if right.split("/").count() < 2 {
+                    out.push(node);
+                }
+            }
         }
+
         out
     }
 
@@ -137,7 +164,9 @@ struct Inner {
     phandle_cache: BTreeMap<Phandle, String>,
     /// compatible -> set(name)
     compatible_cache: BTreeMap<String, BTreeSet<String>>,
-    path_cache: BTreeMap<String, NodeMeta>,
+    /// same order as all_nodes()
+    all_nodes: Vec<NodeMeta>,
+    path_cache: BTreeMap<String, usize>,
 }
 
 unsafe impl Send for Inner {}

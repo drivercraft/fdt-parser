@@ -57,6 +57,10 @@ impl NodeBase {
         &self.meta.name
     }
 
+    pub fn full_path(&self) -> &str {
+        &self.meta.full_path
+    }
+
     pub fn parent_name(&self) -> Option<&str> {
         self.meta
             .parent
@@ -101,6 +105,7 @@ impl Debug for NodeBase {
 #[derive(Clone)]
 pub(super) struct NodeMeta {
     name: String,
+    full_path: String,
     pos: usize,
     level: usize,
     interrupt_parent: Option<Phandle>,
@@ -108,8 +113,9 @@ pub(super) struct NodeMeta {
 }
 
 impl NodeMeta {
-    pub fn new(node: &base::Node<'_>) -> Self {
+    pub fn new(node: &base::Node<'_>, full_path: String) -> Self {
         NodeMeta {
+            full_path,
             name: node.name().into(),
             pos: node.raw.pos(),
             level: node.level(),

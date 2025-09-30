@@ -128,7 +128,7 @@ mod test {
                     2 => "    ",
                     _ => "       ",
                 },
-                node.name(),
+                node.full_path(),
                 node.level(),
                 node.parent_name()
             );
