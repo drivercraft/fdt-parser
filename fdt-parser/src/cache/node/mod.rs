@@ -2,7 +2,7 @@ use core::{fmt::Debug, ops::Deref};
 
 use super::Fdt;
 use crate::{
-    base, data::Raw, property::PropIter, FdtError, FdtRangeSilce, FdtReg, Phandle, Property, Status,
+    base, data::Raw, property::PropIter, Phandle, Property, Status,
 };
 
 mod chosen;
