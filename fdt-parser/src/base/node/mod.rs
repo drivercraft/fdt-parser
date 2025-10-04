@@ -107,17 +107,17 @@ impl<'a> NodeBase<'a> {
     }
 
     /// Get compatible strings for this node (placeholder implementation)
-    pub fn compatibles(&self) -> Result<Option<impl Iterator<Item = &'a str> + 'a>, FdtError> {
+    pub fn compatibles(&self) -> Result<impl Iterator<Item = &'a str> + 'a, FdtError> {
         let prop = self.find_property("compatible")?;
-        Ok(prop.map(|p| p.str_list()))
+        Ok(prop.str_list())
     }
 
-    pub fn compatibles_flatten(&self) -> impl Iterator<Item = &'a str> + 'a {
-        self.compatibles().ok().flatten().into_iter().flatten()
+    pub fn compatibles_flatten(&self) -> Result<impl Iterator<Item = &'a str> + 'a, FdtError> {
+        self.compatibles()
     }
 
-    pub fn reg(&self) -> Result<Option<RegIter<'a>>, FdtError> {
-        let prop = none_ok!(self.find_property("reg")?);
+    pub fn reg(&self) -> Result<RegIter<'a>, FdtError> {
+        let prop = self.find_property("reg")?;
 
         // Get parent info from ParentInfo structure
         let parent_info = self
@@ -132,19 +132,16 @@ impl<'a> NodeBase<'a> {
         // Use parent's pre-calculated ranges for address translation
         let ranges = parent_info.ranges.clone();
 
-        Ok(Some(RegIter {
+        Ok(RegIter {
             size_cell,
             address_cell,
             buff: prop.data.buffer(),
             ranges,
-        }))
+        })
     }
 
     fn is_interrupt_controller(&self) -> bool {
-        let Ok(prop) = self.find_property("#interrupt-controller") else {
-            return false;
-        };
-        prop.is_some()
+        self.find_property("#interrupt-controller").is_ok()
     }
 
     /// 检查这个节点是否是根节点
@@ -166,39 +163,30 @@ impl<'a> NodeBase<'a> {
         PropIter::new(self.fdt.clone(), reader)
     }
 
-    pub fn find_property(&self, name: &str) -> Result<Option<Property<'a>>, FdtError> {
+    pub fn find_property(&self, name: &str) -> Result<Property<'a>, FdtError> {
         for prop in self.properties() {
             let prop = prop?;
             if prop.name.eq(name) {
-                return Ok(Some(prop));
+                return Ok(prop);
             }
         }
-        Ok(None)
+        Err(FdtError::NotFound)
     }
 
-    pub fn phandle(&self) -> Result<Option<Phandle>, FdtError> {
+    pub fn phandle(&self) -> Result<Phandle, FdtError> {
         let prop = self.find_property("phandle")?;
-        match prop {
-            Some(p) => Ok(Some(p.u32()?.into())),
-            None => Ok(None),
-        }
+        Ok(prop.u32()?.into())
     }
 
     /// Find [InterruptController] from current node or its parent
-    pub fn interrupt_parent(&self) -> Result<Option<InterruptController<'a>>, FdtError> {
+    pub fn interrupt_parent(&self) -> Result<InterruptController<'a>, FdtError> {
         // First try to get the interrupt parent phandle from the node itself
-        let phandle = match self.interrupt_parent {
-            Some(p) => p,
-            None => return Ok(None),
-        };
+        let phandle = self.interrupt_parent.ok_or(FdtError::NotFound)?;
 
         // Find the node with this phandle
         let node = self.fdt.get_node_by_phandle(phandle)?;
-        let Some(node) = node else {
-            return Ok(None);
-        };
         match node {
-            Node::InterruptController(ic) => Ok(Some(ic)),
+            Node::InterruptController(ic) => Ok(ic),
             _ => Err(FdtError::NodeNotFound("interrupt-parent")),
         }
     }
@@ -210,19 +198,18 @@ impl<'a> NodeBase<'a> {
 
     pub fn interrupts(
         &self,
-    ) -> Result<Option<impl Iterator<Item = impl Iterator<Item = u32> + 'a> + 'a>, FdtError> {
-        let prop = none_ok!(self.find_property("interrupts")?);
+    ) -> Result<impl Iterator<Item = impl Iterator<Item = u32> + 'a> + 'a, FdtError> {
+        let prop = self.find_property("interrupts")?;
         let irq_parent = self.interrupt_parent()?;
-        let irq_parent = irq_parent.ok_or(FdtError::NodeNotFound("interrupt-parent"))?;
         let cell_size = irq_parent.interrupt_cells()?;
         let iter = U32Iter2D::new(&prop.data, cell_size);
 
-        Ok(Some(iter))
+        Ok(iter)
     }
 
-    pub fn clock_frequency(&self) -> Result<Option<u32>, FdtError> {
-        let prop = none_ok!(self.find_property("clock-frequency")?);
-        Ok(Some(prop.u32()?))
+    pub fn clock_frequency(&self) -> Result<u32, FdtError> {
+        let prop = self.find_property("clock-frequency")?;
+        Ok(prop.u32()?)
     }
 
     pub fn children(&self) -> NodeChildIter<'a> {
@@ -235,19 +222,19 @@ impl<'a> NodeBase<'a> {
         }
     }
 
-    pub fn status(&self) -> Result<Option<Status>, FdtError> {
-        let prop = none_ok!(self.find_property("status")?);
+    pub fn status(&self) -> Result<Status, FdtError> {
+        let prop = self.find_property("status")?;
         let s = prop.str()?;
 
         if s.contains("disabled") {
-            return Ok(Some(Status::Disabled));
+            return Ok(Status::Disabled);
         }
 
         if s.contains("okay") {
-            return Ok(Some(Status::Okay));
+            return Ok(Status::Okay);
         }
 
-        Ok(None)
+        Err(FdtError::NotFound)
     }
 }
 
@@ -425,35 +412,37 @@ impl<'a> NodeChildIter<'a> {
     }
 
     /// 查找具有特定名称的子节点
-    pub fn find_child_by_name(self, name: &str) -> Result<Option<Node<'a>>, FdtError> {
+    pub fn find_child_by_name(self, name: &str) -> Result<Node<'a>, FdtError> {
         for child_result in self {
             let child = child_result?;
             if child.name() == name {
-                return Ok(Some(child));
+                return Ok(child);
             }
         }
-        Ok(None)
+        Err(FdtError::NotFound)
     }
 
     /// 查找具有特定兼容性字符串的子节点
-    pub fn find_child_by_compatible(self, compatible: &str) -> Result<Option<Node<'a>>, FdtError> {
+    pub fn find_child_by_compatible(self, compatible: &str) -> Result<Node<'a>, FdtError> {
         for child_result in self {
             let child = child_result?;
-            if let Some(compatibles) = child.compatibles()? {
-                for comp in compatibles {
-                    if comp == compatible {
-                        return Ok(Some(child));
+            match child.compatibles() {
+                Ok(mut compatibles) => {
+                    if compatibles.any(|comp| comp == compatible) {
+                        return Ok(child);
                     }
                 }
+                Err(FdtError::NotFound) => {}
+                Err(e) => return Err(e),
             }
         }
-        Ok(None)
+        Err(FdtError::NotFound)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Fdt;
+    use super::{Fdt, FdtError};
 
     #[test]
     fn test_node_child_iter_basic() {
@@ -462,8 +451,8 @@ mod tests {
 
         // 查找根节点
         let root_node = fdt
-            .all_nodes()
-            .find(|node| node.as_ref().is_ok_and(|n| n.name() == "/"))
+            .find_nodes("/")
+            .next()
             .unwrap()
             .unwrap();
 
@@ -492,23 +481,25 @@ mod tests {
 
         // 查找根节点
         let root_node = fdt
-            .all_nodes()
-            .find(|node| node.as_ref().is_ok_and(|n| n.name() == "/"))
+            .find_nodes("/")
+            .next()
             .unwrap()
             .unwrap();
 
         // 测试通过名称查找子节点
-        let memory_node = root_node.children().find_child_by_name("memory@0").unwrap();
+        let memory_node = root_node
+            .children()
+            .find_child_by_name("memory@0")
+            .unwrap();
 
-        assert!(memory_node.is_some(), "应该找到 memory@0 节点");
-        assert_eq!(memory_node.unwrap().name(), "memory@0");
+        assert_eq!(memory_node.name(), "memory@0");
 
         // 测试查找不存在的节点
-        let nonexistent = root_node
+        let nonexistent_err = root_node
             .children()
             .find_child_by_name("nonexistent")
-            .unwrap();
-        assert!(nonexistent.is_none(), "不存在的节点应该返回 None");
+            .unwrap_err();
+        assert!(matches!(nonexistent_err, FdtError::NotFound));
     }
 
     #[test]
@@ -518,8 +509,8 @@ mod tests {
 
         // 查找一个叶子节点（没有子节点的节点）
         let leaf_node = fdt
-            .all_nodes()
-            .find(|node| node.as_ref().is_ok_and(|n| n.name() == "chosen"))
+            .find_nodes("/chosen")
+            .next()
             .unwrap()
             .unwrap();
 

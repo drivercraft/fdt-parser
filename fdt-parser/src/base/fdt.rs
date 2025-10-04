@@ -151,56 +151,56 @@ impl<'a> Fdt<'a> {
                     }
                 }
             };
-            let comp = match node.compatibles() {
-                Ok(c) => c,
+            match node.compatibles() {
+                Ok(mut comp) => {
+                    if comp.any(|c| with.iter().any(|w| w.eq(&c))) {
+                        return Some(Ok(node));
+                    }
+                }
+                Err(FdtError::NotFound) => {}
                 Err(e) => {
                     return {
                         has_err = true;
                         Some(Err(e))
                     }
                 }
-            };
-
-            if let Some(comp) = comp {
-                for c in comp {
-                    if with.iter().any(|w| w.eq(&c)) {
-                        return Some(Ok(node));
-                    }
-                }
             }
         })
     }
 
-    pub fn chosen(&self) -> Result<Option<Chosen<'a>>, FdtError> {
-        let node = none_ok!(self.find_nodes("/chosen").next())?;
+    pub fn chosen(&self) -> Result<Chosen<'a>, FdtError> {
+        let node = self
+            .find_nodes("/chosen")
+            .next()
+            .ok_or(FdtError::NotFound)??;
         let node = match node {
             Node::Chosen(c) => c,
             _ => return Err(FdtError::NodeNotFound("chosen")),
         };
-        Ok(Some(node))
+        Ok(node)
     }
 
-    pub fn get_node_by_phandle(&self, phandle: Phandle) -> Result<Option<Node<'a>>, FdtError> {
+    pub fn get_node_by_phandle(&self, phandle: Phandle) -> Result<Node<'a>, FdtError> {
         for node in self.all_nodes() {
             let node = node?;
-            let phandle2 = node.phandle()?;
-            if let Some(p) = phandle2 {
-                if p == phandle {
-                    return Ok(Some(node));
-                }
+            match node.phandle() {
+                Ok(p) if p == phandle => return Ok(node),
+                Ok(_) => {}
+                Err(FdtError::NotFound) => {}
+                Err(e) => return Err(e),
             }
         }
-        Ok(None)
+        Err(FdtError::NotFound)
     }
 
-    pub fn get_node_by_name(&'a self, name: &str) -> Result<Option<Node<'a>>, FdtError> {
+    pub fn get_node_by_name(&'a self, name: &str) -> Result<Node<'a>, FdtError> {
         for node in self.all_nodes() {
             let node = node?;
             if node.name() == name {
-                return Ok(Some(node));
+                return Ok(node);
             }
         }
-        Ok(None)
+        Err(FdtError::NotFound)
     }
 
     pub fn memory(&'a self) -> impl Iterator<Item = Result<Memory<'a>, FdtError>> + 'a {
@@ -213,15 +213,20 @@ impl<'a> Fdt<'a> {
     }
 
     /// Get the reserved-memory node
-    fn reserved_memory_node(&self) -> Result<Option<Node<'a>>, FdtError> {
-        self.find_nodes("/reserved-memory").next().transpose()
+    fn reserved_memory_node(&self) -> Result<Node<'a>, FdtError> {
+        let node = self
+            .find_nodes("/reserved-memory")
+            .next()
+            .ok_or(FdtError::NotFound)?;
+        node
     }
 
     /// Get all reserved-memory child nodes (memory regions)
     pub fn reserved_memory_regions(&self) -> Result<ReservedMemoryRegionsIter<'a>, FdtError> {
-        match self.reserved_memory_node()? {
-            Some(reserved_memory_node) => Ok(ReservedMemoryRegionsIter::new(reserved_memory_node)),
-            None => Ok(ReservedMemoryRegionsIter::empty()),
+        match self.reserved_memory_node() {
+            Ok(reserved_memory_node) => Ok(ReservedMemoryRegionsIter::new(reserved_memory_node)),
+            Err(FdtError::NotFound) => Ok(ReservedMemoryRegionsIter::empty()),
+            Err(e) => Err(e),
         }
     }
 }
@@ -245,14 +250,14 @@ impl<'a> ReservedMemoryRegionsIter<'a> {
     }
 
     /// Find a reserved memory region by name
-    pub fn find_by_name(self, name: &str) -> Result<Option<Node<'a>>, FdtError> {
+    pub fn find_by_name(self, name: &str) -> Result<Node<'a>, FdtError> {
         for region_result in self {
             let region = region_result?;
             if region.name() == name {
-                return Ok(Some(region));
+                return Ok(region);
             }
         }
-        Ok(None)
+        Err(FdtError::NotFound)
     }
 
     /// Find reserved memory regions by compatible string
@@ -264,13 +269,14 @@ impl<'a> ReservedMemoryRegionsIter<'a> {
 
         for region_result in self {
             let region = region_result?;
-            if let Some(compatibles) = region.compatibles()? {
-                for comp in compatibles {
-                    if comp == compatible {
+            match region.compatibles() {
+                Ok(mut compatibles) => {
+                    if compatibles.any(|comp| comp == compatible) {
                         matching_regions.push(region);
-                        break;
                     }
                 }
+                Err(FdtError::NotFound) => {}
+                Err(e) => return Err(e),
             }
         }
 

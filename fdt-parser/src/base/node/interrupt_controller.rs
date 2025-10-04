@@ -18,10 +18,7 @@ impl<'a> InterruptController<'a> {
     }
 
     pub fn interrupt_cells(&self) -> Result<u8, FdtError> {
-        let prop = self
-            .node
-            .find_property("#interrupt-cells")?
-            .ok_or(FdtError::PropertyNotFound("#interrupt-cells"))?;
+        let prop = self.node.find_property("#interrupt-cells")?;
         let val = prop.u32()?;
         Ok(val as u8)
     }

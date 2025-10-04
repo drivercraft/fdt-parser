@@ -1,9 +1,6 @@
 use core::{iter, ops::Deref};
 
-use crate::{
-    base::{NodeBase, RegIter},
-    FdtError, MemoryRegion,
-};
+use crate::{base::NodeBase, FdtError, MemoryRegion};
 
 #[derive(Clone)]
 pub struct Memory<'a> {
@@ -21,32 +18,23 @@ impl<'a> Memory<'a> {
     pub fn regions(&self) -> impl Iterator<Item = Result<MemoryRegion, FdtError>> + 'a {
         let mut reg = self.node.reg();
         let mut has_error = false;
-        let mut iter: Option<RegIter<'a>> = None;
         iter::from_fn(move || {
             if has_error {
                 return None;
             }
-            let it = match iter.as_mut() {
-                Some(i) => i,
-                None => {
-                    iter = match &mut reg {
-                        Ok(r) => {
-                            let r = r.take()?;
-                            Some(r)
-                        }
-                        Err(e) => {
-                            has_error = true;
-                            return Some(Err(e.clone()));
-                        }
-                    };
-                    iter.as_mut()?
+            match &mut reg {
+                Ok(iter) => {
+                    let one = iter.next()?;
+                    Some(Ok(MemoryRegion {
+                        address: one.address as usize as _,
+                        size: one.size.unwrap_or_default(),
+                    }))
                 }
-            };
-            let one = it.next()?;
-            Some(Ok(MemoryRegion {
-                address: one.address as usize as _,
-                size: one.size.unwrap_or_default(),
-            }))
+                Err(e) => {
+                    has_error = true;
+                    Some(Err(e.clone()))
+                }
+            }
         })
     }
 

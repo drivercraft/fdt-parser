@@ -178,12 +178,22 @@ impl Inner {
             inner.all_nodes.push(dnode.clone());
             inner.path_cache.insert(full_path, i);
 
-            if let Some(phandle) = node.phandle()? {
-                inner.phandle_cache.entry(phandle).or_insert_with(|| i);
+            match node.phandle() {
+                Ok(phandle) => {
+                    inner.phandle_cache.entry(phandle).or_insert(i);
+                }
+                Err(FdtError::NotFound) => {}
+                Err(e) => return Err(e),
             }
-            for compatible in node.compatibles_flatten() {
-                let map = inner.compatible_cache.entry(compatible.into()).or_default();
-                map.insert(i);
+            match node.compatibles_flatten() {
+                Ok(iter) => {
+                    for compatible in iter {
+                        let map = inner.compatible_cache.entry(compatible.into()).or_default();
+                        map.insert(i);
+                    }
+                }
+                Err(FdtError::NotFound) => {}
+                Err(e) => return Err(e),
             }
             node_vec.push(node);
         }

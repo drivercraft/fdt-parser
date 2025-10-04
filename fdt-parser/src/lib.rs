@@ -5,7 +5,13 @@ extern crate alloc;
 macro_rules! none_ok {
     ($e:expr) => {{
         let Some(v) = $e else {
-            return Ok(None);
+            return Err(crate::FdtError::NotFound);
+        };
+        v
+    }};
+    ($e:expr, $err:expr) => {{
+        let Some(v) = $e else {
+            return Err($err);
         };
         v
     }};

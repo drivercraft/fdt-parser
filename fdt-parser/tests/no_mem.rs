@@ -159,7 +159,6 @@ mod test {
         let caps = uart
             .find_property("compatible")
             .unwrap()
-            .unwrap()
             .str_list()
             .collect::<Vec<_>>();
 
@@ -222,14 +221,14 @@ mod test {
     fn test_chosen() {
         let raw = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw).unwrap();
-        let chosen = fdt.chosen().unwrap().unwrap();
-        let bootargs = chosen.bootargs().unwrap().unwrap();
+    let chosen = fdt.chosen().unwrap();
+    let bootargs = chosen.bootargs().unwrap();
         assert_eq!(
             bootargs,
             "coherent_pool=1M 8250.nr_uarts=1 snd_bcm2835.enable_headphones=0"
         );
 
-        let stdout = chosen.stdout().unwrap().unwrap();
+    let stdout = chosen.stdout().unwrap();
         assert_eq!(stdout.params, Some("115200n8"));
         assert_eq!(stdout.name(), "serial@7e215040");
     }
@@ -245,7 +244,7 @@ mod test {
             .unwrap()
             .unwrap();
 
-        let reg = node.reg().unwrap().unwrap().next().unwrap();
+    let reg = node.reg().unwrap().next().unwrap();
 
         println!("reg: {:?}", reg);
 
@@ -277,7 +276,7 @@ mod test {
         for node in node {
             let node = node.unwrap();
             println!("memory node: {:?}", node.name());
-            for reg in node.reg().unwrap().unwrap() {
+            for reg in node.reg().unwrap() {
                 println!("  reg: {:?}", reg);
             }
 
@@ -314,20 +313,17 @@ mod test {
     fn test_debugcon() {
         let raw = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw).unwrap();
-        let debugcon = fdt.chosen().unwrap().unwrap().debugcon().unwrap();
+    let debugcon = fdt.chosen().unwrap().debugcon().unwrap();
 
         match debugcon {
-            Some(fdt_parser::base::DebugCon::Node(node)) => {
+            fdt_parser::base::DebugCon::Node(node) => {
                 println!("Found debugcon node: {:?}", node.name());
             }
-            Some(fdt_parser::base::DebugCon::EarlyConInfo { name, mmio, params }) => {
+            fdt_parser::base::DebugCon::EarlyConInfo { name, mmio, params } => {
                 println!(
                     "Found earlycon info: name={}, mmio={:#x}, params={:?}",
                     name, mmio, params
                 );
-            }
-            None => {
-                println!("No debugcon found");
             }
         }
     }
@@ -336,20 +332,17 @@ mod test {
     fn test_debugcon2() {
         let raw = fdt_3568();
         let fdt = Fdt::from_bytes(&raw).unwrap();
-        let debugcon = fdt.chosen().unwrap().unwrap().debugcon().unwrap();
+    let debugcon = fdt.chosen().unwrap().debugcon().unwrap();
 
         match debugcon {
-            Some(fdt_parser::base::DebugCon::Node(node)) => {
+            fdt_parser::base::DebugCon::Node(node) => {
                 println!("Found debugcon node: {:?}", node.name());
             }
-            Some(fdt_parser::base::DebugCon::EarlyConInfo { name, mmio, params }) => {
+            fdt_parser::base::DebugCon::EarlyConInfo { name, mmio, params } => {
                 println!(
                     "Found earlycon info: name={}, mmio={:#x}, params={:?}",
                     name, mmio, params
                 );
-            }
-            None => {
-                println!("No debugcon found");
             }
         }
     }

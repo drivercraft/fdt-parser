@@ -25,24 +25,21 @@ impl<'a> Chosen<'a> {
     }
 
     /// Contains the bootargs, if they exist
-    pub fn bootargs(&self) -> Result<Option<&'a str>, FdtError> {
+    pub fn bootargs(&self) -> Result<&'a str, FdtError> {
         let prop = self.node.find_property("bootargs")?;
-        match prop {
-            Some(p) => Ok(Some(p.str()?)),
-            None => Ok(None),
-        }
+        prop.str()
     }
 
     /// Searches for the node representing `stdout`, if the property exists,
     /// attempting to resolve aliases if the node name doesn't exist as-is
-    pub fn stdout(&self) -> Result<Option<Stdout<'a>>, FdtError> {
-        let prop = none_ok!(self.node.find_property("stdout-path")?);
+    pub fn stdout(&self) -> Result<Stdout<'a>, FdtError> {
+        let prop = self.node.find_property("stdout-path")?;
 
         let path = prop.str()?;
 
         let mut sp = path.split(':');
 
-        let name = none_ok!(sp.next());
+        let name = none_ok!(sp.next(), FdtError::NodeNotFound("path"));
 
         let params = sp.next();
         let node = self
@@ -52,45 +49,47 @@ impl<'a> Chosen<'a> {
             .next()
             .ok_or(FdtError::NodeNotFound("path"))??;
 
-        Ok(Some(Stdout {
+        Ok(Stdout {
             params,
             node: node.deref().clone(),
-        }))
+        })
     }
 
-    pub fn debugcon(&self) -> Result<Option<DebugCon<'a>>, FdtError> {
-        if let Some(node) = self.stdout()? {
-            Ok(Some(DebugCon::Node(node.node)))
-        } else {
-            self.fdt_bootargs_find_debugcon_info()
+    pub fn debugcon(&self) -> Result<DebugCon<'a>, FdtError> {
+        match self.stdout() {
+            Ok(stdout) => Ok(DebugCon::Node(stdout.node.clone())),
+            Err(FdtError::NotFound) | Err(FdtError::NodeNotFound(_)) => {
+                self.fdt_bootargs_find_debugcon_info()
+            }
+            Err(e) => Err(e),
         }
     }
 
-    fn fdt_bootargs_find_debugcon_info(&self) -> Result<Option<DebugCon<'a>>, FdtError> {
-        let bootargs = none_ok!(self.bootargs()?);
+    fn fdt_bootargs_find_debugcon_info(&self) -> Result<DebugCon<'a>, FdtError> {
+        let bootargs = self.bootargs()?;
 
         let earlycon = none_ok!(bootargs
             .split_ascii_whitespace()
             .find(|&arg| arg.contains("earlycon")));
 
         let mut tmp = earlycon.split('=');
-        let _ = none_ok!(tmp.next());
-        let values = none_ok!(tmp.next());
+        let _ = none_ok!(tmp.next(), FdtError::NotFound);
+        let values = none_ok!(tmp.next(), FdtError::NotFound);
 
         // 解析所有参数
         let mut params_iter = values.split(',');
-        let name = none_ok!(params_iter.next());
+        let name = none_ok!(params_iter.next(), FdtError::NotFound);
 
         if !name.contains("uart") {
-            return Ok(None);
+            return Err(FdtError::NotFound);
         }
 
-        let param2 = none_ok!(params_iter.next());
+        let param2 = none_ok!(params_iter.next(), FdtError::NotFound);
 
         let addr_str = if param2.contains("0x") {
             param2
         } else {
-            none_ok!(params_iter.next())
+            none_ok!(params_iter.next(), FdtError::NotFound)
         };
 
         let mmio = u64::from_str_radix(addr_str.trim_start_matches("0x"), 16)
@@ -99,12 +98,16 @@ impl<'a> Chosen<'a> {
         // 先尝试在设备树中查找对应节点
         for node_result in self.node.fdt.all_nodes() {
             let node = node_result?;
-            if let Some(regs) = node.reg()? {
-                for reg in regs {
-                    if reg.address.eq(&mmio) {
-                        return Ok(Some(DebugCon::Node((*node).clone())));
+            match node.reg() {
+                Ok(mut regs) => {
+                    for reg in &mut regs {
+                        if reg.address == mmio {
+                            return Ok(DebugCon::Node(node.node().clone()));
+                        }
                     }
                 }
+                Err(FdtError::NotFound) => {}
+                Err(e) => return Err(e),
             }
         }
 
@@ -125,7 +128,7 @@ impl<'a> Chosen<'a> {
             None
         };
 
-        Ok(Some(DebugCon::EarlyConInfo { name, mmio, params }))
+        Ok(DebugCon::EarlyConInfo { name, mmio, params })
     }
 }
 
