@@ -172,53 +172,51 @@ impl NodeBase {
         Ok(out)
     }
 
-    /// Get the clocks used by this node
+    /// Get the clocks used by this node following the Devicetree clock binding
     pub fn clocks(&self) -> Result<Vec<ClockInfo>, FdtError> {
         let mut clocks = Vec::new();
-        let Some(ids) = self.find_property("clocks") else {
+        let Some(prop) = self.find_property("clocks") else {
             return Ok(clocks);
         };
-        let mut iter = ids.data.buffer();
-        let cells = self
-            .find_property("#clock-cells")
-            .and_then(|p| p.u32().ok())
-            .unwrap_or(1) as usize;
 
-        let names = self
+        let mut data = prop.data.buffer();
+        let clock_names: Vec<String> = self
             .find_property("clock-names")
-            .map(|p| p.str_list().map(|s| s.to_string()).collect::<Vec<String>>());
+            .map(|p| p.str_list().map(|s| s.to_string()).collect())
+            .unwrap_or_else(Vec::new);
 
-        while let Some(ph) = iter.take_u32().ok() {
-            let phandle = Phandle::from(ph);
-            let name = if let Some(ref names) = names {
-                if clocks.len() < names.len() {
-                    Some(names[clocks.len()].clone())
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+        let mut index = 0usize;
+        while !data.remain().as_ref().is_empty() {
+            let phandle_raw = data.take_u32()?;
+            let phandle = Phandle::from(phandle_raw);
 
-            let select = if cells > 0 {
-                Some(iter.take_u32()?)
-            } else {
-                None
-            };
-
-            let clock_node = self
+            let provider = self
                 .fdt
                 .get_node_by_phandle(phandle)
                 .ok_or(FdtError::NodeNotFound("clock"))?;
-            let Node::General(n) = clock_node else {
-                return Err(FdtError::NodeNotFound("clock node not general"));
-            };
+
+            let provider_node = provider.deref().clone();
+            let clock_cells = provider_node
+                .find_property("#clock-cells")
+                .and_then(|p| p.u32().ok())
+                .unwrap_or(0);
+            let mut args = Vec::with_capacity(clock_cells as usize);
+            for _ in 0..clock_cells {
+                args.push(data.take_u32()?);
+            }
+
+            let provider = ClockType::new(provider_node);
+            let provider_output_name = provider.output_name(&args);
+            let name = clock_names.get(index).cloned();
 
             clocks.push(ClockInfo {
                 name,
-                select,
-                clock: ClockType::new(n),
+                provider_output_name,
+                specifier: ClockSpecifier { phandle, args },
+                provider,
             });
+
+            index += 1;
         }
 
         Ok(clocks)

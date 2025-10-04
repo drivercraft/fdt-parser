@@ -15,7 +15,8 @@ impl Chosen {
 
     /// Contains the bootargs, if they exist
     pub fn bootargs(&self) -> Option<String> {
-        self.node.find_property("bootargs")
+        self.node
+            .find_property("bootargs")
             .and_then(|prop| prop.str().ok())
             .map(|s| s.to_string())
     }
@@ -83,7 +84,8 @@ impl Chosen {
         let all_nodes = self.node.fdt.all_nodes();
         for node in all_nodes {
             // 首先收集所有regs，避免借用问题
-            let reg_addresses: Vec<u64> = node.reg()
+            let reg_addresses: Vec<u64> = node
+                .reg()
                 .map(|regs| regs.map(|reg| reg.address).collect())
                 .unwrap_or_default();
 

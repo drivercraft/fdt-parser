@@ -1,9 +1,6 @@
 use core::{fmt::Debug, ops::Deref};
 
-use crate::{
-    base::NodeBase,
-    FdtError,
-};
+use crate::{base::NodeBase, FdtError};
 
 #[derive(Clone, Debug)]
 pub enum DebugCon<'a> {
@@ -128,11 +125,7 @@ impl<'a> Chosen<'a> {
             None
         };
 
-        Ok(Some(DebugCon::EarlyConInfo {
-            name,
-            mmio,
-            params,
-        }))
+        Ok(Some(DebugCon::EarlyConInfo { name, mmio, params }))
     }
 }
 

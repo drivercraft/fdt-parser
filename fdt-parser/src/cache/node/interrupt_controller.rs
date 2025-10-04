@@ -1,7 +1,6 @@
 use core::{fmt::Debug, ops::Deref};
 
 use crate::{cache::node::NodeBase, FdtError};
-use alloc::vec::Vec;
 
 #[derive(Clone)]
 pub struct InterruptController {

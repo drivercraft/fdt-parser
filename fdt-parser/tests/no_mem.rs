@@ -321,7 +321,10 @@ mod test {
                 println!("Found debugcon node: {:?}", node.name());
             }
             Some(fdt_parser::base::DebugCon::EarlyConInfo { name, mmio, params }) => {
-                println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
+                println!(
+                    "Found earlycon info: name={}, mmio={:#x}, params={:?}",
+                    name, mmio, params
+                );
             }
             None => {
                 println!("No debugcon found");
@@ -340,7 +343,10 @@ mod test {
                 println!("Found debugcon node: {:?}", node.name());
             }
             Some(fdt_parser::base::DebugCon::EarlyConInfo { name, mmio, params }) => {
-                println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
+                println!(
+                    "Found earlycon info: name={}, mmio={:#x}, params={:?}",
+                    name, mmio, params
+                );
             }
             None => {
                 println!("No debugcon found");

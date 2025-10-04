@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod test {
     use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu, fdt_reserve, fdt_rpi_4b};
-    use fdt_parser::base::DebugCon;
     use fdt_parser::*;
 
     #[test]
@@ -329,41 +328,44 @@ mod test {
         let fdt = Fdt::from_bytes(&raw).unwrap();
 
         let node = fdt.find_nodes("/soc/serial@7e215040")[0].clone();
-        let clocks = node
-            .clocks()
-            .unwrap()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+        let clocks = node.clocks().unwrap();
+        assert!(!clocks.is_empty());
+        let clock = &clocks[0];
+        assert_eq!(clock.provider_node().name(), "aux@7e215000");
+        assert_eq!(
+            clock.specifier.args.len() as u32,
+            clock.provider_clock_cells()
+        );
+    }
+
+    #[test]
+    fn test_clocks_cell_1() {
+        let fdt = fdt_3568();
+
+        let fdt = Fdt::from_bytes(&fdt).unwrap();
+        let node = fdt.find_nodes("/sdhci@fe310000")[0].clone();
+        let clocks = node.clocks().unwrap();
+        let clock = clocks[0].clone();
+
         for clock in &clocks {
             println!("clock: {:?}", clock);
         }
-        let clock = &clocks[0];
-        assert_eq!(clock.node.name(), "aux@7e215000");
+        assert_eq!(clock.provider.node().name(), "clock-controller@fdd20000");
     }
 
-    // #[test]
-    // fn test_clocks_cell_1() {
-    //     let fdt = Fdt::from_bytes(TEST_3568_FDT).unwrap();
-    //     let node = fdt.find_nodes("/sdhci@fe310000").next().unwrap();
-    //     let clocks = node.clocks().collect::<Vec<_>>();
-    //     let clock = &clocks[0];
+    #[test]
+    fn test_clocks_cell_0() {
+        let raw = fdt_phytium();
 
-    //     for clock in &clocks {
-    //         println!("clock: {:?}", clock);
-    //     }
-    //     assert_eq!(clock.node.name, "clock-controller@fdd20000");
-    // }
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    // #[test]
-    // fn test_clocks_cell_0() {
-    //     let fdt = Fdt::from_bytes(TEST_PHYTIUM_FDT).unwrap();
-    //     let node = fdt.find_nodes("/soc/uart@2800e000").next().unwrap();
-    //     let clocks = node.clocks().collect::<Vec<_>>();
+        let node = fdt.find_nodes("/soc/uart@2800e000")[0].clone();
+        let clocks = node.clocks().unwrap();
 
-    //     for clock in &clocks {
-    //         println!("clock: {:?}", clock);
-    //     }
-    // }
+        for clock in &clocks {
+            println!("clock: {:?}", clock);
+        }
+    }
 
     // #[test]
     // fn test_pcie() {
