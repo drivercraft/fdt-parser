@@ -2,7 +2,7 @@ use core::{fmt::Debug, ops::Deref};
 
 use super::Fdt;
 use crate::{
-    base, data::Raw, property::PropIter, FdtError, FdtRangeSilce, FdtReg, Phandle, Property,
+    base, data::Raw, property::PropIter, FdtError, FdtRangeSilce, FdtReg, Phandle, Property, Status,
 };
 
 mod chosen;
@@ -85,6 +85,21 @@ impl NodeBase {
         self.find_property("compatible")
             .map(|p| p.str_list().map(|s| s.into()).collect())
             .unwrap_or_default()
+    }
+
+    /// Get the status of this node
+    pub fn status(&self) -> Option<Status> {
+        self.find_property("status")
+            .and_then(|prop| prop.str().ok())
+            .and_then(|s| {
+                if s.contains("disabled") {
+                    Some(Status::Disabled)
+                } else if s.contains("okay") {
+                    Some(Status::Okay)
+                } else {
+                    None
+                }
+            })
     }
 }
 
