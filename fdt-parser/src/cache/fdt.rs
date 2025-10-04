@@ -38,6 +38,10 @@ impl Fdt {
         base::Fdt::from_bytes(&self.inner.raw).unwrap()
     }
 
+    pub fn version(&self) -> u32 {
+        self.fdt_base().version()
+    }
+
     pub fn header(&self) -> Header {
         self.fdt_base().header().clone()
     }
