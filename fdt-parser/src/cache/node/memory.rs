@@ -15,7 +15,7 @@ impl Memory {
 
     /// Get the memory regions defined by this memory node
     pub fn regions(&self) -> Result<Vec<MemoryRegion>, FdtError> {
-        let reg = self.node.reg().ok_or(FdtError::PropertyNotFound("reg"))?;
+        let reg = self.node.reg()?;
         let mut out = Vec::new();
         for r in reg {
             out.push(MemoryRegion {

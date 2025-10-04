@@ -2,18 +2,32 @@
 mod test {
     use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu, fdt_reserve, fdt_rpi_4b};
     use fdt_parser::*;
+    use log::{debug, info};
+    use std::sync::Once;
+
+    fn init_logging() {
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter_level(log::LevelFilter::Trace)
+                .try_init();
+        });
+    }
 
     #[test]
     fn test_new() {
+        init_logging();
         let raw = fdt_qemu();
         let ptr = raw.as_ptr() as *mut u8;
         let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
-        println!("ver: {:#?}", fdt.header().version);
+        info!("ver: {:#?}", fdt.header().version);
     }
 
     #[test]
     fn test_memory_reservation_blocks() {
+        init_logging();
         // Test with custom DTB that has memory reservations
         let raw = fdt_reserve();
         let ptr = raw.as_ptr() as *mut u8;
@@ -74,6 +88,7 @@ mod test {
 
     #[test]
     fn test_empty_memory_reservation_blocks() {
+        init_logging();
         // Test with DTBs that have no memory reservations
         let test_cases = [
             ("QEMU", fdt_qemu()),
@@ -105,22 +120,20 @@ mod test {
 
     #[test]
     fn test_send_node() {
+        init_logging();
         let node = test_node();
         if let Some(node) = node {
-            println!("{:?}", node.name());
+            info!("{:?}", node.name());
         }
     }
 
     #[test]
     fn test_all_nodes() {
-        env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::Debug)
-            .init();
+        init_logging();
         let raw = fdt_reserve();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         for node in fdt.all_nodes() {
-            println!(
+            debug!(
                 "{}{} l{} parent={:?}",
                 match node.level() {
                     0 => "",
@@ -137,18 +150,20 @@ mod test {
 
     #[test]
     fn test_property() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         for node in fdt.all_nodes() {
-            println!("{}:", node.name());
+            info!("{}:", node.name());
             for prop in node.properties() {
-                println!("  {:?}", prop);
+                debug!("  {:?}", prop);
             }
         }
     }
 
     #[test]
     fn test_str_list() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         let uart = fdt.find_nodes("/soc/serial@7e201000")[0].clone();
@@ -162,6 +177,7 @@ mod test {
     }
     #[test]
     fn test_find_nodes() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
 
@@ -183,6 +199,7 @@ mod test {
 
     #[test]
     fn test_find_node2() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw).unwrap();
         let node = fdt.find_nodes("/soc/serial@7e215040")[0].clone();
@@ -191,6 +208,7 @@ mod test {
 
     #[test]
     fn test_find_aliases() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw).unwrap();
         let path = fdt.find_aliase("serial0").unwrap();
@@ -198,44 +216,66 @@ mod test {
     }
     #[test]
     fn test_find_node_aliases() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw).unwrap();
         let node = fdt.find_nodes("serial0")[0].clone();
         assert_eq!(node.name(), "serial@7e215040");
     }
 
-    // #[test]
-    // fn test_reg() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
+    #[test]
+    fn test_reg() {
+        init_logging();
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    //     let node = fdt
-    //         .find_nodes("/soc/serial@7e215040")
-    //         .next()
-    //         .unwrap()
-    //         .unwrap();
+        let node = fdt.find_nodes("/soc/serial@7e215040")[0].clone();
 
-    //     let reg = node.reg().unwrap().unwrap().next().unwrap();
+        let reg = node.reg().unwrap()[0].clone();
 
-    //     println!("reg: {:?}", reg);
+        let parent = node.parent().unwrap();
+        if let Some(addr_cells_prop) = parent.find_property("#address-cells") {
+            debug!("parent #address-cells={}", addr_cells_prop.u32().unwrap());
+        }
+        if let Some(size_cells_prop) = parent.find_property("#size-cells") {
+            debug!("parent #size-cells={}", size_cells_prop.u32().unwrap());
+        }
+        if let Some(ranges) = parent.ranges() {
+            for (idx, range) in ranges.iter().enumerate() {
+                let child_cells = range.child_bus_address().collect::<Vec<_>>();
+                let parent_cells = range.parent_bus_address().collect::<Vec<_>>();
+                let child_addr = child_cells
+                    .iter()
+                    .fold(0u64, |acc, val| (acc << 32) | (*val as u64));
+                let parent_addr = parent_cells
+                    .iter()
+                    .fold(0u64, |acc, val| (acc << 32) | (*val as u64));
+                debug!(
+                    "range[{idx}]: child_cells={:?} parent_cells={:?} child={:#x} parent={:#x} size={:#x}",
+                    child_cells, parent_cells, child_addr, parent_addr, range.size
+                );
+            }
+        }
 
-    //     assert_eq!(
-    //         reg.address, 0xfe215040,
-    //         "want 0xfe215040, got {:#x}",
-    //         reg.address
-    //     );
-    //     assert_eq!(
-    //         reg.child_bus_address, 0x7e215040,
-    //         "want 0x7e215040, got {:#x}",
-    //         reg.child_bus_address
-    //     );
-    //     assert_eq!(
-    //         reg.size,
-    //         Some(0x40),
-    //         "want 0x40, got {:#x}",
-    //         reg.size.unwrap()
-    //     );
-    // }
+        info!("reg: {:?}", reg);
+
+        assert_eq!(
+            reg.address, 0xfe215040,
+            "want 0xfe215040, got {:#x}",
+            reg.address
+        );
+        assert_eq!(
+            reg.child_bus_address, 0x7e215040,
+            "want 0x7e215040, got {:#x}",
+            reg.child_bus_address
+        );
+        assert_eq!(
+            reg.size,
+            Some(0x40),
+            "want 0x40, got {:#x}",
+            reg.size.unwrap()
+        );
+    }
 
     // #[test]
     // fn test_memory() {
@@ -259,6 +299,7 @@ mod test {
     // }
     #[test]
     fn test_find_compatible() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
 
@@ -269,6 +310,7 @@ mod test {
 
     #[test]
     fn test_compatibles() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         let mut ls = fdt.find_nodes("/soc/serial@7e201000");
@@ -284,18 +326,20 @@ mod test {
 
     #[test]
     fn test_interrupt() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw).unwrap();
         let node = fdt.find_nodes("/soc/serial@7e215040")[0].clone();
 
         let itr_ctrl = node.interrupt_parent().unwrap();
-        println!("itr_ctrl: {:?}", itr_ctrl.name());
+        info!("itr_ctrl: {:?}", itr_ctrl.name());
         let interrupt_cells = itr_ctrl.interrupt_cells().unwrap();
         assert_eq!(interrupt_cells, 3);
     }
 
     #[test]
     fn test_interrupt2() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw).unwrap();
 
@@ -310,6 +354,7 @@ mod test {
 
     #[test]
     fn test_interrupts() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw).unwrap();
 
@@ -324,6 +369,7 @@ mod test {
 
     #[test]
     fn test_clocks() {
+        init_logging();
         let raw = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw).unwrap();
 
@@ -340,6 +386,7 @@ mod test {
 
     #[test]
     fn test_clocks_cell_1() {
+        init_logging();
         let fdt = fdt_3568();
 
         let fdt = Fdt::from_bytes(&fdt).unwrap();
@@ -348,13 +395,14 @@ mod test {
         let clock = clocks[0].clone();
 
         for clock in &clocks {
-            println!("clock: {:?}", clock);
+            debug!("clock: {:?}", clock);
         }
         assert_eq!(clock.provider.node().name(), "clock-controller@fdd20000");
     }
 
     #[test]
     fn test_clocks_cell_0() {
+        init_logging();
         let raw = fdt_phytium();
 
         let fdt = Fdt::from_bytes(&raw).unwrap();
@@ -363,7 +411,7 @@ mod test {
         let clocks = node.clocks().unwrap();
 
         for clock in &clocks {
-            println!("clock: {:?}", clock);
+            debug!("clock: {:?}", clock);
         }
     }
 

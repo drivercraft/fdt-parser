@@ -1,7 +1,7 @@
 use core::{fmt::Debug, ops::Deref};
 
 use crate::cache::node::NodeBase;
-use alloc::{string::String, string::ToString, vec::Vec};
+use alloc::{string::String, string::ToString};
 
 #[derive(Clone)]
 pub struct Chosen {
@@ -83,14 +83,12 @@ impl Chosen {
         // 先尝试在cache中查找对应节点
         let all_nodes = self.node.fdt.all_nodes();
         for node in all_nodes {
-            // 首先收集所有regs，避免借用问题
-            let reg_addresses: Vec<u64> = node
-                .reg()
-                .map(|regs| regs.map(|reg| reg.address).collect())
-                .unwrap_or_default();
+            let Ok(reg) = node.reg() else {
+                continue;
+            };
 
-            for address in reg_addresses {
-                if address == mmio {
+            for address in reg {
+                if address.address == mmio {
                     return Some(DebugConCache::Node(node));
                 }
             }

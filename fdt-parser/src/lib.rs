@@ -28,6 +28,8 @@ pub use property::Property;
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum FdtError {
+    #[error("not found")]
+    NotFound,
     #[error("buffer too small at position {pos}")]
     BufferTooSmall { pos: usize },
     #[error("invalid magic number {0:#x} != {FDT_MAGIC:#x}")]

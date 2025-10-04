@@ -128,7 +128,7 @@ impl core::fmt::Debug for FdtRange<'_> {
 
 #[derive(Clone)]
 pub struct FdtRangeSilce<'a> {
-    address_cell: u8,
+     address_cell: u8,
     address_cell_parent: u8,
     size_cell: u8,
     reader: Buffer<'a>,

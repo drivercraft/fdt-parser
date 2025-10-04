@@ -7,6 +7,7 @@ use crate::{
     property::PropIter,
     FdtError, FdtRangeSilce, FdtReg, Phandle, Property, Status,
 };
+use log::debug;
 
 mod chosen;
 mod interrupt_controller;
@@ -36,7 +37,6 @@ pub(crate) struct ParentInfo<'a> {
     pub size_cells: Option<u8>,
     // Parent's ranges for address translation
     pub ranges: Option<FdtRangeSilce<'a>>,
-    pub parent_name: Option<&'a str>,
 }
 
 impl<'a> NodeBase<'a> {
@@ -64,7 +64,6 @@ impl<'a> NodeBase<'a> {
                 address_cells: parent_address_cells,
                 size_cells: parent_size_cells,
                 ranges: parent_ranges,
-                parent_name: p.parent_name(),
             }),
             interrupt_parent,
             raw,
@@ -291,6 +290,13 @@ impl Iterator for RegIter<'_> {
                 {
                     address =
                         child_bus_address - range_child_bus_address + range_parent_bus_address;
+                    debug!(
+                        "reg translation child={:#x} mapped_address={:#x} range_child={:#x} range_parent={:#x}",
+                        child_bus_address,
+                        address,
+                        range_child_bus_address,
+                        range_parent_bus_address
+                    );
                     break;
                 }
             }

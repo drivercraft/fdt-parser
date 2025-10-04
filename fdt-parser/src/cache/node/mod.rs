@@ -2,10 +2,10 @@ use core::{fmt::Debug, ops::Deref};
 
 use super::Fdt;
 use crate::{
-    base,
+    base::{self, RegIter},
     data::{Raw, U32Iter2D},
     property::PropIter,
-    FdtError, Phandle, Property, Status,
+    FdtError, FdtRangeSilce, FdtReg, Phandle, Property, Status,
 };
 
 use alloc::{
@@ -137,10 +137,60 @@ impl NodeBase {
     }
 
     /// Get register information for this node
-    pub fn reg(&self) -> Option<impl Iterator<Item = crate::FdtReg> + use<'_>> {
-        self.find_property("reg").map(|prop| RegIter {
-            buffer: prop.data.buffer(),
-        })
+    pub fn reg(&self) -> Result<Vec<FdtReg>, FdtError> {
+        let prop = self.find_property("reg").ok_or(FdtError::NotFound)?;
+
+        // Get parent info from ParentInfo structure
+        let parent_info = self
+            .meta
+            .parent
+            .as_ref()
+            .ok_or(FdtError::NodeNotFound("parent"))?;
+
+        // reg parsing uses the immediate parent's cells
+        let address_cell = parent_info.address_cells.unwrap_or(2);
+        let size_cell = parent_info.size_cells.unwrap_or(1);
+
+        let parent = self.parent().ok_or(FdtError::NodeNotFound("parent"))?;
+        let ranges = parent.ranges();
+        let iter = RegIter {
+            size_cell,
+            address_cell,
+            buff: prop.data.buffer(),
+            ranges,
+        };
+
+        Ok(iter.collect())
+    }
+
+    pub fn ranges(&self) -> Option<FdtRangeSilce<'_>> {
+        let p = self.find_property("ranges")?;
+        let parent_info = self.meta.parent.as_ref();
+
+        let address_cell = self
+            .find_property("#address-cells")
+            .and_then(|prop| prop.u32().ok())
+            .map(|v| v as u8)
+            .or_else(|| parent_info.and_then(|info| info.address_cells))
+            .unwrap_or(2);
+
+        let size_cell = self
+            .find_property("#size-cells")
+            .and_then(|prop| prop.u32().ok())
+            .map(|v| v as u8)
+            .or_else(|| parent_info.and_then(|info| info.size_cells))
+            .unwrap_or(1);
+
+        let address_cell_parent = parent_info
+            .and_then(|info| info.address_cells)
+            .unwrap_or(2);
+
+        Some(FdtRangeSilce::new(
+            address_cell,
+            address_cell_parent,
+            size_cell,
+            &p.data,
+        ))
     }
 
     pub fn interrupt_parent_phandle(&self) -> Option<Phandle> {
@@ -223,25 +273,6 @@ impl NodeBase {
     }
 }
 
-pub struct RegIter<'a> {
-    buffer: crate::data::Buffer<'a>,
-}
-
-impl<'a> Iterator for RegIter<'a> {
-    type Item = crate::FdtReg;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // 简化实现，假设64位地址和32位大小
-        let address = self.buffer.take_u64().ok()? as usize;
-        let size = self.buffer.take_u32().ok()? as usize;
-        Some(crate::FdtReg {
-            address: address as u64,
-            child_bus_address: address as u64,
-            size: Some(size),
-        })
-    }
-}
-
 impl Debug for NodeBase {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut st = f.debug_struct("NodeBase");
@@ -269,13 +300,9 @@ impl NodeMeta {
             level: node.level(),
             interrupt_parent: node.get_interrupt_parent_phandle(),
             parent: node.parent.as_ref().map(|p| ParentInfo {
-                name: p.name.into(),
                 path: parent.map(|n| n.full_path.clone()).unwrap_or_default(),
-                level: p.level,
-                pos: p.raw.pos(),
                 address_cells: p.address_cells,
                 size_cells: p.size_cells,
-                parent_name: p.parent_name.map(|s| s.into()),
             }),
         }
     }
@@ -283,11 +310,7 @@ impl NodeMeta {
 
 #[derive(Clone)]
 struct ParentInfo {
-    name: String,
     path: String,
-    level: usize,
-    pos: usize,
     address_cells: Option<u8>,
     size_cells: Option<u8>,
-    pub parent_name: Option<String>,
 }
