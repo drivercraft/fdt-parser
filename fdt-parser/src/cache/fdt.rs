@@ -10,7 +10,7 @@ use crate::{base, cache::NodeMeta, data::Raw, FdtError, Header, MemoryRegion, Ph
 
 #[derive(Clone)]
 pub struct Fdt {
-    inner: Arc<Inner>,
+    pub(super) inner: Arc<Inner>,
 }
 
 impl Fdt {
@@ -42,7 +42,6 @@ impl Fdt {
         self.fdt_base().header().clone()
     }
 
-    /// With caching
     pub fn all_nodes(&self) -> Vec<Node> {
         self.inner
             .all_nodes
@@ -112,7 +111,7 @@ impl Fdt {
     }
 }
 
-struct Inner {
+pub(super) struct Inner {
     raw: Align4Vec,
     phandle_cache: BTreeMap<Phandle, usize>,
     /// compatible -> set(name)
@@ -137,10 +136,17 @@ impl Inner {
         };
         let mut node_vec = Vec::new();
         let mut path_stack = Vec::new();
+        let mut node_stack: Vec<NodeMeta> = Vec::new();
         for (i, node) in b.all_nodes().enumerate() {
             let node = node?;
             let node_name = node.name();
             let level = node.level();
+
+            if let Some(last) = node_stack.last() {
+                if level <= last.level {
+                    node_stack.pop();
+                }
+            }
 
             if level < path_stack.len() {
                 path_stack.truncate(level);
@@ -154,10 +160,10 @@ impl Inner {
             for prop in node.properties() {
                 let _ = prop?;
             }
-
-            inner
-                .all_nodes
-                .push(NodeMeta::new(&node, full_path.clone()));
+            let parent = node_stack.last();
+            let dnode = NodeMeta::new(&node, full_path.clone(), parent);
+            node_stack.push(dnode.clone());
+            inner.all_nodes.push(dnode.clone());
             inner.path_cache.insert(full_path, i);
 
             if let Some(phandle) = node.phandle()? {
@@ -173,7 +179,7 @@ impl Inner {
         Ok(inner)
     }
 
-    fn get_node_by_path(&self, path: &str) -> Option<NodeMeta> {
+    pub(crate) fn get_node_by_path(&self, path: &str) -> Option<NodeMeta> {
         let idx = self.path_cache.get(path)?;
         Some(self.all_nodes[*idx].clone())
     }

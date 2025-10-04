@@ -61,16 +61,10 @@ impl NodeBase {
         &self.meta.full_path
     }
 
-    pub fn parent_name(&self) -> Option<&str> {
-        self.meta
-            .parent
-            .as_ref()
-            .and_then(|p| p.parent_name.as_deref())
-    }
-
     pub fn parent(&self) -> Option<Node> {
-        let name = self.parent_name()?;
-        self.fdt.find_nodes(name).pop()
+        let parent_path = self.meta.parent.as_ref()?.path.as_str();
+        let parent_meta = self.fdt.inner.get_node_by_path(parent_path)?;
+        Some(Node::new(&self.fdt, &parent_meta))
     }
 
     pub fn properties<'a>(&'a self) -> Vec<Property<'a>> {
@@ -107,13 +101,13 @@ pub(super) struct NodeMeta {
     name: String,
     full_path: String,
     pos: usize,
-    level: usize,
+    pub level: usize,
     interrupt_parent: Option<Phandle>,
     parent: Option<ParentInfo>,
 }
 
 impl NodeMeta {
-    pub fn new(node: &base::Node<'_>, full_path: String) -> Self {
+    pub fn new(node: &base::Node<'_>, full_path: String, parent: Option<&NodeMeta>) -> Self {
         NodeMeta {
             full_path,
             name: node.name().into(),
@@ -122,6 +116,7 @@ impl NodeMeta {
             interrupt_parent: node.get_interrupt_parent_phandle(),
             parent: node.parent.as_ref().map(|p| ParentInfo {
                 name: p.name.into(),
+                path: parent.map(|n| n.full_path.clone()).unwrap_or_default(),
                 level: p.level,
                 pos: p.raw.pos(),
                 parent_address_cell: p.parent_address_cell,
@@ -135,6 +130,7 @@ impl NodeMeta {
 #[derive(Clone)]
 struct ParentInfo {
     name: String,
+    path: String,
     level: usize,
     pos: usize,
     parent_address_cell: Option<u8>,

@@ -130,7 +130,7 @@ mod test {
                 },
                 node.full_path(),
                 node.level(),
-                node.parent_name()
+                node.parent().map(|n| n.name().to_string())
             );
         }
     }
