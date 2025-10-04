@@ -89,11 +89,11 @@ impl<'a> NodeBase<'a> {
     }
 
     pub fn parent(&self) -> Option<Node<'a>> {
-        let parent_name = self.parent_name()?;
+        let parent_info = self.parent.as_ref()?;
         self.fdt
             .all_nodes()
             .flatten()
-            .find(|node| node.name() == parent_name)
+            .find(|node| node.name() == parent_info.name && node.level() == parent_info.level)
     }
 
     fn parent_fast(&self) -> Option<NodeBase<'a>> {

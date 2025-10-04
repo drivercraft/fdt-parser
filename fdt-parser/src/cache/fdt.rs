@@ -142,9 +142,11 @@ impl Inner {
             let node_name = node.name();
             let level = node.level();
 
-            if let Some(last) = node_stack.last() {
+            while let Some(last) = node_stack.last() {
                 if level <= last.level {
                     node_stack.pop();
+                } else {
+                    break;
                 }
             }
 
