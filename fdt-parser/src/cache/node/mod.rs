@@ -1,17 +1,9 @@
 use core::{fmt::Debug, ops::Deref};
 
 use super::Fdt;
-use crate::{
-    base, data::Raw, property::PropIter, Phandle, Property, Status,
-};
-
-mod chosen;
-
-mod memory;
+use crate::{base, data::Raw, property::PropIter, Phandle, Property, Status};
 
 use alloc::{string::String, vec::Vec};
-pub use chosen::*;
-pub use memory::*;
 
 #[derive(Debug, Clone)]
 pub enum Node {
