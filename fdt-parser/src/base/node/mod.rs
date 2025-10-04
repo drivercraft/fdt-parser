@@ -42,12 +42,16 @@ pub(crate) struct ParentInfo<'a> {
 }
 
 impl<'a> NodeBase<'a> {
-    pub(crate) fn new(
+    /// Create a new NodeBase with pre-calculated parent information from the stack
+    pub(crate) fn new_with_parent_info(
         name: &'a str,
         fdt: Fdt<'a>,
         raw: Raw<'a>,
         level: usize,
         parent: Option<&NodeBase<'a>>,
+        parent_address_cells: Option<u8>,
+        parent_size_cells: Option<u8>,
+        parent_ranges: Option<FdtRangeSilce<'a>>,
         interrupt_parent: Option<Phandle>,
     ) -> Self {
         let name = if name.is_empty() { "/" } else { name };
@@ -55,45 +59,14 @@ impl<'a> NodeBase<'a> {
             name,
             fdt,
             level,
-            parent: parent.map(|p| {
-                let pp = p.parent_fast();
-
-                // Get parent's #address-cells and #size-cells (for parsing reg)
-                let address_cells = p
-                    .find_property("#address-cells")
-                    .ok()
-                    .flatten()
-                    .and_then(|prop| prop.u32().ok())
-                    .map(|v| v as u8);
-
-                let size_cells = p
-                    .find_property("#size-cells")
-                    .ok()
-                    .flatten()
-                    .and_then(|prop| prop.u32().ok())
-                    .map(|v| v as u8);
-
-                // Get grandparent's #address-cells for ranges calculation
-                let parent_address_cells = pp.as_ref().and_then(|pn| {
-                    pn.find_property("#address-cells")
-                        .ok()
-                        .flatten()
-                        .and_then(|prop| prop.u32().ok())
-                        .map(|v| v as u8)
-                });
-
-                // Calculate parent's ranges for address translation
-                let ranges = p.node_ranges(parent_address_cells).and_then(|r| r.ok());
-
-                ParentInfo {
-                    name: p.name(),
-                    level: p.level(),
-                    raw: p.raw(),
-                    address_cells,
-                    size_cells,
-                    ranges,
-                    parent_name: pp.as_ref().and_then(|pn| pn.parent_name()),
-                }
+            parent: parent.map(|p| ParentInfo {
+                name: p.name(),
+                level: p.level(),
+                raw: p.raw(),
+                address_cells: parent_address_cells,
+                size_cells: parent_size_cells,
+                ranges: parent_ranges,
+                parent_name: p.parent_name(),
             }),
             interrupt_parent,
             raw,
@@ -205,42 +178,6 @@ impl<'a> NodeBase<'a> {
             }
         }
         Ok(None)
-    }
-
-    pub(crate) fn node_ranges(
-        &self,
-        address_cell_parent: Option<u8>,
-    ) -> Option<Result<FdtRangeSilce<'a>, FdtError>> {
-        macro_rules! bail {
-            ($e:expr) => {
-                match $e {
-                    Ok(v) => v,
-                    Err(e) => return Some(Err(e)),
-                }
-            };
-        }
-
-        let prop = bail!(self.find_property("ranges").transpose()?);
-
-        let mut address_cell = 2;
-        let address_cell_parent = address_cell_parent.unwrap_or(2);
-        let mut size_cell = 1;
-
-        if let Some(v) = bail!(self.find_property("#address-cells")) {
-            let u = bail!(v.u32()) as u8;
-            address_cell = u;
-        }
-        if let Some(v) = bail!(self.find_property("#size-cells")) {
-            let u = bail!(v.u32()) as u8;
-            size_cell = u;
-        }
-
-        Some(Ok(FdtRangeSilce::new(
-            address_cell,
-            address_cell_parent,
-            size_cell,
-            &prop.data,
-        )))
     }
 
     pub fn phandle(&self) -> Result<Option<Phandle>, FdtError> {

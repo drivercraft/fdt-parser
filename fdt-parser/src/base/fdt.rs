@@ -3,7 +3,7 @@ use core::iter;
 use super::node::*;
 use crate::{
     data::{Buffer, Raw},
-    FdtError, Header, MemoryRegion, Phandle, Token,
+    FdtError, FdtRangeSilce, Header, MemoryRegion, Phandle, Property, Token,
 };
 
 #[derive(Clone)]
@@ -296,6 +296,7 @@ struct NodeStackFrame<'a> {
     node: NodeBase<'a>,
     address_cells: u8,
     size_cells: u8,
+    ranges: Option<FdtRangeSilce<'a>>,
     interrupt_parent: Option<Phandle>,
 }
 
@@ -364,11 +365,22 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         }
     }
 
-    /// Scan ahead to find node properties (#address-cells, #size-cells, interrupt-parent)
-    fn scan_node_properties(&self) -> Result<(Option<u8>, Option<u8>, Option<Phandle>), FdtError> {
+    /// Scan ahead to find node properties (#address-cells, #size-cells, interrupt-parent, ranges)
+    fn scan_node_properties(
+        &self,
+    ) -> Result<
+        (
+            Option<u8>,
+            Option<u8>,
+            Option<Phandle>,
+            Option<Property<'a>>,
+        ),
+        FdtError,
+    > {
         let mut address_cells = None;
         let mut size_cells = None;
         let mut interrupt_parent = self.current_interrupt_parent();
+        let mut ranges = None;
         let mut temp_buffer = self.buffer.clone();
 
         // Look for properties in this node
@@ -392,17 +404,22 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
                                 interrupt_parent = Some(Phandle::from(phandle_value));
                             }
                         }
+                        "ranges" => {
+                            ranges = Some(prop);
+                        }
                         _ => {}
                     }
                 }
                 Ok(Token::BeginNode) | Ok(Token::EndNode) | Ok(Token::End) => {
                     break;
                 }
-                _ => continue,
+                _ => {
+                    continue;
+                }
             }
         }
 
-        Ok((address_cells, size_cells, interrupt_parent))
+        Ok((address_cells, size_cells, interrupt_parent, ranges))
     }
 
     /// Handle BeginNode token and create a new node
@@ -412,8 +429,9 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         let name = self.buffer.take_str()?;
         self.buffer.take_to_aligned();
 
-        // Scan node properties
-        let (address_cells, size_cells, interrupt_parent) = self.scan_node_properties()?;
+        // Scan node properties including ranges
+        let (address_cells, size_cells, interrupt_parent, ranges_prop) =
+            self.scan_node_properties()?;
 
         // Use defaults from parent if not specified
         let (default_addr, default_size) = self.current_cells();
@@ -421,16 +439,46 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         let size_cells = size_cells.unwrap_or(default_size);
         let interrupt_parent = interrupt_parent.or_else(|| self.current_interrupt_parent());
 
-        // Get parent node from stack
+        // Get parent node and its info from stack
         let parent = self.current_parent();
+        let (parent_address_cells, parent_size_cells, parent_ranges) = self
+            .node_stack
+            .last()
+            .map(|frame| {
+                (
+                    Some(frame.address_cells),
+                    Some(frame.size_cells),
+                    frame.ranges.clone(),
+                )
+            })
+            .unwrap_or((None, None, None));
 
-        // Create the new node
-        let node = NodeBase::new(
+        // Calculate ranges for this node if ranges property exists
+        // The ranges will be used by this node's children for address translation
+        let ranges = if let Some(ranges_prop) = ranges_prop {
+            // Get parent's address cells for the ranges property
+            let parent_addr_cells = parent_address_cells.unwrap_or(2);
+
+            Some(FdtRangeSilce::new(
+                address_cells,
+                parent_addr_cells,
+                size_cells,
+                &ranges_prop.data,
+            ))
+        } else {
+            None
+        };
+
+        // Create the new node with parent info from stack
+        let node = NodeBase::new_with_parent_info(
             name,
             self.fdt.clone(),
             self.buffer.remain(),
             self.level as _,
             parent,
+            parent_address_cells,
+            parent_size_cells,
+            parent_ranges,
             interrupt_parent,
         );
 
@@ -440,6 +488,7 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
             node: node.clone(),
             address_cells,
             size_cells,
+            ranges,
             interrupt_parent,
         };
         self.push_node(frame)?;
