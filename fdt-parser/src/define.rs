@@ -139,13 +139,13 @@ impl<'a> FdtRangeSilce<'a> {
         address_cell: u8,
         address_cell_parent: u8,
         size_cell: u8,
-        reader: Buffer<'a>,
+        raw: &Raw<'a>,
     ) -> Self {
         Self {
             address_cell,
             address_cell_parent,
             size_cell,
-            reader,
+            reader: raw.buffer(),
         }
     }
 

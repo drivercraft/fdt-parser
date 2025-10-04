@@ -33,8 +33,11 @@ pub(crate) struct ParentInfo<'a> {
     pub name: &'a str,
     pub level: usize,
     pub raw: Raw<'a>,
-    pub parent_address_cell: Option<u8>,
-    pub parent_size_cell: Option<u8>,
+    // Parent's #address-cells and #size-cells (for parsing reg)
+    pub address_cells: Option<u8>,
+    pub size_cells: Option<u8>,
+    // Parent's ranges for address translation
+    pub ranges: Option<FdtRangeSilce<'a>>,
     pub parent_name: Option<&'a str>,
 }
 
@@ -55,27 +58,40 @@ impl<'a> NodeBase<'a> {
             parent: parent.map(|p| {
                 let pp = p.parent_fast();
 
-                let parent_address_cell = pp.as_ref().and_then(|pn| {
+                // Get parent's #address-cells and #size-cells (for parsing reg)
+                let address_cells = p
+                    .find_property("#address-cells")
+                    .ok()
+                    .flatten()
+                    .and_then(|prop| prop.u32().ok())
+                    .map(|v| v as u8);
+
+                let size_cells = p
+                    .find_property("#size-cells")
+                    .ok()
+                    .flatten()
+                    .and_then(|prop| prop.u32().ok())
+                    .map(|v| v as u8);
+
+                // Get grandparent's #address-cells for ranges calculation
+                let parent_address_cells = pp.as_ref().and_then(|pn| {
                     pn.find_property("#address-cells")
                         .ok()
                         .flatten()
                         .and_then(|prop| prop.u32().ok())
                         .map(|v| v as u8)
                 });
-                let parent_size_cell = pp.as_ref().and_then(|pn| {
-                    pn.find_property("#size-cells")
-                        .ok()
-                        .flatten()
-                        .and_then(|prop| prop.u32().ok())
-                        .map(|v| v as u8)
-                });
+
+                // Calculate parent's ranges for address translation
+                let ranges = p.node_ranges(parent_address_cells).and_then(|r| r.ok());
 
                 ParentInfo {
                     name: p.name(),
                     level: p.level(),
                     raw: p.raw(),
-                    parent_address_cell,
-                    parent_size_cell,
+                    address_cells,
+                    size_cells,
+                    ranges,
                     parent_name: pp.as_ref().and_then(|pn| pn.parent_name()),
                 }
             }),
@@ -96,7 +112,7 @@ impl<'a> NodeBase<'a> {
             .find(|node| node.name() == parent_info.name && node.level() == parent_info.level)
     }
 
-    fn parent_fast(&self) -> Option<NodeBase<'a>> {
+    pub(crate) fn parent_fast(&self) -> Option<NodeBase<'a>> {
         self.parent.as_ref().map(|p| NodeBase {
             name: p.name,
             fdt: self.fdt.clone(),
@@ -132,25 +148,20 @@ impl<'a> NodeBase<'a> {
     }
 
     pub fn reg(&self) -> Result<Option<RegIter<'a>>, FdtError> {
-        let pp_address_cell = self.parent.as_ref().and_then(|p| p.parent_address_cell);
-
         let prop = none_ok!(self.find_property("reg")?);
 
-        // Use full parent resolution to retain its ancestor chain
-        let parent = self.parent_fast().ok_or(FdtError::NodeNotFound("parent"))?;
+        // Get parent info from ParentInfo structure
+        let parent_info = self
+            .parent
+            .as_ref()
+            .ok_or(FdtError::NodeNotFound("parent"))?;
 
         // reg parsing uses the immediate parent's cells
-        let address_cell = parent
-            .find_property("#address-cells")?
-            .ok_or(FdtError::PropertyNotFound("#address-cells"))?
-            .u32()? as u8;
+        let address_cell = parent_info.address_cells.unwrap_or(2);
+        let size_cell = parent_info.size_cells.unwrap_or(1);
 
-        let size_cell = parent
-            .find_property("#size-cells")?
-            .ok_or(FdtError::PropertyNotFound("#size-cells"))?
-            .u32()? as u8;
-
-        let ranges = parent.node_ranges(pp_address_cell).transpose()?;
+        // Use parent's pre-calculated ranges for address translation
+        let ranges = parent_info.ranges.clone();
 
         Ok(Some(RegIter {
             size_cell,
@@ -228,7 +239,7 @@ impl<'a> NodeBase<'a> {
             address_cell,
             address_cell_parent,
             size_cell,
-            prop.data.buffer(),
+            &prop.data,
         )))
     }
 
@@ -411,7 +422,7 @@ impl<'a> Deref for Node<'a> {
 pub struct NodeChildIter<'a> {
     fdt: Fdt<'a>,
     parent: NodeBase<'a>,
-    all_nodes: Option<NodeIter<'a>>,
+    all_nodes: Option<NodeIter<'a, 16>>,
     target_level: usize,
     found_parent: bool,
 }

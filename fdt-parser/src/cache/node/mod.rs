@@ -134,8 +134,8 @@ impl NodeMeta {
                 path: parent.map(|n| n.full_path.clone()).unwrap_or_default(),
                 level: p.level,
                 pos: p.raw.pos(),
-                parent_address_cell: p.parent_address_cell,
-                parent_size_cell: p.parent_size_cell,
+                address_cells: p.address_cells,
+                size_cells: p.size_cells,
                 parent_name: p.parent_name.map(|s| s.into()),
             }),
         }
@@ -148,7 +148,7 @@ struct ParentInfo {
     path: String,
     level: usize,
     pos: usize,
-    parent_address_cell: Option<u8>,
-    pub parent_size_cell: Option<u8>,
+    address_cells: Option<u8>,
+    size_cells: Option<u8>,
     pub parent_name: Option<String>,
 }

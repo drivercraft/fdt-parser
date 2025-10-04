@@ -99,19 +99,8 @@ impl<'a> Fdt<'a> {
         buffer.take_str()
     }
 
-    pub fn all_nodes(&self) -> NodeIter<'a> {
-        NodeIter {
-            buffer: self
-                .raw
-                .begin_at(self.header.off_dt_struct as usize)
-                .buffer(),
-            fdt: self.clone(),
-            level: -1,
-            parent: None,
-            node: None,
-            has_err: false,
-            interrupt_parent_stack: heapless::Vec::new(),
-        }
+    pub fn all_nodes(&self) -> NodeIter<'a, 16> {
+        NodeIter::new(self.clone())
     }
 
     /// if path start with '/' then search by path, else search by aliases
@@ -300,59 +289,110 @@ impl<'a> Iterator for ReservedMemoryRegionsIter<'a> {
     }
 }
 
-pub struct NodeIter<'a> {
+/// Stack frame for tracking node context during iteration
+#[derive(Clone)]
+struct NodeStackFrame<'a> {
+    level: usize,
+    node: NodeBase<'a>,
+    address_cells: u8,
+    size_cells: u8,
+    interrupt_parent: Option<Phandle>,
+}
+
+pub struct NodeIter<'a, const MAX_DEPTH: usize = 16> {
     buffer: Buffer<'a>,
     fdt: Fdt<'a>,
     level: isize,
-    parent: Option<NodeBase<'a>>,
-    node: Option<NodeBase<'a>>,
     has_err: bool,
-    // (level, phandle)
-    interrupt_parent_stack: heapless::Vec<(usize, Phandle), 8>,
+    // Stack to store complete node hierarchy
+    node_stack: heapless::Vec<NodeStackFrame<'a>, MAX_DEPTH>,
 }
 
-impl<'a> NodeIter<'a> {
-    /// Get the current effective interrupt parent phandle from the stack
-    fn current_interrupt_parent(&self) -> Option<Phandle> {
-        self.interrupt_parent_stack
-            .last()
-            .map(|(_, phandle)| *phandle)
+impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
+    /// Create a new NodeIter with the given FDT
+    pub fn new(fdt: Fdt<'a>) -> Self {
+        NodeIter {
+            buffer: fdt.raw.begin_at(fdt.header.off_dt_struct as usize).buffer(),
+            fdt,
+            level: -1,
+            has_err: false,
+            node_stack: heapless::Vec::new(),
+        }
     }
 
-    /// Push an interrupt parent to the stack for the given level
-    fn push_interrupt_parent(&mut self, level: usize, phandle: Phandle) -> Result<(), FdtError> {
-        self.interrupt_parent_stack
-            .push((level, phandle))
+    /// Get the current node from stack (parent of the node being created)
+    fn current_parent(&self) -> Option<&NodeBase<'a>> {
+        self.node_stack.last().map(|frame| &frame.node)
+    }
+
+    /// Get the current effective interrupt parent phandle from the stack
+    fn current_interrupt_parent(&self) -> Option<Phandle> {
+        // Search from the top of the stack downward for the first interrupt parent
+        for frame in self.node_stack.iter().rev() {
+            if let Some(phandle) = frame.interrupt_parent {
+                return Some(phandle);
+            }
+        }
+        None
+    }
+
+    /// Get address_cells and size_cells from parent frame
+    fn current_cells(&self) -> (u8, u8) {
+        self.node_stack
+            .last()
+            .map(|frame| (frame.address_cells, frame.size_cells))
+            .unwrap_or((2, 1))
+    }
+
+    /// Push a new node onto the stack
+    fn push_node(&mut self, frame: NodeStackFrame<'a>) -> Result<(), FdtError> {
+        self.node_stack
+            .push(frame)
             .map_err(|_| FdtError::BufferTooSmall {
-                pos: self.interrupt_parent_stack.len(),
+                pos: self.node_stack.len(),
             })
     }
 
-    /// Pop interrupt parents from the stack that are at or below the given level
-    fn pop_interrupt_parents(&mut self, level: usize) {
-        while let Some(&(stack_level, _)) = self.interrupt_parent_stack.last() {
-            if stack_level >= level {
-                self.interrupt_parent_stack.pop();
+    /// Pop nodes from stack when exiting to a certain level
+    fn pop_to_level(&mut self, target_level: isize) {
+        while let Some(frame) = self.node_stack.last() {
+            if frame.level as isize > target_level {
+                self.node_stack.pop();
             } else {
                 break;
             }
         }
     }
 
-    /// Scan ahead to find interrupt-parent property for the current node
-    fn scan_node_interrupt_parent(&self) -> Result<Option<Phandle>, FdtError> {
-        let mut node_interrupt_parent = self.current_interrupt_parent();
+    /// Scan ahead to find node properties (#address-cells, #size-cells, interrupt-parent)
+    fn scan_node_properties(&self) -> Result<(Option<u8>, Option<u8>, Option<Phandle>), FdtError> {
+        let mut address_cells = None;
+        let mut size_cells = None;
+        let mut interrupt_parent = self.current_interrupt_parent();
         let mut temp_buffer = self.buffer.clone();
 
-        // Look for interrupt-parent property in this node
+        // Look for properties in this node
         loop {
             match temp_buffer.take_token() {
                 Ok(Token::Prop) => {
                     let prop = temp_buffer.take_prop(&self.fdt)?;
-                    if prop.name == "interrupt-parent" {
-                        if let Ok(phandle_value) = prop.u32() {
-                            node_interrupt_parent = Some(Phandle::from(phandle_value));
+                    match prop.name {
+                        "#address-cells" => {
+                            if let Ok(value) = prop.u32() {
+                                address_cells = Some(value as u8);
+                            }
                         }
+                        "#size-cells" => {
+                            if let Ok(value) = prop.u32() {
+                                size_cells = Some(value as u8);
+                            }
+                        }
+                        "interrupt-parent" => {
+                            if let Ok(phandle_value) = prop.u32() {
+                                interrupt_parent = Some(Phandle::from(phandle_value));
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 Ok(Token::BeginNode) | Ok(Token::EndNode) | Ok(Token::End) => {
@@ -362,60 +402,61 @@ impl<'a> NodeIter<'a> {
             }
         }
 
-        Ok(node_interrupt_parent)
+        Ok((address_cells, size_cells, interrupt_parent))
     }
 
     /// Handle BeginNode token and create a new node
     fn handle_begin_node(&mut self) -> Result<Option<NodeBase<'a>>, FdtError> {
         self.level += 1;
-        let mut finished = None;
-        if let Some(ref p) = self.node {
-            self.parent = Some(p.clone());
-            finished = Some(p.clone());
-        }
 
         let name = self.buffer.take_str()?;
         self.buffer.take_to_aligned();
 
-        let node_interrupt_parent = self.scan_node_interrupt_parent()?;
+        // Scan node properties
+        let (address_cells, size_cells, interrupt_parent) = self.scan_node_properties()?;
 
+        // Use defaults from parent if not specified
+        let (default_addr, default_size) = self.current_cells();
+        let address_cells = address_cells.unwrap_or(default_addr);
+        let size_cells = size_cells.unwrap_or(default_size);
+        let interrupt_parent = interrupt_parent.or_else(|| self.current_interrupt_parent());
+
+        // Get parent node from stack
+        let parent = self.current_parent();
+
+        // Create the new node
         let node = NodeBase::new(
             name,
             self.fdt.clone(),
             self.buffer.remain(),
             self.level as _,
-            self.parent.as_ref(),
-            node_interrupt_parent,
+            parent,
+            interrupt_parent,
         );
 
-        // If this node has an interrupt-parent, push it to stack for children
-        if let Some(phandle) = node_interrupt_parent {
-            if phandle != self.current_interrupt_parent().unwrap_or(Phandle::from(0)) {
-                self.push_interrupt_parent(self.level as usize, phandle)?;
-            }
-        }
+        // Push this node onto the stack for its children
+        let frame = NodeStackFrame {
+            level: self.level as usize,
+            node: node.clone(),
+            address_cells,
+            size_cells,
+            interrupt_parent,
+        };
+        self.push_node(frame)?;
 
-        self.node = Some(node);
-        Ok(finished)
+        // Return the node immediately
+        Ok(Some(node))
     }
 
-    /// Handle EndNode token and return the completed node
+    /// Handle EndNode token - just pop from stack
     fn handle_end_node(&mut self) -> Option<NodeBase<'a>> {
-        let node = self.node.take();
-
-        // Pop interrupt parents when exiting a node
-        self.pop_interrupt_parents(self.level as usize);
-
         self.level -= 1;
-        if node.is_none() {
-            if let Some(ref p) = self.parent {
-                self.parent = p.parent().map(|n| n.node().clone());
-            } else {
-                self.parent = None;
-            }
-        }
 
-        node
+        // Pop the current level from stack
+        self.pop_to_level(self.level);
+
+        // Don't return anything - nodes are returned on BeginNode
+        None
     }
 
     /// Handle Prop token
@@ -451,7 +492,7 @@ impl<'a> NodeIter<'a> {
     }
 }
 
-impl<'a> Iterator for NodeIter<'a> {
+impl<'a, const MAX_DEPTH: usize> Iterator for NodeIter<'a, MAX_DEPTH> {
     type Item = Result<Node<'a>, FdtError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -469,16 +510,16 @@ impl<'a> Iterator for NodeIter<'a> {
     }
 }
 
-struct IterFindNode<'a> {
-    itr: NodeIter<'a>,
+struct IterFindNode<'a, const MAX_DEPTH: usize = 16> {
+    itr: NodeIter<'a, MAX_DEPTH>,
     want: &'a str,
     want_itr: usize,
     is_path_last: bool,
     has_err: bool,
 }
 
-impl<'a> IterFindNode<'a> {
-    fn new(itr: NodeIter<'a>, want: &'a str) -> Self {
+impl<'a, const MAX_DEPTH: usize> IterFindNode<'a, MAX_DEPTH> {
+    fn new(itr: NodeIter<'a, MAX_DEPTH>, want: &'a str) -> Self {
         IterFindNode {
             itr,
             want,
@@ -489,7 +530,7 @@ impl<'a> IterFindNode<'a> {
     }
 }
 
-impl<'a> Iterator for IterFindNode<'a> {
+impl<'a, const MAX_DEPTH: usize> Iterator for IterFindNode<'a, MAX_DEPTH> {
     type Item = Result<Node<'a>, FdtError>;
 
     fn next(&mut self) -> Option<Self::Item> {
