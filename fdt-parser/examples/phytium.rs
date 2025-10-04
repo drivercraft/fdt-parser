@@ -10,15 +10,14 @@ fn main() {
     let fdt = Fdt::from_bytes(bytes).unwrap();
 
     // Find memory nodes by compatible string
-    let memory_nodes = fdt.find_compatible(&["memory"]);
+    let memory_nodes = fdt.memory().unwrap();
 
     for memory_node in memory_nodes {
         println!("Memory node: {}", memory_node.name());
 
-        // Note: regions() method may not be available in cache parser
-        // for region in memory_node.regions() {
-        //     println!(" {:?}", region);
-        // }
+        for region in memory_node.regions().unwrap() {
+            println!(" {:?}", region);
+        }
 
         // Print some basic info about the memory node
         let compatibles = memory_node.compatibles();

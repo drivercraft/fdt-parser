@@ -119,6 +119,18 @@ impl Fdt {
         let meta = self.inner.get_node_by_path(path)?;
         Some(Node::new(self, &meta))
     }
+
+    pub fn memory(&self) -> Result<Vec<super::node::Memory>, FdtError> {
+        let nodes = self.find_nodes("/memory@");
+        let mut out = Vec::new();
+        for node in nodes {
+            let super::Node::Memory(m) = node else {
+                return Err(FdtError::NodeNotFound("memory"));
+            };
+            out.push(m);
+        }
+        Ok(out)
+    }
 }
 
 pub(super) struct Inner {

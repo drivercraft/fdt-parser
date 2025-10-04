@@ -112,7 +112,12 @@ impl NodeBase {
     /// Get compatible strings for this node (placeholder implementation)
     pub fn compatibles(&self) -> Vec<String> {
         self.find_property("compatible")
-            .map(|p| p.str_list().map(|s| s.into()).collect())
+            .map(|p| {
+                p.str_list()
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.into())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 

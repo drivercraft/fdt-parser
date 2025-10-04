@@ -27,13 +27,12 @@ fn main() {
             }
         }
 
-        // Note: reg() method may not be available in cache parser
-        // if let Some(reg) = node.reg() {
-        //     println!("{} - reg: ", space);
-        //     for cell in reg {
-        //         println!("{}     {:?}", space, cell);
-        //     }
-        // }
+        if let Ok(reg) = node.reg() {
+            println!("{} - reg: ", space);
+            for cell in reg {
+                println!("{}     {:?}", space, cell);
+            }
+        }
 
         if let Some(status) = node.status() {
             println!("{} - status: {:?}", space, status);
