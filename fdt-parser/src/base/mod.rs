@@ -1,5 +1,3 @@
-
-
 mod fdt;
 mod node;
 

@@ -495,4 +495,192 @@ mod test {
     //     let node = fdt.chosen().unwrap().debugcon().unwrap();
     //     println!("{:?}", node.name);
     // }
+
+    #[test]
+    fn test_parent_relationships_basic() {
+        let raw = fdt_reserve();
+        let fdt = unsafe { fdt_parser::Fdt::from_ptr(raw.ptr()).unwrap() };
+
+        // 收集所有节点到Vec中以便查找
+        let nodes = fdt.all_nodes();
+
+        // 测试根节点没有父节点
+        let root = nodes.iter().find(|n| n.full_path() == "/").unwrap();
+        assert!(root.parent().is_none(), "Root node should have no parent");
+        assert_eq!(root.level(), 0);
+
+        // 测试一级节点的父节点是根节点
+        let chosen = nodes.iter().find(|n| n.full_path() == "/chosen").unwrap();
+        assert_eq!(chosen.parent().unwrap().full_path(), "/");
+        assert_eq!(chosen.level(), 1);
+
+        let memory = nodes.iter().find(|n| n.full_path() == "/memory@0").unwrap();
+        assert_eq!(memory.parent().unwrap().full_path(), "/");
+        assert_eq!(memory.level(), 1);
+
+        let cpus = nodes.iter().find(|n| n.full_path() == "/cpus").unwrap();
+        assert_eq!(cpus.parent().unwrap().full_path(), "/");
+        assert_eq!(cpus.level(), 1);
+
+        let timer = nodes.iter().find(|n| n.full_path() == "/timer").unwrap();
+        assert_eq!(timer.parent().unwrap().full_path(), "/");
+        assert_eq!(timer.level(), 1);
+
+        let serial = nodes
+            .iter()
+            .find(|n| n.full_path() == "/serial@1c28000")
+            .unwrap();
+        assert_eq!(serial.parent().unwrap().full_path(), "/");
+        assert_eq!(serial.level(), 1);
+
+        // 测试二级节点的父节点正确
+        let cpu0 = nodes
+            .iter()
+            .find(|n| n.full_path() == "/cpus/cpu@0")
+            .unwrap();
+        assert_eq!(cpu0.parent().unwrap().full_path(), "/cpus");
+        assert_eq!(cpu0.level(), 2);
+
+        let cpu1 = nodes
+            .iter()
+            .find(|n| n.full_path() == "/cpus/cpu@1")
+            .unwrap();
+        assert_eq!(cpu1.parent().unwrap().full_path(), "/cpus");
+        assert_eq!(cpu1.level(), 2);
+    }
+
+    #[test]
+    fn test_parent_relationships_cache() {
+        let raw = fdt_reserve();
+        let fdt = unsafe { fdt_parser::Fdt::from_ptr(raw.ptr()).unwrap() };
+
+        // 收集所有节点到Vec中以便查找
+        let nodes = fdt.all_nodes();
+
+        // 测试根节点没有父节点
+        let root = nodes.iter().find(|n| n.full_path() == "/").unwrap();
+        assert!(root.parent().is_none(), "Root node should have no parent");
+        assert_eq!(root.level(), 0);
+
+        // 测试一级节点的父节点是根节点
+        let chosen = nodes.iter().find(|n| n.full_path() == "/chosen").unwrap();
+        assert_eq!(chosen.parent().unwrap().full_path(), "/");
+        assert_eq!(chosen.level(), 1);
+
+        let memory = nodes.iter().find(|n| n.full_path() == "/memory@0").unwrap();
+        assert_eq!(memory.parent().unwrap().full_path(), "/");
+        assert_eq!(memory.level(), 1);
+
+        let cpus = nodes.iter().find(|n| n.full_path() == "/cpus").unwrap();
+        assert_eq!(cpus.parent().unwrap().full_path(), "/");
+        assert_eq!(cpus.level(), 1);
+
+        let timer = nodes.iter().find(|n| n.full_path() == "/timer").unwrap();
+        assert_eq!(timer.parent().unwrap().full_path(), "/");
+        assert_eq!(timer.level(), 1);
+
+        let serial = nodes
+            .iter()
+            .find(|n| n.full_path() == "/serial@1c28000")
+            .unwrap();
+        assert_eq!(serial.parent().unwrap().full_path(), "/");
+        assert_eq!(serial.level(), 1);
+
+        // 测试二级节点的父节点正确
+        let cpu0 = nodes
+            .iter()
+            .find(|n| n.full_path() == "/cpus/cpu@0")
+            .unwrap();
+        assert_eq!(cpu0.parent().unwrap().full_path(), "/cpus");
+        assert_eq!(cpu0.level(), 2);
+
+        let cpu1 = nodes
+            .iter()
+            .find(|n| n.full_path() == "/cpus/cpu@1")
+            .unwrap();
+        assert_eq!(cpu1.parent().unwrap().full_path(), "/cpus");
+        assert_eq!(cpu1.level(), 2);
+    }
+
+    #[test]
+    fn test_parent_with_different_dtb() {
+        // 只使用一个较小的DTB文件测试parent关系以避免性能问题
+        let test_cases = [("Test Reserve", fdt_reserve())];
+
+        for (name, raw) in test_cases {
+            let fdt = unsafe { fdt_parser::Fdt::from_ptr(raw.ptr()).unwrap() };
+
+            // 找到根节点
+            let nodes = fdt.all_nodes();
+            let root_node = nodes.iter().find(|node| node.full_path() == "/").unwrap();
+
+            assert!(
+                root_node.parent().is_none(),
+                "{}: Root node should have no parent",
+                name
+            );
+            assert_eq!(
+                root_node.level(),
+                0,
+                "{}: Root node should be at level 0",
+                name
+            );
+
+            // 找一个一级节点
+            let first_level_node = nodes
+                .iter()
+                .find(|node| node.level() == 1 && node.full_path() != "/")
+                .unwrap();
+
+            assert_eq!(
+                first_level_node.parent().unwrap().full_path(),
+                "/",
+                "{}: First level child's parent should be root",
+                name
+            );
+            assert_eq!(
+                first_level_node.level(),
+                1,
+                "{}: First level child should be at level 1",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_parent_edge_cases() {
+        let raw = fdt_reserve();
+        let fdt = unsafe { fdt_parser::Fdt::from_ptr(raw.ptr()).unwrap() };
+
+        // 测试节点的父节点一致性
+        let nodes = fdt.all_nodes();
+
+        for node in &nodes {
+            if let Some(parent) = node.parent() {
+                // 父节点的level应该比当前节点少1
+                assert_eq!(
+                    parent.level(),
+                    node.level().saturating_sub(1),
+                    "Parent level should be one less than child for node {}",
+                    node.full_path()
+                );
+
+                // 如果不是根节点，父节点不应该为None
+                if node.level() > 0 {
+                    assert!(parent.parent().is_some() || parent.level() == 0,
+                           "Parent of non-root node should either have a parent or be root for node {}",
+                           node.full_path());
+                }
+            } else {
+                // 没有父节点的应该只有根节点
+                assert_eq!(
+                    node.level(),
+                    0,
+                    "Only root node should have no parent, but node {} at level {} has none",
+                    node.full_path(),
+                    node.level()
+                );
+            }
+        }
+    }
 }

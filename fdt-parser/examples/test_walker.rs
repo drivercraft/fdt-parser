@@ -7,19 +7,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fdt = Fdt::from_bytes(&dtb_data)?;
 
     println!("=== 测试 Walker 结构体 ===");
-    
+
     // 创建Walker实例
     let walker = fdt.walker();
-    
+
     // 1. 测试walk_all - 遍历所有节点
     println!("1. 前10个节点:");
     let mut count = 0;
     walker.walk_all(|node| {
         if count < 10 {
-            println!("  {}├─ {} (level: {})", 
-                    "  ".repeat(node.level()), 
-                    node.name(), 
-                    node.level());
+            println!(
+                "  {}├─ {} (level: {})",
+                "  ".repeat(node.level()),
+                node.name(),
+                node.level()
+            );
             count += 1;
             Ok(true)
         } else {
@@ -70,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         |node| {
             println!("  GPIO节点: {} (level: {})", node.name(), node.level());
             Ok(())
-        }
+        },
     )?;
     println!("  找到 {} 个GPIO相关节点", gpio_count);
 
@@ -81,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         |node| {
             println!("  遍历: {} (level: {})", node.name(), node.level());
             Ok(())
-        }
+        },
     )?;
     println!("  找到cpu@0: {}", found_cpu);
 
