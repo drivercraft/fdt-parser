@@ -16,54 +16,7 @@ pub struct Fdt {
 impl Fdt {
     /// Create a new `Fdt` from byte slice.
     pub fn from_bytes(data: &[u8]) -> Result<Fdt, FdtError> {
-        let b = base::Fdt::from_bytes(data)?;
-        let mut inner = Inner {
-            raw: Align4Vec::new(data),
-            phandle_cache: BTreeMap::new(),
-            compatible_cache: BTreeMap::new(),
-            all_nodes: Vec::new(),
-            path_cache: BTreeMap::new(),
-        };
-        let mut node_vec = Vec::new();
-        let mut path_stack = Vec::new();
-        for node in b.all_nodes() {
-            let node = node?;
-            let node_name = node.name();
-            let level = node.level();
-
-            if level < path_stack.len() {
-                path_stack.truncate(level);
-            }
-            path_stack.push(node_name.trim_start_matches("/"));
-            let full_path = if path_stack.len() > 1 {
-                alloc::format!("/{}", path_stack[1..].join("/"))
-            } else {
-                "/".to_string()
-            };
-            for prop in node.properties() {
-                let _ = prop?;
-            }
-
-            inner
-                .all_nodes
-                .push(NodeMeta::new(&node, full_path.clone()));
-            inner
-                .path_cache
-                .insert(full_path, inner.all_nodes.len() - 1);
-
-            if let Some(phandle) = node.phandle()? {
-                inner
-                    .phandle_cache
-                    .entry(phandle)
-                    .or_insert_with(|| node.name().into());
-            }
-            for compatible in node.compatibles_flatten() {
-                let map = inner.compatible_cache.entry(compatible.into()).or_default();
-                map.insert(node.name().into());
-            }
-            node_vec.push(node);
-        }
-
+        let inner = Inner::new(data)?;
         Ok(Self {
             inner: Arc::new(inner),
         })
@@ -92,8 +45,8 @@ impl Fdt {
     /// With caching
     pub fn all_nodes(&self) -> Vec<Node> {
         self.inner
-            .path_cache
-            .values()
+            .all_nodes
+            .iter()
             .map(|meta| Node::new(self, meta))
             .collect()
     }
@@ -126,26 +79,26 @@ impl Fdt {
     }
 
     pub fn get_node_by_phandle(&self, phandle: Phandle) -> Option<Node> {
-        let name = self.inner.phandle_cache.get(&phandle)?;
-        let meta = self.inner.path_cache.get(name)?;
-        Some(Node::new(self, meta))
+        let meta = self.inner.get_node_by_phandle(phandle)?;
+        Some(Node::new(self, &meta))
     }
 
     pub fn find_compatible(&self, with: &[&str]) -> Vec<Node> {
-        let mut names = BTreeSet::new();
+        let mut ids = BTreeSet::new();
         for &c in with {
             if let Some(s) = self.inner.compatible_cache.get(c) {
                 for n in s {
-                    names.insert(n);
+                    ids.insert(n);
                 }
             }
         }
         let mut out = Vec::new();
-        for name in names {
-            if let Some(meta) = self.inner.path_cache.get(name) {
-                out.push(Node::new(self, meta));
+        for id in ids {
+            if let Some(meta) = self.inner.get_node_by_index(*id) {
+                out.push(Node::new(self, &meta));
             }
         }
+
         out
     }
 
@@ -161,9 +114,9 @@ impl Fdt {
 
 struct Inner {
     raw: Align4Vec,
-    phandle_cache: BTreeMap<Phandle, String>,
+    phandle_cache: BTreeMap<Phandle, usize>,
     /// compatible -> set(name)
-    compatible_cache: BTreeMap<String, BTreeSet<String>>,
+    compatible_cache: BTreeMap<String, BTreeSet<usize>>,
     /// same order as all_nodes()
     all_nodes: Vec<NodeMeta>,
     path_cache: BTreeMap<String, usize>,
@@ -171,3 +124,78 @@ struct Inner {
 
 unsafe impl Send for Inner {}
 unsafe impl Sync for Inner {}
+
+impl Inner {
+    fn new(data: &[u8]) -> Result<Self, FdtError> {
+        let b = base::Fdt::from_bytes(data)?;
+        let mut inner = Inner {
+            raw: Align4Vec::new(data),
+            phandle_cache: BTreeMap::new(),
+            compatible_cache: BTreeMap::new(),
+            all_nodes: Vec::new(),
+            path_cache: BTreeMap::new(),
+        };
+        let mut node_vec = Vec::new();
+        let mut path_stack = Vec::new();
+        for (i, node) in b.all_nodes().enumerate() {
+            let node = node?;
+            let node_name = node.name();
+            let level = node.level();
+
+            if level < path_stack.len() {
+                path_stack.truncate(level);
+            }
+            path_stack.push(node_name.trim_start_matches("/"));
+            let full_path = if path_stack.len() > 1 {
+                alloc::format!("/{}", path_stack[1..].join("/"))
+            } else {
+                "/".to_string()
+            };
+            for prop in node.properties() {
+                let _ = prop?;
+            }
+
+            inner
+                .all_nodes
+                .push(NodeMeta::new(&node, full_path.clone()));
+            inner.path_cache.insert(full_path, i);
+
+            if let Some(phandle) = node.phandle()? {
+                inner.phandle_cache.entry(phandle).or_insert_with(|| i);
+            }
+            for compatible in node.compatibles_flatten() {
+                let map = inner.compatible_cache.entry(compatible.into()).or_default();
+                map.insert(i);
+            }
+            node_vec.push(node);
+        }
+
+        Ok(inner)
+    }
+
+    fn get_node_by_path(&self, path: &str) -> Option<NodeMeta> {
+        let idx = self.path_cache.get(path)?;
+        Some(self.all_nodes[*idx].clone())
+    }
+
+    fn get_node_by_index(&self, index: usize) -> Option<NodeMeta> {
+        self.all_nodes.get(index).cloned()
+    }
+
+    fn get_node_by_phandle(&self, phandle: Phandle) -> Option<NodeMeta> {
+        let idx = self.phandle_cache.get(&phandle)?;
+        Some(self.all_nodes[*idx].clone())
+    }
+
+    fn get_nodes_by_compatible(&self, compatible: &str) -> Vec<NodeMeta> {
+        let mut out = Vec::new();
+        if let Some(set) = self.compatible_cache.get(compatible) {
+            for idx in set {
+                if let Some(meta) = self.get_node_by_index(*idx) {
+                    out.push(meta);
+                }
+            }
+        }
+        out
+    }
+}
