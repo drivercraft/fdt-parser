@@ -450,11 +450,7 @@ mod tests {
         let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
         // 查找根节点
-        let root_node = fdt
-            .find_nodes("/")
-            .next()
-            .unwrap()
-            .unwrap();
+        let root_node = fdt.find_nodes("/").next().unwrap().unwrap();
 
         // 测试子节点迭代器
         let children: Result<alloc::vec::Vec<_>, _> = root_node.children().collect();
@@ -480,17 +476,10 @@ mod tests {
         let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
         // 查找根节点
-        let root_node = fdt
-            .find_nodes("/")
-            .next()
-            .unwrap()
-            .unwrap();
+        let root_node = fdt.find_nodes("/").next().unwrap().unwrap();
 
         // 测试通过名称查找子节点
-        let memory_node = root_node
-            .children()
-            .find_child_by_name("memory@0")
-            .unwrap();
+        let memory_node = root_node.children().find_child_by_name("memory@0").unwrap();
 
         assert_eq!(memory_node.name(), "memory@0");
 
@@ -508,11 +497,7 @@ mod tests {
         let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
         // 查找一个叶子节点（没有子节点的节点）
-        let leaf_node = fdt
-            .find_nodes("/chosen")
-            .next()
-            .unwrap()
-            .unwrap();
+        let leaf_node = fdt.find_nodes("/chosen").next().unwrap().unwrap();
 
         // 测试叶子节点的子节点迭代器
         let children: Result<alloc::vec::Vec<_>, _> = leaf_node.children().collect();
