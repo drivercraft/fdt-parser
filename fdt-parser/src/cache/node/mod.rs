@@ -1,13 +1,29 @@
 use core::{fmt::Debug, ops::Deref};
 
 use super::Fdt;
-use crate::{base, data::Raw, property::PropIter, Phandle, Property, Status};
+use crate::{
+    base,
+    data::{Raw, U32Iter2D},
+    property::PropIter,
+    FdtError, Phandle, Property, Status,
+};
 
 use alloc::{string::String, vec::Vec};
+
+mod chosen;
+mod interrupt_controller;
+mod memory;
+
+pub use chosen::*;
+pub use interrupt_controller::*;
+pub use memory::*;
 
 #[derive(Debug, Clone)]
 pub enum Node {
     General(NodeBase),
+    Chosen(Chosen),
+    Memory(Memory),
+    InterruptController(InterruptController),
 }
 
 impl Node {
@@ -16,7 +32,20 @@ impl Node {
             fdt: fdt.clone(),
             meta: meta.clone(),
         };
-        Self::General(base)
+
+        // 根据节点类型创建具体类型
+        match meta.name.as_str() {
+            "chosen" => Self::Chosen(Chosen::new(base)),
+            name if name.starts_with("memory@") => Self::Memory(Memory::new(base)),
+            _ => {
+                // 检查是否是中断控制器
+                if base.is_interrupt_controller() {
+                    Self::InterruptController(InterruptController::new(base))
+                } else {
+                    Self::General(base)
+                }
+            }
+        }
     }
 }
 
@@ -26,6 +55,9 @@ impl Deref for Node {
     fn deref(&self) -> &Self::Target {
         match self {
             Node::General(n) => n,
+            Node::Chosen(n) => n,
+            Node::Memory(n) => n,
+            Node::InterruptController(n) => n,
         }
     }
 }
@@ -92,6 +124,66 @@ impl NodeBase {
                     None
                 }
             })
+    }
+
+    fn is_interrupt_controller(&self) -> bool {
+        self.name().starts_with("interrupt-controller")
+            || self.find_property("#interrupt-controller").is_some()
+    }
+
+    /// Get register information for this node
+    pub fn reg(&self) -> Option<impl Iterator<Item = crate::FdtReg> + use<'_>> {
+        self.find_property("reg").map(|prop| RegIter {
+            buffer: prop.data.buffer(),
+        })
+    }
+
+    pub fn interrupt_parent_phandle(&self) -> Option<Phandle> {
+        self.meta.interrupt_parent
+    }
+
+    pub fn interrupt_parent(&self) -> Option<InterruptController> {
+        let phandle = self.interrupt_parent_phandle()?;
+        let irq = self.fdt.get_node_by_phandle(phandle)?;
+        let Node::InterruptController(i) = irq else {
+            return None;
+        };
+        Some(i)
+    }
+
+    pub fn interrupts(&self) -> Result<Vec<Vec<u32>>, FdtError> {
+        let res = self
+            .find_property("interrupts")
+            .ok_or(FdtError::PropertyNotFound("interrupts"))?;
+        let parent = self
+            .interrupt_parent()
+            .ok_or(FdtError::PropertyNotFound("interrupt-parent"))?;
+        let cells = parent.interrupt_cells()?;
+        let mut iter = U32Iter2D::new(&res.data, cells as _);
+        let mut out = Vec::new();
+        while let Some(entry) = iter.next() {
+            out.push(entry.collect());
+        }
+        Ok(out)
+    }
+}
+
+pub struct RegIter<'a> {
+    buffer: crate::data::Buffer<'a>,
+}
+
+impl<'a> Iterator for RegIter<'a> {
+    type Item = crate::FdtReg;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // 简化实现，假设64位地址和32位大小
+        let address = self.buffer.take_u64().ok()? as usize;
+        let size = self.buffer.take_u32().ok()? as usize;
+        Some(crate::FdtReg {
+            address: address as u64,
+            child_bus_address: address as u64,
+            size: Some(size),
+        })
     }
 }
 

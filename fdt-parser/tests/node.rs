@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod test {
     use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu, fdt_reserve, fdt_rpi_4b};
-    use fdt_parser::*;
     use fdt_parser::base::DebugCon;
+    use fdt_parser::*;
 
     #[test]
     fn test_new() {
@@ -283,72 +283,45 @@ mod test {
         }
     }
 
-    // #[test]
-    // fn test_all_compatibles() {
-    //     let raw = fdt_qemu();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
+    #[test]
+    fn test_interrupt() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt.find_nodes("/soc/serial@7e215040")[0].clone();
 
-    //     for node in fdt.all_nodes() {
-    //         let node = node.unwrap();
-    //         println!("{}", node.name());
-    //         for cam in node.compatibles_flatten() {
-    //             println!("   {}", cam);
-    //         }
-    //     }
-    // }
+        let itr_ctrl = node.interrupt_parent().unwrap();
+        println!("itr_ctrl: {:?}", itr_ctrl.name());
+        let interrupt_cells = itr_ctrl.interrupt_cells().unwrap();
+        assert_eq!(interrupt_cells, 3);
+    }
 
-    // #[test]
-    // fn test_interrupt() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
-    //     let node = fdt
-    //         .find_nodes("/soc/serial@7e215040")
-    //         .next()
-    //         .unwrap()
-    //         .unwrap();
+    #[test]
+    fn test_interrupt2() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    //     let itr_ctrl = node.interrupt_parent().unwrap().unwrap();
-    //     println!("itr_ctrl: {:?}", itr_ctrl.name());
-    //     let interrupt_cells = itr_ctrl.interrupt_cells().unwrap();
-    //     assert_eq!(interrupt_cells, 3);
-    // }
+        let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"])[0].clone();
 
-    // #[test]
-    // fn test_interrupt2() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
+        let itr_ctrl_ph = node.interrupt_parent_phandle().unwrap();
+        assert_eq!(itr_ctrl_ph, 0x2c.into());
 
-    //     let node = fdt
-    //         .find_compatible(&["brcm,bcm2711-hdmi0"])
-    //         .next()
-    //         .unwrap()
-    //         .unwrap();
+        let itr_ctrl = node.interrupt_parent().unwrap();
+        assert_eq!(itr_ctrl.name(), "interrupt-controller@7ef00100");
+    }
 
-    //     let itr_ctrl_ph = node.get_interrupt_parent_phandle().unwrap();
-    //     assert_eq!(itr_ctrl_ph, 0x2c.into());
+    #[test]
+    fn test_interrupts() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    //     let itr_ctrl = node.interrupt_parent().unwrap().unwrap();
-    //     assert_eq!(itr_ctrl.name(), "interrupt-controller@7ef00100");
-    // }
+        let node = fdt.find_compatible(&["brcm,bcm2711-hdmi0"])[0].clone();
+        let itr = node.interrupts().unwrap();
+        let want_itrs = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5];
 
-    // #[test]
-    // fn test_interrupts() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
-
-    //     let node = fdt
-    //         .find_compatible(&["brcm,bcm2711-hdmi0"])
-    //         .next()
-    //         .unwrap()
-    //         .unwrap();
-    //     let itr = node.interrupts().unwrap().unwrap();
-    //     let want_itrs = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5];
-
-    //     for (i, o) in itr.enumerate() {
-    //         let itr = o.collect::<Vec<_>>();
-    //         assert_eq!(itr[0], want_itrs[i]);
-    //     }
-    // }
+        for (i, itr) in itr.iter().enumerate() {
+            assert_eq!(itr[0], want_itrs[i]);
+        }
+    }
 
     // #[test]
     // fn test_clocks() {

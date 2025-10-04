@@ -6,7 +6,7 @@ use alloc::{
 };
 
 use super::{Align4Vec, Node};
-use crate::{base, cache::NodeMeta, data::Raw, FdtError, Header, MemoryRegion, Phandle};
+use crate::{base, cache::NodeMeta, data::Raw, FdtError, Header, Phandle};
 
 #[derive(Clone)]
 pub struct Fdt {
@@ -105,13 +105,19 @@ impl Fdt {
         out
     }
 
-    pub fn memory_reservaion_blocks(&self) -> Vec<MemoryRegion> {
+    pub fn memory_reservaion_blocks(&self) -> Vec<crate::MemoryRegion> {
         let fdt = self.fdt_base();
         fdt.memory_reservaion_blocks().collect()
     }
 
     pub fn raw<'a>(&'a self) -> Raw<'a> {
         Raw::new(&self.inner.raw)
+    }
+
+    /// Get a node by its path in the device tree
+    pub fn get_node_by_path(&self, path: &str) -> Option<Node> {
+        let meta = self.inner.get_node_by_path(path)?;
+        Some(Node::new(self, &meta))
     }
 }
 
