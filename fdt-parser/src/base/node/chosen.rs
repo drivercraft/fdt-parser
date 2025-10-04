@@ -1,9 +1,21 @@
 use core::{fmt::Debug, ops::Deref};
 
 use crate::{
-    base::{Node, NodeBase},
+    base::NodeBase,
     FdtError,
 };
+
+#[derive(Clone, Debug)]
+pub enum DebugCon<'a> {
+    /// 找到了对应的设备树节点
+    Node(NodeBase<'a>),
+    /// 仅在bootargs中找到earlycon参数，包含解析出的信息
+    EarlyConInfo {
+        name: &'a str,
+        mmio: u64,
+        params: Option<&'a str>,
+    },
+}
 
 #[derive(Clone)]
 pub struct Chosen<'a> {
@@ -49,15 +61,15 @@ impl<'a> Chosen<'a> {
         }))
     }
 
-    pub fn debugcon(&self) -> Result<Option<Node<'a>>, FdtError> {
+    pub fn debugcon(&self) -> Result<Option<DebugCon<'a>>, FdtError> {
         if let Some(node) = self.stdout()? {
-            Ok(Some(Node::General(node.node)))
+            Ok(Some(DebugCon::Node(node.node)))
         } else {
-            self.fdt_bootargs_find_debugcon_node()
+            self.fdt_bootargs_find_debugcon_info()
         }
     }
 
-    fn fdt_bootargs_find_debugcon_node(&self) -> Result<Option<Node<'a>>, FdtError> {
+    fn fdt_bootargs_find_debugcon_info(&self) -> Result<Option<DebugCon<'a>>, FdtError> {
         let bootargs = none_ok!(self.bootargs()?);
 
         let earlycon = none_ok!(bootargs
@@ -68,37 +80,59 @@ impl<'a> Chosen<'a> {
         let _ = none_ok!(tmp.next());
         let values = none_ok!(tmp.next());
 
-        let mut values = values.split(',');
-
-        let name = none_ok!(values.next());
+        // 解析所有参数
+        let mut params_iter = values.split(',');
+        let name = none_ok!(params_iter.next());
 
         if !name.contains("uart") {
             return Ok(None);
         }
 
-        let param2 = none_ok!(values.next());
+        let param2 = none_ok!(params_iter.next());
 
         let addr_str = if param2.contains("0x") {
             param2
         } else {
-            none_ok!(values.next())
+            none_ok!(params_iter.next())
         };
 
         let mmio = u64::from_str_radix(addr_str.trim_start_matches("0x"), 16)
             .map_err(|_| FdtError::Utf8Parse)?;
 
-        for node in self.node.fdt.all_nodes() {
-            let node = node?;
+        // 先尝试在设备树中查找对应节点
+        for node_result in self.node.fdt.all_nodes() {
+            let node = node_result?;
             if let Some(regs) = node.reg()? {
                 for reg in regs {
                     if reg.address.eq(&mmio) {
-                        return Ok(Some(node));
+                        return Ok(Some(DebugCon::Node((*node).clone())));
                     }
                 }
             }
         }
 
-        Ok(None)
+        // 如果找不到对应节点，返回解析出的earlycon信息
+        // 重新分割字符串以获取剩余参数
+        let mut parts = values.split(',');
+        let _name = parts.next(); // 跳过name
+        let _addr_part = parts.next(); // 跳过地址部分
+        let params = if let Some(param) = parts.next() {
+            // 获取第一个剩余参数的位置，然后取剩余所有内容
+            let param_start = values.find(param).unwrap_or(0);
+            if param_start > 0 {
+                Some(&values[param_start..])
+            } else {
+                Some(param)
+            }
+        } else {
+            None
+        };
+
+        Ok(Some(DebugCon::EarlyConInfo {
+            name,
+            mmio,
+            params,
+        }))
     }
 }
 

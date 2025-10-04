@@ -4,7 +4,10 @@
       "Bash(cargo test:*)",
       "Bash(timeout:*)",
       "Bash(cargo build:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "WebSearch",
+      "WebFetch(domain:www.kernel.org)",
+      "WebFetch(domain:elinux.org)"
     ],
     "deny": [],
     "ask": []

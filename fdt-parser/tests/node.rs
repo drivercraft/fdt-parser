@@ -2,6 +2,7 @@
 mod test {
     use dtb_file::{fdt_3568, fdt_phytium, fdt_qemu, fdt_reserve, fdt_rpi_4b};
     use fdt_parser::*;
+    use fdt_parser::base::DebugCon;
 
     #[test]
     fn test_new() {
@@ -481,20 +482,43 @@ mod test {
     //     }
     // }
 
-    // #[test]
-    // fn test_debugcon() {
-    //     let raw = fdt_qemu();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
-    //     let node = fdt.chosen().unwrap().unwrap().debugcon().unwrap().unwrap();
-    //     println!("{:?}", node.name());
-    // }
+    #[test]
+    fn test_debugcon() {
+        let raw = fdt_qemu();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let debugcon = fdt.chosen().unwrap().debugcon().unwrap();
 
-    // #[test]
-    // fn test_debugcon2() {
-    //     let fdt = Fdt::from_bytes(TEST_3568_FDT).unwrap();
-    //     let node = fdt.chosen().unwrap().debugcon().unwrap();
-    //     println!("{:?}", node.name);
-    // }
+        match debugcon {
+            Some(DebugCon::Node(node)) => {
+                println!("Found debugcon node: {:?}", node.name());
+            }
+            Some(DebugCon::EarlyConInfo { name, mmio, params }) => {
+                println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
+            }
+            None => {
+                println!("No debugcon found");
+            }
+        }
+    }
+
+    #[test]
+    fn test_debugcon2() {
+        let raw = fdt_3568();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let debugcon = fdt.chosen().unwrap().debugcon().unwrap();
+
+        match debugcon {
+            Some(DebugCon::Node(node)) => {
+                println!("Found debugcon node: {:?}", node.name());
+            }
+            Some(DebugCon::EarlyConInfo { name, mmio, params }) => {
+                println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
+            }
+            None => {
+                println!("No debugcon found");
+            }
+        }
+    }
 
     #[test]
     fn test_parent_relationships_basic() {

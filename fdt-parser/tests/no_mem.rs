@@ -314,15 +314,37 @@ mod test {
     fn test_debugcon() {
         let raw = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw).unwrap();
-        let node = fdt.chosen().unwrap().unwrap().debugcon().unwrap().unwrap();
-        println!("{:?}", node.name());
+        let debugcon = fdt.chosen().unwrap().unwrap().debugcon().unwrap();
+
+        match debugcon {
+            Some(fdt_parser::base::DebugCon::Node(node)) => {
+                println!("Found debugcon node: {:?}", node.name());
+            }
+            Some(fdt_parser::base::DebugCon::EarlyConInfo { name, mmio, params }) => {
+                println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
+            }
+            None => {
+                println!("No debugcon found");
+            }
+        }
     }
 
     #[test]
     fn test_debugcon2() {
         let raw = fdt_3568();
         let fdt = Fdt::from_bytes(&raw).unwrap();
-        let node = fdt.chosen().unwrap().unwrap().debugcon().unwrap().unwrap();
-        println!("{:?}", node.name());
+        let debugcon = fdt.chosen().unwrap().unwrap().debugcon().unwrap();
+
+        match debugcon {
+            Some(fdt_parser::base::DebugCon::Node(node)) => {
+                println!("Found debugcon node: {:?}", node.name());
+            }
+            Some(fdt_parser::base::DebugCon::EarlyConInfo { name, mmio, params }) => {
+                println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
+            }
+            None => {
+                println!("No debugcon found");
+            }
+        }
     }
 }
