@@ -35,7 +35,8 @@ fn main() {
         writeln!(file, "{}{}", space, node.name()).unwrap();
 
         let compatibles = node.compatibles();
-        let non_empty_compatibles: Vec<_> = compatibles.into_iter().filter(|s| !s.is_empty()).collect();
+        let non_empty_compatibles: Vec<_> =
+            compatibles.into_iter().filter(|s| !s.is_empty()).collect();
         if !non_empty_compatibles.is_empty() {
             writeln!(file, "{} -compatible: ", space).unwrap();
             for cap in non_empty_compatibles {
