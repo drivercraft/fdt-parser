@@ -5,7 +5,6 @@ use crate::{
     data::{Buffer, Raw},
     FdtError, FdtRangeSilce, Header, MemoryRegion, Phandle, Property, Token,
 };
-use log::trace;
 
 #[derive(Clone)]
 pub struct Fdt<'a> {
@@ -482,19 +481,6 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
             parent_ranges,
             interrupt_parent,
         );
-
-        trace!(
-            "begin node name={} level={} addr_cells={} size_cells={} parent_addr_cells={} parent_size_cells={} has_ranges={} interrupt_parent={:?}",
-            node.name(),
-            node.level(),
-            address_cells,
-            size_cells,
-            parent_address_cells.unwrap_or_default(),
-            parent_size_cells.unwrap_or_default(),
-            ranges.as_ref().map(|_| true).unwrap_or(false),
-            interrupt_parent
-        );
-
         // Push this node onto the stack for its children
         let frame = NodeStackFrame {
             level: self.level as usize,

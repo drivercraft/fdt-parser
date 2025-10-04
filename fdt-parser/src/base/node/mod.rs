@@ -7,7 +7,6 @@ use crate::{
     property::PropIter,
     FdtError, FdtRangeSilce, FdtReg, Phandle, Property, Status,
 };
-use log::debug;
 
 mod chosen;
 mod interrupt_controller;
@@ -290,13 +289,6 @@ impl Iterator for RegIter<'_> {
                 {
                     address =
                         child_bus_address - range_child_bus_address + range_parent_bus_address;
-                    debug!(
-                        "reg translation child={:#x} mapped_address={:#x} range_child={:#x} range_parent={:#x}",
-                        child_bus_address,
-                        address,
-                        range_child_bus_address,
-                        range_parent_bus_address
-                    );
                     break;
                 }
             }

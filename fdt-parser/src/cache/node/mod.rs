@@ -181,9 +181,7 @@ impl NodeBase {
             .or_else(|| parent_info.and_then(|info| info.size_cells))
             .unwrap_or(1);
 
-        let address_cell_parent = parent_info
-            .and_then(|info| info.address_cells)
-            .unwrap_or(2);
+        let address_cell_parent = parent_info.and_then(|info| info.address_cells).unwrap_or(2);
 
         Some(FdtRangeSilce::new(
             address_cell,
