@@ -198,16 +198,4 @@ impl Inner {
         let idx = self.phandle_cache.get(&phandle)?;
         Some(self.all_nodes[*idx].clone())
     }
-
-    fn get_nodes_by_compatible(&self, compatible: &str) -> Vec<NodeMeta> {
-        let mut out = Vec::new();
-        if let Some(set) = self.compatible_cache.get(compatible) {
-            for idx in set {
-                if let Some(meta) = self.get_node_by_index(*idx) {
-                    out.push(meta);
-                }
-            }
-        }
-        out
-    }
 }

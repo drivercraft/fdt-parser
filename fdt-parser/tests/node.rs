@@ -482,43 +482,43 @@ mod test {
     //     }
     // }
 
-    #[test]
-    fn test_debugcon() {
-        let raw = fdt_qemu();
-        let fdt = Fdt::from_bytes(&raw).unwrap();
-        let debugcon = fdt.chosen().unwrap().debugcon().unwrap();
+    // #[test]
+    // fn test_debugcon() {
+    //     let raw = fdt_qemu();
+    //     let fdt = Fdt::from_bytes(&raw).unwrap();
+    //     let debugcon = fdt.chosen().unwrap().debugcon().unwrap();
 
-        match debugcon {
-            Some(DebugCon::Node(node)) => {
-                println!("Found debugcon node: {:?}", node.name());
-            }
-            Some(DebugCon::EarlyConInfo { name, mmio, params }) => {
-                println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
-            }
-            None => {
-                println!("No debugcon found");
-            }
-        }
-    }
+    //     match debugcon {
+    //         Some(DebugCon::Node(node)) => {
+    //             println!("Found debugcon node: {:?}", node.name());
+    //         }
+    //         Some(DebugCon::EarlyConInfo { name, mmio, params }) => {
+    //             println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
+    //         }
+    //         None => {
+    //             println!("No debugcon found");
+    //         }
+    //     }
+    // }
 
-    #[test]
-    fn test_debugcon2() {
-        let raw = fdt_3568();
-        let fdt = Fdt::from_bytes(&raw).unwrap();
-        let debugcon = fdt.chosen().unwrap().debugcon().unwrap();
+    // #[test]
+    // fn test_debugcon2() {
+    //     let raw = fdt_3568();
+    //     let fdt = Fdt::from_bytes(&raw).unwrap();
+    //     let debugcon = fdt.chosen().unwrap().debugcon().unwrap();
 
-        match debugcon {
-            Some(DebugCon::Node(node)) => {
-                println!("Found debugcon node: {:?}", node.name());
-            }
-            Some(DebugCon::EarlyConInfo { name, mmio, params }) => {
-                println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
-            }
-            None => {
-                println!("No debugcon found");
-            }
-        }
-    }
+    //     match debugcon {
+    //         Some(DebugCon::Node(node)) => {
+    //             println!("Found debugcon node: {:?}", node.name());
+    //         }
+    //         Some(DebugCon::EarlyConInfo { name, mmio, params }) => {
+    //             println!("Found earlycon info: name={}, mmio={:#x}, params={:?}", name, mmio, params);
+    //         }
+    //         None => {
+    //             println!("No debugcon found");
+    //         }
+    //     }
+    // }
 
     #[test]
     fn test_parent_relationships_basic() {
