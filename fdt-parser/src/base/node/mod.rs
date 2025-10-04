@@ -9,12 +9,10 @@ use crate::{
 };
 
 mod chosen;
-mod clock;
 mod interrupt_controller;
 mod memory;
 
 pub use chosen::*;
-pub use clock::*;
 pub use interrupt_controller::*;
 pub use memory::*;
 
@@ -227,10 +225,6 @@ impl<'a> NodeBase<'a> {
     pub fn clock_frequency(&self) -> Result<Option<u32>, FdtError> {
         let prop = none_ok!(self.find_property("clock-frequency")?);
         Ok(Some(prop.u32()?))
-    }
-
-    pub fn clocks(&self) -> Result<ClocksIter<'a>, FdtError> {
-        ClocksIter::new(self)
     }
 
     pub fn children(&self) -> NodeChildIter<'a> {

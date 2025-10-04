@@ -8,13 +8,18 @@ use crate::{
     FdtError, Phandle, Property, Status,
 };
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 mod chosen;
+mod clock;
 mod interrupt_controller;
 mod memory;
 
 pub use chosen::*;
+pub use clock::*;
 pub use interrupt_controller::*;
 pub use memory::*;
 
@@ -165,6 +170,58 @@ impl NodeBase {
             out.push(entry.collect());
         }
         Ok(out)
+    }
+
+    /// Get the clocks used by this node
+    pub fn clocks(&self) -> Result<Vec<ClockInfo>, FdtError> {
+        let mut clocks = Vec::new();
+        let Some(ids) = self.find_property("clocks") else {
+            return Ok(clocks);
+        };
+        let mut iter = ids.data.buffer();
+        let cells = self
+            .find_property("#clock-cells")
+            .and_then(|p| p.u32().ok())
+            .unwrap_or(1) as usize;
+
+        let names = self
+            .find_property("clock-names")
+            .map(|p| p.str_list().map(|s| s.to_string()).collect::<Vec<String>>());
+
+        while let Some(ph) = iter.take_u32().ok() {
+            let phandle = Phandle::from(ph);
+            let name = if let Some(ref names) = names {
+                if clocks.len() < names.len() {
+                    Some(names[clocks.len()].clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let select = if cells > 0 {
+                Some(iter.take_u32()?)
+            } else {
+                None
+            };
+
+            let clock_node = self
+                .fdt
+                .get_node_by_phandle(phandle)
+                .ok_or(FdtError::NodeNotFound("clock"))?;
+            let Node::General(n) = clock_node else {
+                return Err(FdtError::NodeNotFound("clock node not general"));
+            };
+
+            clocks.push(ClockInfo {
+                name,
+                select,
+                clock: ClockType::new(n),
+            });
+        }
+
+        Ok(clocks)
     }
 }
 

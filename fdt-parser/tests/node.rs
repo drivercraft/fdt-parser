@@ -323,27 +323,23 @@ mod test {
         }
     }
 
-    // #[test]
-    // fn test_clocks() {
-    //     let raw = fdt_rpi_4b();
-    //     let fdt = Fdt::from_bytes(&raw).unwrap();
+    #[test]
+    fn test_clocks() {
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    //     let node = fdt
-    //         .find_nodes("/soc/serial@7e215040")
-    //         .next()
-    //         .unwrap()
-    //         .unwrap();
-    //     let clocks = node
-    //         .clocks()
-    //         .unwrap()
-    //         .collect::<Result<Vec<_>, _>>()
-    //         .unwrap();
-    //     for clock in &clocks {
-    //         println!("clock: {:?}", clock);
-    //     }
-    //     let clock = &clocks[0];
-    //     assert_eq!(clock.node.name(), "aux@7e215000");
-    // }
+        let node = fdt.find_nodes("/soc/serial@7e215040")[0].clone();
+        let clocks = node
+            .clocks()
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        for clock in &clocks {
+            println!("clock: {:?}", clock);
+        }
+        let clock = &clocks[0];
+        assert_eq!(clock.node.name(), "aux@7e215000");
+    }
 
     // #[test]
     // fn test_clocks_cell_1() {
