@@ -248,20 +248,23 @@ impl NodeBase {
                 .find_property("#clock-cells")
                 .and_then(|p| p.u32().ok())
                 .unwrap_or(0);
-            let mut args = Vec::with_capacity(clock_cells as usize);
-            for _ in 0..clock_cells {
-                args.push(data.take_u32()?);
-            }
+            let select = if clock_cells > 0 {
+                data.take_by_cell_size(clock_cells as _)
+                    .ok_or(FdtError::BufferTooSmall { pos: data.pos() })?
+            } else {
+                0
+            };
 
             let provider = ClockType::new(provider_node);
-            let provider_output_name = provider.output_name(&args);
+            let provider_output_name = provider.output_name(select);
             let name = clock_names.get(index).cloned();
 
             clocks.push(ClockInfo {
                 name,
                 provider_output_name,
-                specifier: ClockSpecifier { phandle, args },
                 provider,
+                phandle,
+                select,
             });
 
             index += 1;

@@ -1,3 +1,5 @@
+use core::ops::Deref;
+
 use crate::{cache::node::NodeBase, Phandle};
 use alloc::{string::String, string::ToString, vec::Vec};
 
@@ -7,28 +9,23 @@ pub struct ClockInfo {
     pub name: Option<String>,
     /// Name exposed by the provider via `clock-output-names` that matches the specifier
     pub provider_output_name: Option<String>,
-    /// Raw specifier data as defined by the provider's `#clock-cells`
-    pub specifier: ClockSpecifier,
+
+    pub phandle: Phandle,
+    pub select: u64,
     /// Provider details
     pub provider: ClockType,
 }
 
 impl ClockInfo {
     /// Helper access to the provider node
-    pub fn provider_node(&self) -> &NodeBase {
-        self.provider.node()
+    pub fn provider_name(&self) -> &str {
+        self.provider.name()
     }
 
     /// Number of cells defined by the provider for each specifier
     pub fn provider_clock_cells(&self) -> u32 {
         self.provider.clock_cells()
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ClockSpecifier {
-    pub phandle: Phandle,
-    pub args: Vec<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -56,13 +53,6 @@ impl ClockType {
         }
     }
 
-    pub fn node(&self) -> &NodeBase {
-        match self {
-            ClockType::Fixed(fixed) => &fixed.clock.node,
-            ClockType::Provider(clock) => &clock.node,
-        }
-    }
-
     pub fn clock_cells(&self) -> u32 {
         match self {
             ClockType::Fixed(fixed) => fixed.clock.clock_cells,
@@ -70,10 +60,21 @@ impl ClockType {
         }
     }
 
-    pub fn output_name(&self, args: &[u32]) -> Option<String> {
+    pub fn output_name(&self, select: u64) -> Option<String> {
         match self {
-            ClockType::Fixed(fixed) => fixed.clock.output_name(args),
-            ClockType::Provider(clock) => clock.output_name(args),
+            ClockType::Fixed(fixed) => fixed.clock.output_name(select),
+            ClockType::Provider(clock) => clock.output_name(select),
+        }
+    }
+}
+
+impl Deref for ClockType {
+    type Target = NodeBase;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ClockType::Fixed(fixed) => &fixed.clock.node,
+            ClockType::Provider(clock) => &clock.node,
         }
     }
 }
@@ -110,11 +111,7 @@ impl Clock {
         }
     }
 
-    pub fn provider_name(&self) -> &str {
-        self.node.name()
-    }
-
-    pub fn output_name(&self, args: &[u32]) -> Option<String> {
+    pub fn output_name(&self, select: u64) -> Option<String> {
         if self.output_names.is_empty() {
             return None;
         }
@@ -123,7 +120,7 @@ impl Clock {
             return self.output_names.first().cloned();
         }
 
-        let index = args.first().copied()? as usize;
+        let index = select as usize;
         self.output_names.get(index).cloned()
     }
 }

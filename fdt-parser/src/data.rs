@@ -88,7 +88,7 @@ impl<'a> Buffer<'a> {
         }
     }
 
-    fn pos(&self) -> usize {
+    pub(crate) fn pos(&self) -> usize {
         self.raw.pos + self.iter
     }
 

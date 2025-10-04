@@ -377,11 +377,7 @@ mod test {
         let clocks = node.clocks().unwrap();
         assert!(!clocks.is_empty());
         let clock = &clocks[0];
-        assert_eq!(clock.provider_node().name(), "aux@7e215000");
-        assert_eq!(
-            clock.specifier.args.len() as u32,
-            clock.provider_clock_cells()
-        );
+        assert_eq!(clock.provider_name(), "aux@7e215000");
     }
 
     #[test]
@@ -397,7 +393,7 @@ mod test {
         for clock in &clocks {
             debug!("clock: {:?}", clock);
         }
-        assert_eq!(clock.provider.node().name(), "clock-controller@fdd20000");
+        assert_eq!(clock.provider_name(), "clock-controller@fdd20000");
     }
 
     #[test]
