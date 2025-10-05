@@ -73,11 +73,9 @@ impl Pci {
             .find_property("interrupt-map")
             .ok_or(FdtError::PropertyNotFound("interrupt-map"))?;
 
-        let mut mask = self.interrupt_map_mask().unwrap_or_else(|| {
-            // Default mask for PCI: <0xf800 0x0 0x0 0x7>
-            // This masks the device number (bits 11-8) and interrupt pin (bits 2-0)
-            vec![0xf800, 0x0, 0x0, 0x7]
-        });
+        let mut mask = self
+            .interrupt_map_mask()
+            .ok_or(FdtError::PropertyNotFound("interrupt-map-mask"))?;
 
         let mut data = prop.data.buffer();
         let mut mappings = Vec::new();
@@ -121,28 +119,19 @@ impl Pci {
                 Phandle::from(interrupt_parent_raw)
             };
 
-            let parent_node = self
+            let irq_parent = self
                 .node
-                .fdt()
-                .get_node_by_phandle(interrupt_parent)
+                .interrupt_parent()
                 .ok_or(FdtError::NodeNotFound("interrupt-parent"))?;
 
-            let address_cells = parent_node
-                .find_property("#address-cells")
-                .and_then(|prop| prop.u32().ok())
-                .unwrap_or(0) as usize;
+            let address_cells = irq_parent.address_cells();
 
             for _ in 0..address_cells {
                 data.take_u32()
                     .map_err(|_| FdtError::BufferTooSmall { pos: data.pos() })?;
             }
 
-            let parent_irq_cells = match parent_node.clone() {
-                super::Node::InterruptController(ctrl) => {
-                    ctrl.interrupt_cells().unwrap_or(1) as usize
-                }
-                _ => self.parent_interrupt_cells().unwrap_or(1) as usize,
-            };
+            let parent_irq_cells = irq_parent.interrupt_cells()? as usize;
 
             // Parse parent IRQ (variable number of cells)
             let mut parent_irq = Vec::with_capacity(parent_irq_cells);
