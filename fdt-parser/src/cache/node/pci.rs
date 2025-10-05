@@ -1,4 +1,7 @@
-use core::{fmt::Debug, ops::Deref};
+use core::{
+    fmt::Debug,
+    ops::{Deref, Range},
+};
 
 use crate::{cache::node::NodeBase, FdtError, Phandle};
 use alloc::{vec, vec::Vec};
@@ -42,7 +45,6 @@ impl Pci {
         Pci { node }
     }
 
-    /// Get the number of interrupt cells for PCI interrupts (should be 1 for PCI)
     pub fn interrupt_cells(&self) -> u32 {
         self.find_property("#interrupt-cells")
             .and_then(|prop| prop.u32().ok())
@@ -174,23 +176,13 @@ impl Pci {
         Ok(mappings)
     }
 
-    /// Get the number of interrupt cells used by the interrupt parent
-    fn parent_interrupt_cells(&self) -> Option<u32> {
-        let phandle = self.interrupt_parent_phandle()?;
-        let irq_node = self.fdt.get_node_by_phandle(phandle)?;
-        let super::Node::InterruptController(irq) = irq_node else {
-            return None;
-        };
-        irq.interrupt_cells().ok()
-    }
-
     /// Get the bus range property if present
-    pub fn bus_range(&self) -> Option<(u32, u32)> {
+    pub fn bus_range(&self) -> Option<Range<u32>> {
         self.node.find_property("bus-range").and_then(|prop| {
             let mut data = prop.data.buffer();
             let start = data.take_u32().ok()?;
             let end = data.take_u32().unwrap_or(start);
-            Some((start, end))
+            Some(start..end)
         })
     }
 
@@ -282,21 +274,11 @@ impl Pci {
         pin: u32,
     ) -> Result<PciInterruptInfo, FdtError> {
         // Try to get interrupt-map and mask, fall back to simpler approach if parsing fails
-        let interrupt_map = match self.interrupt_map() {
-            Ok(map) => map,
-            Err(_) => {
-                // Fallback: return a simple interrupt mapping based on device number and pin
-                // This is a simplified approach for when interrupt-map is not available
-                let simple_irq = (device * 4 + pin) % 32;
-                return Ok(PciInterruptInfo {
-                    irqs: vec![simple_irq],
-                });
-            }
-        };
+        let interrupt_map = self.interrupt_map()?;
 
         let mut mask = self
             .interrupt_map_mask()
-            .unwrap_or_else(|| vec![0xf800, 0x0, 0x0, 0x7]);
+            .ok_or(FdtError::PropertyNotFound("interrupt-map-mask"))?;
 
         // Construct the child address for PCI device
         // Format: [bus_num, device_num, func_num] in appropriate bits
@@ -437,9 +419,9 @@ mod tests {
         for node in fdt.find_nodes("/") {
             {
                 if let Node::Pci(pci) = node {
-                    if let Some((start, end)) = pci.bus_range() {
+                    if let Some(range) = pci.bus_range() {
                         // println!("Found bus-range: {}-{}", start, end);
-                        assert!(start <= end, "Bus range start should be <= end");
+                        assert!(range.start <= range.end, "Bus range start should be <= end");
                         return; // Test passed
                     }
                 }

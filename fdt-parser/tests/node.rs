@@ -437,21 +437,9 @@ mod test {
             .next()
             .unwrap();
 
-        let pci = node.clone().into_pci().unwrap();
-
-        println!("address_cells: {}", node.address_cells());
-        println!("pci address_cells: {}", pci.address_cells());
-        println!("pci interrupt_cells: {}", pci.interrupt_cells());
-
-        if let Some(prop) = node.find_property("interrupt-map") {
-            println!(
-                "interrupt-map bytes: {}, words: {}",
-                prop.raw_value().len(),
-                prop.u32_list().count()
-            );
-        } else {
-            println!("interrupt-map property missing");
-        }
+        let Node::Pci(pci) = node else {
+            panic!("Not a PCI node");
+        };
 
         let want = [
             PciRange {
@@ -490,9 +478,11 @@ mod test {
             .find_compatible(&["pci-host-ecam-generic"])
             .into_iter()
             .next()
-            .unwrap()
-            .into_pci()
             .unwrap();
+
+        let Node::Pci(pci) = pci else {
+            panic!("Not a PCI node");
+        };
 
         let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
         assert!(!irq.irqs.is_empty());
@@ -506,9 +496,11 @@ mod test {
             .find_compatible(&["pci-host-ecam-generic"])
             .into_iter()
             .next()
-            .unwrap()
-            .into_pci()
             .unwrap();
+
+        let Node::Pci(pci) = pci else {
+            panic!("Not a PCI node");
+        };
 
         let irq = pci.child_interrupts(0, 2, 0, 1).unwrap();
 
