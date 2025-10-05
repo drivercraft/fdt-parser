@@ -413,9 +413,14 @@ mod test {
 
     #[test]
     fn test_pcie() {
-        let fdt = Fdt::from_bytes(TEST_FDT).unwrap();
-        let node = fdt.find_compatible(&["brcm,bcm2711-pcie"]).next().unwrap();
-        let regs = node.reg().unwrap().collect::<Vec<_>>();
+        let raw = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt
+            .find_compatible(&["brcm,bcm2711-pcie"])
+            .into_iter()
+            .next()
+            .unwrap();
+        let regs = node.reg().unwrap();
         let reg = regs[0];
         println!("reg: {:?}", reg);
         assert_eq!(reg.address, 0xfd500000);
@@ -424,13 +429,29 @@ mod test {
 
     #[test]
     fn test_pci2() {
-        let fdt = Fdt::from_bytes(TEST_PHYTIUM_FDT).unwrap();
-        let pci = fdt
+        let raw = fdt_phytium();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt
             .find_compatible(&["pci-host-ecam-generic"])
+            .into_iter()
             .next()
-            .unwrap()
-            .into_pci()
             .unwrap();
+
+        let pci = node.clone().into_pci().unwrap();
+
+        println!("address_cells: {}", node.address_cells());
+        println!("pci address_cells: {}", pci.address_cells());
+        println!("pci interrupt_cells: {}", pci.interrupt_cells());
+
+        if let Some(prop) = node.find_property("interrupt-map") {
+            println!(
+                "interrupt-map bytes: {}, words: {}",
+                prop.raw_value().len(),
+                prop.u32_list().count()
+            );
+        } else {
+            println!("interrupt-map property missing");
+        }
 
         let want = [
             PciRange {
@@ -456,33 +477,34 @@ mod test {
             },
         ];
 
-        for (i, range) in pci.ranges().unwrap().enumerate() {
-            assert_eq!(range, want[i]);
+        for (i, range) in pci.ranges().unwrap().iter().enumerate() {
+            assert_eq!(*range, want[i]);
         }
     }
 
     #[test]
     fn test_pci_irq_map() {
-        let fdt = Fdt::from_bytes(TEST_PHYTIUM_FDT).unwrap();
+        let raw = fdt_phytium();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let pci = fdt
             .find_compatible(&["pci-host-ecam-generic"])
+            .into_iter()
             .next()
             .unwrap()
             .into_pci()
             .unwrap();
 
         let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
-
-        for one in irq.irqs {
-            println!("one: {:?}", one);
-        }
+        assert!(!irq.irqs.is_empty());
     }
 
     #[test]
     fn test_pci_irq_map2() {
-        let fdt = Fdt::from_bytes(TEST_QEMU_FDT).unwrap();
+        let raw = fdt_qemu();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
         let pci = fdt
             .find_compatible(&["pci-host-ecam-generic"])
+            .into_iter()
             .next()
             .unwrap()
             .into_pci()
@@ -492,8 +514,8 @@ mod test {
 
         let want = [0, 5, 4];
 
-        for (got, want) in irq.irqs.zip(want.iter()) {
-            assert_eq!(got, *want);
+        for (got, want) in irq.irqs.iter().zip(want.iter()) {
+            assert_eq!(*got, *want);
         }
     }
 

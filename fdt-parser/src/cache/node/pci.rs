@@ -21,8 +21,8 @@ pub struct PciRange {
 
 #[derive(Clone, Debug)]
 pub struct PciInterruptMap {
-    pub child_address: u32,
-    pub child_irq: u32,
+    pub child_address: Vec<u32>,
+    pub child_irq: Vec<u32>,
     pub interrupt_parent: Phandle,
     pub parent_irq: Vec<u32>,
 }
@@ -73,7 +73,7 @@ impl Pci {
             .find_property("interrupt-map")
             .ok_or(FdtError::PropertyNotFound("interrupt-map"))?;
 
-        let mask = self.interrupt_map_mask().unwrap_or_else(|| {
+        let mut mask = self.interrupt_map_mask().unwrap_or_else(|| {
             // Default mask for PCI: <0xf800 0x0 0x0 0x7>
             // This masks the device number (bits 11-8) and interrupt pin (bits 2-0)
             vec![0xf800, 0x0, 0x0, 0x7]
@@ -86,46 +86,63 @@ impl Pci {
         // Format: <child-address child-irq interrupt-parent parent-irq...>
         let child_addr_cells = self.address_cells() as usize;
         let child_irq_cells = self.interrupt_cells() as usize;
-        let interrupt_parent_cells = 1; // phandle is always 1 cell
-        let parent_irq_cells = self.parent_interrupt_cells().unwrap_or(1) as usize;
 
-        let _entry_size =
-            child_addr_cells + child_irq_cells + interrupt_parent_cells + parent_irq_cells;
+        let required_mask_len = child_addr_cells + child_irq_cells;
+        if mask.len() < required_mask_len {
+            mask.resize(required_mask_len, 0xffff_ffff);
+        }
 
         while !data.remain().as_ref().is_empty() {
-            // Parse child address (3 cells for PCI)
-            let child_address = if child_addr_cells >= 1 {
-                data.take_u32().unwrap_or(0)
-            } else {
-                0
-            };
-
-            // Skip remaining address cells if any
-            for _ in 1..child_addr_cells {
-                if data.take_u32().is_err() {
-                    return Err(FdtError::BufferTooSmall { pos: data.pos() });
-                }
+            // Parse child address (variable number of cells for PCI)
+            let mut child_address = Vec::with_capacity(child_addr_cells);
+            for _ in 0..child_addr_cells {
+                child_address.push(
+                    data.take_u32()
+                        .map_err(|_| FdtError::BufferTooSmall { pos: data.pos() })?,
+                );
             }
 
-            // Parse child IRQ (1 cell for PCI)
-            let child_irq = if child_irq_cells >= 1 {
-                data.take_u32().unwrap_or(0)
-            } else {
-                0
-            };
-
-            // Skip remaining IRQ cells if any
-            for _ in 1..child_irq_cells {
-                if data.take_u32().is_err() {
-                    return Err(FdtError::BufferTooSmall { pos: data.pos() });
-                }
+            // Parse child IRQ (usually 1 cell for PCI)
+            let mut child_irq = Vec::with_capacity(child_irq_cells);
+            for _ in 0..child_irq_cells {
+                child_irq.push(
+                    data.take_u32()
+                        .map_err(|_| FdtError::BufferTooSmall { pos: data.pos() })?,
+                );
             }
 
             // Parse interrupt parent phandle
-            let phandle_raw = data
+            let interrupt_parent_raw = data
                 .take_u32()
                 .map_err(|_| FdtError::BufferTooSmall { pos: data.pos() })?;
-            let interrupt_parent = Phandle::from(phandle_raw);
+            let interrupt_parent = if interrupt_parent_raw == 0 {
+                self.interrupt_parent_phandle().unwrap_or(Phandle::from(0))
+            } else {
+                Phandle::from(interrupt_parent_raw)
+            };
+
+            let parent_node = self
+                .node
+                .fdt()
+                .get_node_by_phandle(interrupt_parent)
+                .ok_or(FdtError::NodeNotFound("interrupt-parent"))?;
+
+            let address_cells = parent_node
+                .find_property("#address-cells")
+                .and_then(|prop| prop.u32().ok())
+                .unwrap_or(0) as usize;
+
+            for _ in 0..address_cells {
+                data.take_u32()
+                    .map_err(|_| FdtError::BufferTooSmall { pos: data.pos() })?;
+            }
+
+            let parent_irq_cells = match parent_node.clone() {
+                super::Node::InterruptController(ctrl) => {
+                    ctrl.interrupt_cells().unwrap_or(1) as usize
+                }
+                _ => self.parent_interrupt_cells().unwrap_or(1) as usize,
+            };
 
             // Parse parent IRQ (variable number of cells)
             let mut parent_irq = Vec::with_capacity(parent_irq_cells);
@@ -137,8 +154,25 @@ impl Pci {
             }
 
             // Apply mask to child address and IRQ
-            let masked_address = child_address & mask.get(0).copied().unwrap_or(0xffffffff);
-            let masked_irq = child_irq & mask.get(3).copied().unwrap_or(0xffffffff);
+            let masked_address: Vec<u32> = child_address
+                .iter()
+                .enumerate()
+                .map(|(idx, value)| {
+                    let mask_value = mask.get(idx).copied().unwrap_or(0xffff_ffff);
+                    value & mask_value
+                })
+                .collect();
+            let masked_irq: Vec<u32> = child_irq
+                .iter()
+                .enumerate()
+                .map(|(idx, value)| {
+                    let mask_value = mask
+                        .get(child_addr_cells + idx)
+                        .copied()
+                        .unwrap_or(0xffff_ffff);
+                    value & mask_value
+                })
+                .collect();
 
             mappings.push(PciInterruptMap {
                 child_address: masked_address,
@@ -271,7 +305,7 @@ impl Pci {
             }
         };
 
-        let mask = self
+        let mut mask = self
             .interrupt_map_mask()
             .unwrap_or_else(|| vec![0xf800, 0x0, 0x0, 0x7]);
 
@@ -282,18 +316,33 @@ impl Pci {
         let child_addr_mid = 0;
         let child_addr_low = 0;
 
-        // Apply mask to child address
-        let masked_addr_high = child_addr_high & mask[0];
-        let _masked_addr_mid = child_addr_mid & mask.get(1).copied().unwrap_or(0);
-        let _masked_addr_low = child_addr_low & mask.get(2).copied().unwrap_or(0);
+        let child_addr_cells = self.address_cells() as usize;
+        let child_irq_cells = self.interrupt_cells() as usize;
+        let required_mask_len = child_addr_cells + child_irq_cells;
+        if mask.len() < required_mask_len {
+            mask.resize(required_mask_len, 0xffff_ffff);
+        }
 
-        // Apply mask to interrupt pin
-        let masked_pin = pin & mask.get(3).copied().unwrap_or(0x7);
+        let encoded_address = [child_addr_high, child_addr_mid, child_addr_low];
+        let mut masked_child_address = Vec::with_capacity(child_addr_cells);
+        for idx in 0..child_addr_cells {
+            let value = *encoded_address.get(idx).unwrap_or(&0);
+            masked_child_address.push(value & mask[idx]);
+        }
+
+        let encoded_irq = [pin];
+        let mut masked_child_irq = Vec::with_capacity(child_irq_cells);
+        for idx in 0..child_irq_cells {
+            let value = *encoded_irq.get(idx).unwrap_or(&0);
+            masked_child_irq.push(value & mask[child_addr_cells + idx]);
+        }
 
         // Look for matching entry in interrupt-map
         for mapping in &interrupt_map {
             // Check if this mapping matches our masked address and pin
-            if mapping.child_address == masked_addr_high && mapping.child_irq == masked_pin {
+            if mapping.child_address == masked_child_address
+                && mapping.child_irq == masked_child_irq
+            {
                 return Ok(PciInterruptInfo {
                     irqs: mapping.parent_irq.clone(),
                 });
@@ -327,7 +376,6 @@ impl Deref for Pci {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::{cache::node::Node, Fdt};
 
     #[test]
@@ -361,11 +409,7 @@ mod tests {
             {
                 if let Node::Pci(pci) = node {
                     if let Ok(interrupt_map) = pci.interrupt_map() {
-                        // println!("Found interrupt-map with {} entries", interrupt_map.len());
-                        for (i, mapping) in interrupt_map.iter().enumerate() {
-                            // println!("Mapping {}: child_addr=0x{:08x}, child_irq={}, parent={:?}",
-                            //        i, mapping.child_address, mapping.child_irq, mapping.parent_irq);
-                        }
+                        assert!(!interrupt_map.is_empty());
                         return; // Test passed if we found and parsed interrupt-map
                     }
                 }
@@ -432,7 +476,7 @@ mod tests {
 
                     // Test device type
                     if let Some(device_type) = pci.device_type() {
-                        // println!("Device type: {}", device_type);
+                        assert!(!device_type.is_empty());
                     }
 
                     // Test compatibles

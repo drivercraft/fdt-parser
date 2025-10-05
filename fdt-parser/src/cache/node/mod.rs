@@ -58,6 +58,13 @@ impl Node {
             }
         }
     }
+
+    pub fn into_pci(self) -> Result<Pci, FdtError> {
+        match self {
+            Node::Pci(pci) => Ok(pci),
+            _ => Err(FdtError::NodeNotFound("pci")),
+        }
+    }
 }
 
 impl Deref for Node {
@@ -83,6 +90,10 @@ pub struct NodeBase {
 impl NodeBase {
     fn raw<'a>(&'a self) -> Raw<'a> {
         self.fdt.raw().begin_at(self.meta.pos)
+    }
+
+    pub(crate) fn fdt(&self) -> &Fdt {
+        &self.fdt
     }
 
     pub fn level(&self) -> usize {
@@ -158,6 +169,7 @@ impl NodeBase {
 
     fn is_interrupt_controller(&self) -> bool {
         self.name().starts_with("interrupt-controller")
+            || self.find_property("interrupt-controller").is_some()
             || self.find_property("#interrupt-controller").is_some()
     }
 
