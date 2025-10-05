@@ -109,9 +109,9 @@ impl Fdt {
         out
     }
 
-    pub fn memory_reservaion_blocks(&self) -> Vec<crate::MemoryRegion> {
+    pub fn memory_reservation_blocks(&self) -> Vec<crate::MemoryRegion> {
         let fdt = self.fdt_base();
-        fdt.memory_reservaion_blocks().collect()
+        fdt.memory_reservation_blocks().collect()
     }
 
     pub fn raw<'a>(&'a self) -> Raw<'a> {

@@ -72,7 +72,7 @@ impl<'a> Fdt<'a> {
         self.header.version
     }
 
-    pub fn memory_reservaion_blocks(&self) -> impl Iterator<Item = MemoryRegion> + 'a {
+    pub fn memory_reservation_blocks(&self) -> impl Iterator<Item = MemoryRegion> + 'a {
         let mut buffer = self
             .raw
             .begin_at(self.header.off_mem_rsvmap as usize)

@@ -20,7 +20,7 @@ mod test {
         let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
         // Get memory reservation blocks
-        let rsv_result = fdt.memory_reservaion_blocks();
+        let rsv_result = fdt.memory_reservation_blocks();
 
         let entries: Vec<_> = rsv_result.collect();
 
@@ -52,8 +52,8 @@ mod test {
         }
 
         // Test iterator behavior - iterate twice to ensure it works correctly
-        let rsv1: Vec<_> = fdt.memory_reservaion_blocks().collect();
-        let rsv2: Vec<_> = fdt.memory_reservaion_blocks().collect();
+        let rsv1: Vec<_> = fdt.memory_reservation_blocks().collect();
+        let rsv2: Vec<_> = fdt.memory_reservation_blocks().collect();
         assert_eq!(
             rsv1.len(),
             rsv2.len(),
@@ -85,7 +85,7 @@ mod test {
             let ptr = raw.as_ptr() as *mut u8;
             let fdt = unsafe { Fdt::from_ptr(ptr).unwrap() };
 
-            let rsv_result = fdt.memory_reservaion_blocks();
+            let rsv_result = fdt.memory_reservation_blocks();
 
             let entries: Vec<_> = rsv_result.collect();
             assert_eq!(

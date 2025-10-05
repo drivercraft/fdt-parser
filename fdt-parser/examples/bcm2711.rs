@@ -9,7 +9,7 @@ fn main() {
 
     let fdt = Fdt::from_bytes(bytes).unwrap();
     println!("version: {}", fdt.version());
-    for region in fdt.memory_reservaion_blocks() {
+    for region in fdt.memory_reservation_blocks() {
         println!("region: {:?}", region);
     }
     for (i, node) in fdt.all_nodes().into_iter().enumerate() {

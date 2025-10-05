@@ -26,7 +26,7 @@ fn main() {
     let mut file = std::fs::File::create(&args.output).unwrap();
 
     writeln!(file, "/dts-v{}/;", fdt.version()).unwrap();
-    for region in fdt.memory_reservaion_blocks() {
+    for region in fdt.memory_reservation_blocks() {
         writeln!(file, "/memreserve/ {:?};", region).unwrap();
     }
 
