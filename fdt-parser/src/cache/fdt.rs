@@ -22,6 +22,10 @@ impl Fdt {
         })
     }
 
+    pub fn as_slice(&self) -> &[u8] {
+        &self.inner.raw
+    }
+
     /// Create a new `Fdt` from a raw pointer and size in bytes.
     ///
     /// # Safety
