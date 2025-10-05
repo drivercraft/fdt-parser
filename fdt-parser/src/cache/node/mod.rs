@@ -17,11 +17,13 @@ mod chosen;
 mod clock;
 mod interrupt_controller;
 mod memory;
+mod pci;
 
 pub use chosen::*;
 pub use clock::*;
 pub use interrupt_controller::*;
 pub use memory::*;
+pub use pci::*;
 
 #[derive(Debug, Clone)]
 pub enum Node {
@@ -29,6 +31,7 @@ pub enum Node {
     Chosen(Chosen),
     Memory(Memory),
     InterruptController(InterruptController),
+    Pci(Pci),
 }
 
 impl Node {
@@ -43,8 +46,11 @@ impl Node {
             "chosen" => Self::Chosen(Chosen::new(base)),
             name if name.starts_with("memory@") => Self::Memory(Memory::new(base)),
             _ => {
-                // 检查是否是中断控制器
-                if base.is_interrupt_controller() {
+                // 检查是否是PCI节点
+                let pci = Pci::new(base.clone());
+                if pci.is_pci_host_bridge() {
+                    Self::Pci(pci)
+                } else if base.is_interrupt_controller() {
                     Self::InterruptController(InterruptController::new(base))
                 } else {
                     Self::General(base)
@@ -63,6 +69,7 @@ impl Deref for Node {
             Node::Chosen(n) => n,
             Node::Memory(n) => n,
             Node::InterruptController(n) => n,
+            Node::Pci(n) => n,
         }
     }
 }

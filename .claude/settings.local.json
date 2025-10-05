@@ -7,7 +7,10 @@
       "Bash(cargo run:*)",
       "WebSearch",
       "WebFetch(domain:www.kernel.org)",
-      "WebFetch(domain:elinux.org)"
+      "WebFetch(domain:elinux.org)",
+      "mcp__web-search-prime__webSearchPrime",
+      "WebFetch(domain:www.devicetree.org)",
+      "Bash(RUST_BACKTRACE=1 cargo test -p fdt-parser -- test_pci2 --nocapture)"
     ],
     "deny": [],
     "ask": []
