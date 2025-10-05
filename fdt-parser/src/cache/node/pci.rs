@@ -1,9 +1,6 @@
 use core::{fmt::Debug, ops::Deref};
 
-use crate::{
-    cache::node::NodeBase,
-    FdtError, Phandle,
-};
+use crate::{cache::node::NodeBase, FdtError, Phandle};
 use alloc::{vec, vec::Vec};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -45,14 +42,11 @@ impl Pci {
         Pci { node }
     }
 
-    /// Get the number of address cells for PCI addresses (should be 3 for PCI)
-    pub fn address_cells(&self) -> u32 {
-        3 // PCI uses 3 address cells: devicetree-specification-v0.4
-    }
-
     /// Get the number of interrupt cells for PCI interrupts (should be 1 for PCI)
     pub fn interrupt_cells(&self) -> u32 {
-        1 // PCI uses 1 interrupt cell
+        self.find_property("#interrupt-cells")
+            .and_then(|prop| prop.u32().ok())
+            .unwrap_or(1) // Default to 1 interrupt cell for PCI
     }
 
     /// Get the interrupt-map-mask property if present
@@ -74,7 +68,8 @@ impl Pci {
 
     /// Parse the interrupt-map property into a structured format
     pub fn interrupt_map(&self) -> Result<Vec<PciInterruptMap>, FdtError> {
-        let prop = self.node
+        let prop = self
+            .node
             .find_property("interrupt-map")
             .ok_or(FdtError::PropertyNotFound("interrupt-map"))?;
 
@@ -94,7 +89,8 @@ impl Pci {
         let interrupt_parent_cells = 1; // phandle is always 1 cell
         let parent_irq_cells = self.parent_interrupt_cells().unwrap_or(1) as usize;
 
-        let _entry_size = child_addr_cells + child_irq_cells + interrupt_parent_cells + parent_irq_cells;
+        let _entry_size =
+            child_addr_cells + child_irq_cells + interrupt_parent_cells + parent_irq_cells;
 
         while !data.remain().as_ref().is_empty() {
             // Parse child address (3 cells for PCI)
@@ -126,14 +122,16 @@ impl Pci {
             }
 
             // Parse interrupt parent phandle
-            let phandle_raw = data.take_u32()
+            let phandle_raw = data
+                .take_u32()
                 .map_err(|_| FdtError::BufferTooSmall { pos: data.pos() })?;
             let interrupt_parent = Phandle::from(phandle_raw);
 
             // Parse parent IRQ (variable number of cells)
             let mut parent_irq = Vec::with_capacity(parent_irq_cells);
             for _ in 0..parent_irq_cells {
-                let irq = data.take_u32()
+                let irq = data
+                    .take_u32()
                     .map_err(|_| FdtError::BufferTooSmall { pos: data.pos() })?;
                 parent_irq.push(irq);
             }
@@ -155,22 +153,22 @@ impl Pci {
 
     /// Get the number of interrupt cells used by the interrupt parent
     fn parent_interrupt_cells(&self) -> Option<u32> {
-        // Try to get interrupt cells from the interrupt parent
-        // This would require resolving the phandle, which is complex
-        // For now, we'll default to 1 (common for many interrupt controllers)
-        Some(1)
+        let phandle = self.interrupt_parent_phandle()?;
+        let irq_node = self.fdt.get_node_by_phandle(phandle)?;
+        let super::Node::InterruptController(irq) = irq_node else {
+            return None;
+        };
+        irq.interrupt_cells().ok()
     }
 
     /// Get the bus range property if present
     pub fn bus_range(&self) -> Option<(u32, u32)> {
-        self.node
-            .find_property("bus-range")
-            .and_then(|prop| {
-                let mut data = prop.data.buffer();
-                let start = data.take_u32().ok()?;
-                let end = data.take_u32().unwrap_or(start);
-                Some((start, end))
-            })
+        self.node.find_property("bus-range").and_then(|prop| {
+            let mut data = prop.data.buffer();
+            let start = data.take_u32().ok()?;
+            let end = data.take_u32().unwrap_or(start);
+            Some((start, end))
+        })
     }
 
     /// Get the device_type property (should be "pci" for PCI nodes)
@@ -182,9 +180,9 @@ impl Pci {
 
     /// Check if this is a PCI host bridge
     pub fn is_pci_host_bridge(&self) -> bool {
-        self.device_type() == Some("pci") ||
-        self.node.name().contains("pci") ||
-        self.node.compatibles().iter().any(|c| c.contains("pci"))
+        self.device_type() == Some("pci")
+            || self.node.name().contains("pci")
+            || self.node.compatibles().iter().any(|c| c.contains("pci"))
     }
 
     /// Get the ranges property for address translation
@@ -251,24 +249,15 @@ impl Pci {
         (space, prefetchable)
     }
 
-    /// Get the number of address cells used by the parent bus
-    fn parent_address_cells(&self) -> Option<u32> {
-        // For PCI, the parent address cells is typically 2 (32-bit address, 32-bit size)
-        // We can default to this value to avoid borrowing issues
-        Some(2)
-    }
-
-    /// Get the number of size cells used by this bus
-    fn size_cells(&self) -> Option<u32> {
-        self.node
-            .find_property("#size-cells")
-            .and_then(|prop| prop.u32().ok())
-            .or(Some(1)) // Default to 1 size cell if not found
-    }
-
     /// Get interrupt information for a specific PCI device
     /// Parameters: bus, device, function, pin (0=INTA, 1=INTB, 2=INTC, 3=INTD)
-    pub fn child_interrupts(&self, bus: u32, device: u32, function: u32, pin: u32) -> Result<PciInterruptInfo, FdtError> {
+    pub fn child_interrupts(
+        &self,
+        bus: u32,
+        device: u32,
+        function: u32,
+        pin: u32,
+    ) -> Result<PciInterruptInfo, FdtError> {
         // Try to get interrupt-map and mask, fall back to simpler approach if parsing fails
         let interrupt_map = match self.interrupt_map() {
             Ok(map) => map,
@@ -282,11 +271,14 @@ impl Pci {
             }
         };
 
-        let mask = self.interrupt_map_mask().unwrap_or_else(|| vec![0xf800, 0x0, 0x0, 0x7]);
+        let mask = self
+            .interrupt_map_mask()
+            .unwrap_or_else(|| vec![0xf800, 0x0, 0x0, 0x7]);
 
         // Construct the child address for PCI device
         // Format: [bus_num, device_num, func_num] in appropriate bits
-        let child_addr_high = ((bus & 0xff) << 16) | ((device & 0x1f) << 11) | ((function & 0x7) << 8);
+        let child_addr_high =
+            ((bus & 0xff) << 16) | ((device & 0x1f) << 11) | ((function & 0x7) << 8);
         let child_addr_mid = 0;
         let child_addr_low = 0;
 
@@ -333,11 +325,10 @@ impl Deref for Pci {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Fdt, cache::node::Node};
+    use crate::{cache::node::Node, Fdt};
 
     #[test]
     fn test_pci_node_detection() {

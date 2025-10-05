@@ -143,6 +143,19 @@ impl NodeBase {
             })
     }
 
+    pub fn address_cells(&self) -> u8 {
+        self.find_property("#address-cells")
+            .and_then(|p| p.u32().ok())
+            .map(|v| v as u8)
+            .or_else(|| {
+                self.meta
+                    .parent
+                    .as_ref()
+                    .and_then(|info| info.address_cells)
+            })
+            .unwrap_or(2)
+    }
+
     fn is_interrupt_controller(&self) -> bool {
         self.name().starts_with("interrupt-controller")
             || self.find_property("#interrupt-controller").is_some()
