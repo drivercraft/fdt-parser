@@ -7,7 +7,7 @@ edition = "2021"
 keywords = ["devicetree", "fdt", "dt", "dtb"]
 license = "MPL-2.0"
 name = "fdt-parser"
-repository = "https://github.com/qclic/fdt-parser"
+repository = "https://github.com/drivercraft/fdt-parser"
 version = "0.5.0"
 
 
