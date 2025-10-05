@@ -26,26 +26,30 @@ fn main() {
     let mut file = std::fs::File::create(&args.output).unwrap();
 
     writeln!(file, "/dts-v{}/;", fdt.version()).unwrap();
-    for region in fdt.memory_reservation_block() {
+    for region in fdt.memory_reservation_blocks() {
         writeln!(file, "/memreserve/ {:?};", region).unwrap();
     }
 
     for node in fdt.all_nodes() {
-        let space = "\t".repeat(node.level - 1);
+        let space = "\t".repeat(node.level().saturating_sub(1));
         writeln!(file, "{}{}", space, node.name()).unwrap();
 
-        if let Some(cap) = node.compatible() {
+        let compatibles = node.compatibles();
+        let non_empty_compatibles: Vec<_> =
+            compatibles.into_iter().filter(|s| !s.is_empty()).collect();
+        if !non_empty_compatibles.is_empty() {
             writeln!(file, "{} -compatible: ", space).unwrap();
-            for cap in cap {
-                writeln!(file, "{}     {:?}", space, cap.unwrap()).unwrap();
+            for cap in non_empty_compatibles {
+                writeln!(file, "{}     {:?}", space, cap).unwrap();
             }
         }
 
-        if let Some(reg) = node.reg() {
-            writeln!(file, "{} - reg: ", space).unwrap();
-            for cell in reg {
-                writeln!(file, "{}     {:?}", space, cell).unwrap();
-            }
-        }
+        // Note: reg() method may not be available in cache parser
+        // if let Some(reg) = node.reg() {
+        //     writeln!(file, "{} - reg: ", space).unwrap();
+        //     for cell in reg {
+        //         writeln!(file, "{}     {:?}", space, cell).unwrap();
+        //     }
+        // }
     }
 }

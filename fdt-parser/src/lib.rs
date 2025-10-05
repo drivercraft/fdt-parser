@@ -1,33 +1,68 @@
-#![cfg_attr(not(test), no_std)]
-#![doc = include_str!("../README.md")]
+#![no_std]
 
-mod chosen;
-mod clocks;
+extern crate alloc;
+
+macro_rules! none_ok {
+    ($e:expr) => {{
+        let Some(v) = $e else {
+            return Err(crate::FdtError::NotFound);
+        };
+        v
+    }};
+    ($e:expr, $err:expr) => {{
+        let Some(v) = $e else {
+            return Err($err);
+        };
+        v
+    }};
+}
+
+mod data;
 mod define;
-pub mod error;
-mod fdt;
-mod interrupt;
-mod memory;
-mod meta;
-mod node;
-mod pci;
+mod header;
 mod property;
-mod read;
 
-use define::*;
+pub mod base;
+pub mod cache;
 
-pub use chosen::Chosen;
-pub use clocks::ClockRef;
-pub use define::{FdtHeader, MemoryRegion, Phandle};
-pub use error::FdtError;
-pub use fdt::Fdt;
-pub use interrupt::InterruptController;
-pub use node::Node;
-pub use pci::{Pci, PciRange, PciSpace};
+use core::ffi::FromBytesUntilNulError;
+
+pub use cache::*;
+pub use define::*;
+pub use header::Header;
 pub use property::Property;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Status {
-    Okay,
-    Disabled,
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum FdtError {
+    #[error("not found")]
+    NotFound,
+    #[error("buffer too small at position {pos}")]
+    BufferTooSmall { pos: usize },
+    #[error("invalid magic number {0:#x} != {FDT_MAGIC:#x}")]
+    InvalidMagic(u32),
+    #[error("invalid pointer")]
+    InvalidPtr,
+    #[error("data provided does not contain a nul")]
+    FromBytesUntilNull,
+    #[error("failed to parse UTF-8 string")]
+    Utf8Parse,
+    #[error("no aliase found")]
+    NoAlias,
+    #[error("system out of memory")]
+    NoMemory,
+    #[error("node `{0}` not found")]
+    NodeNotFound(&'static str),
+    #[error("property `{0}` not found")]
+    PropertyNotFound(&'static str),
+}
+
+impl From<core::str::Utf8Error> for FdtError {
+    fn from(_: core::str::Utf8Error) -> Self {
+        FdtError::Utf8Parse
+    }
+}
+impl From<FromBytesUntilNulError> for FdtError {
+    fn from(_: FromBytesUntilNulError) -> Self {
+        FdtError::FromBytesUntilNull
+    }
 }

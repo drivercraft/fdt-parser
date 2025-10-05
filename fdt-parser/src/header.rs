@@ -1,0 +1,100 @@
+use core::ptr::NonNull;
+
+use crate::FdtError;
+
+#[repr(align(4))]
+struct AlignedHeader([u8; size_of::<Header>()]);
+
+#[derive(Debug, Clone)]
+pub struct Header {
+    /// FDT header magic
+    pub magic: u32,
+    /// Total size in bytes of the FDT structure
+    pub totalsize: u32,
+    /// Offset in bytes from the start of the header to the structure block
+    pub off_dt_struct: u32,
+    /// Offset in bytes from the start of the header to the strings block
+    pub off_dt_strings: u32,
+    /// Offset in bytes from the start of the header to the memory reservation
+    /// block
+    pub off_mem_rsvmap: u32,
+    /// FDT version
+    pub version: u32,
+    /// Last compatible FDT version
+    pub last_comp_version: u32,
+    /// System boot CPU ID
+    pub boot_cpuid_phys: u32,
+    /// Length in bytes of the strings block
+    pub size_dt_strings: u32,
+    /// Length in bytes of the struct block
+    pub size_dt_struct: u32,
+}
+
+impl Header {
+    /// Read a header from a byte slice and return an owned `Header` whose
+    /// fields are converted from big-endian (on-disk) to host order.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, FdtError> {
+        if data.len() < core::mem::size_of::<Header>() {
+            return Err(FdtError::BufferTooSmall {
+                pos: core::mem::size_of::<Header>(),
+            });
+        }
+        let ptr = NonNull::new(data.as_ptr() as *mut u8).ok_or(FdtError::InvalidPtr)?;
+        unsafe { Self::from_ptr(ptr.as_ptr()) }
+    }
+
+    /// Read a header from a raw pointer and return an owned `Header` whose
+    /// fields are converted from big-endian (on-disk) to host order.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the pointer is valid and points to a
+    /// memory region of at least `size_of::<Header>()` bytes that contains a
+    /// valid device tree blob.
+    pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Self, FdtError> {
+        if !(ptr as usize).is_multiple_of(core::mem::align_of::<Header>()) {
+            // Pointer is not aligned, so we need to copy the data to an aligned
+            // buffer first.
+            let mut aligned = AlignedHeader([0u8; core::mem::size_of::<Header>()]);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    ptr,
+                    aligned.0.as_mut_ptr(),
+                    core::mem::size_of::<Header>(),
+                );
+            }
+            Self::from_aligned_ptr(aligned.0.as_mut_ptr())
+        } else {
+            // Pointer is aligned, we can read directly from it.
+            Self::from_aligned_ptr(ptr)
+        }
+    }
+
+    fn from_aligned_ptr(ptr: *mut u8) -> Result<Self, FdtError> {
+        let ptr = NonNull::new(ptr).ok_or(FdtError::InvalidPtr)?;
+
+        // SAFETY: caller provided a valid pointer to the beginning of a device
+        // tree blob. We read the raw header as it exists in memory (which is
+        // big-endian on-disk). Then convert each u32 field from big-endian to
+        // host order using `u32::from_be`.
+        let raw = unsafe { &*(ptr.cast::<Header>().as_ptr()) };
+
+        let magic = u32::from_be(raw.magic);
+        if magic != crate::FDT_MAGIC {
+            return Err(FdtError::InvalidMagic(magic));
+        }
+
+        Ok(Header {
+            magic,
+            totalsize: u32::from_be(raw.totalsize),
+            off_dt_struct: u32::from_be(raw.off_dt_struct),
+            off_dt_strings: u32::from_be(raw.off_dt_strings),
+            off_mem_rsvmap: u32::from_be(raw.off_mem_rsvmap),
+            version: u32::from_be(raw.version),
+            last_comp_version: u32::from_be(raw.last_comp_version),
+            boot_cpuid_phys: u32::from_be(raw.boot_cpuid_phys),
+            size_dt_strings: u32::from_be(raw.size_dt_strings),
+            size_dt_struct: u32::from_be(raw.size_dt_struct),
+        })
+    }
+}
