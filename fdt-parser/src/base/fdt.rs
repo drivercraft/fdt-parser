@@ -204,7 +204,7 @@ impl<'a> Fdt<'a> {
     }
 
     pub fn memory(&'a self) -> impl Iterator<Item = Result<Memory<'a>, FdtError>> + 'a {
-        self.find_nodes("/memory@").map(|o| {
+        self.find_nodes("/memory").map(|o| {
             o.map(|o| match o {
                 Node::Memory(m) => m,
                 _ => unreachable!(),

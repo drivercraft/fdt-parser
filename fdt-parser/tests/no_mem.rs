@@ -271,20 +271,10 @@ mod test {
         let raw = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw).unwrap();
 
-        let node = fdt.memory();
+        let node = fdt.memory().next().unwrap().unwrap();
 
-        for node in node {
-            let node = node.unwrap();
-            println!("memory node: {:?}", node.name());
-            for reg in node.reg().unwrap() {
-                println!("  reg: {:?}", reg);
-            }
-
-            for region in node.regions() {
-                let region = region.unwrap();
-                println!("  region: {:?}", region);
-            }
-        }
+        let reg = node.reg().unwrap().next().unwrap();
+        println!("memory reg: {:?}", reg);
     }
 
     #[test]
