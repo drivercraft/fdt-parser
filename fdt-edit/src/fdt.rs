@@ -1,6 +1,11 @@
 use core::ops::Deref;
 
-use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use fdt_raw::{FdtError, Phandle, Token, FDT_MAGIC};
 
 use crate::Node;
@@ -113,8 +118,7 @@ impl Fdt {
         }
 
         // 弹出所有剩余节点
-        while !node_stack.is_empty() {
-            let child = node_stack.pop().unwrap();
+        while let Some(child) = node_stack.pop() {
             if let Some(parent) = node_stack.last_mut() {
                 parent.children.push(child);
             } else {
@@ -152,9 +156,18 @@ impl Fdt {
 
     /// 根据路径查找节点
     ///
-    /// 路径格式: "/node1/node2/node3" 或 "node1/node2"（相对于根节点）
+    /// 路径格式: "/node1/node2/node3"
+    /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
     pub fn find_by_path(&self, path: &str) -> Option<&Node> {
-        let path = path.trim_start_matches('/');
+        // 如果路径以 '/' 开头，直接按路径查找
+        // 否则解析 alias
+        let resolved_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            self.resolve_alias(path)?
+        };
+
+        let path = resolved_path.trim_start_matches('/');
         if path.is_empty() {
             return Some(&self.root);
         }
@@ -170,8 +183,18 @@ impl Fdt {
     }
 
     /// 根据路径查找节点（可变）
+    ///
+    /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
     pub fn find_by_path_mut(&mut self, path: &str) -> Option<&mut Node> {
-        let path = path.trim_start_matches('/');
+        // 如果路径以 '/' 开头，直接按路径查找
+        // 否则解析 alias
+        let resolved_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            self.resolve_alias(path)?
+        };
+
+        let path = resolved_path.trim_start_matches('/');
         if path.is_empty() {
             return Some(&mut self.root);
         }
@@ -184,6 +207,44 @@ impl Fdt {
             current = current.find_child_mut(part)?;
         }
         Some(current)
+    }
+
+    /// 解析别名，返回对应的完整路径
+    ///
+    /// 从 /aliases 节点查找别名对应的路径
+    pub fn resolve_alias(&self, alias: &str) -> Option<String> {
+        let aliases_node = self.root.find_child("aliases")?;
+        let prop = aliases_node.find_property(alias)?;
+
+        // 从属性中获取字符串值（路径）
+        match prop {
+            crate::Property::Raw(raw) => {
+                // 字符串属性以 null 结尾
+                let data = raw.data();
+                let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
+                core::str::from_utf8(&data[..len]).ok().map(String::from)
+            }
+            _ => None,
+        }
+    }
+
+    /// 获取所有别名
+    ///
+    /// 返回 (别名, 路径) 的列表
+    pub fn aliases(&self) -> Vec<(&str, String)> {
+        let mut result = Vec::new();
+        if let Some(aliases_node) = self.root.find_child("aliases") {
+            for prop in &aliases_node.properties {
+                if let crate::Property::Raw(raw) = prop {
+                    let data = raw.data();
+                    let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
+                    if let Ok(path) = core::str::from_utf8(&data[..len]) {
+                        result.push((raw.name(), path.to_string()));
+                    }
+                }
+            }
+        }
+        result
     }
 
     /// 根据路径查找所有匹配的节点

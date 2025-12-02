@@ -271,12 +271,43 @@ fn test_find_by_path_mut() {
     let mut fdt = Fdt::from_bytes(&raw).unwrap();
 
     // 通过路径修改节点
-    if let Some(memory) = fdt.find_by_path_mut("memory@40000000") {
+    if let Some(memory) = fdt.find_by_path_mut("/memory@40000000") {
         memory.add_property(Property::raw_string("test-prop", "test-value"));
     }
 
     // 验证修改
-    let memory = fdt.find_by_path("memory@40000000");
+    let memory = fdt.find_by_path("/memory@40000000");
     assert!(memory.is_some());
     assert!(memory.unwrap().find_property("test-prop").is_some());
+}
+
+#[test]
+fn test_find_by_alias() {
+    let raw = fdt_rpi_4b();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // 获取所有别名
+    let aliases = fdt.aliases();
+    println!("Found {} aliases", aliases.len());
+    for (name, path) in &aliases {
+        println!("  {} -> {}", name, path);
+    }
+
+    // 如果有别名，测试通过别名查找
+    if let Some((alias_name, expected_path)) = aliases.first() {
+        // 通过别名查找
+        let node = fdt.find_by_path(alias_name);
+        assert!(node.is_some(), "should find node by alias '{}'", alias_name);
+
+        // 通过完整路径查找
+        let node_by_path = fdt.find_by_path(expected_path);
+        assert!(
+            node_by_path.is_some(),
+            "should find node by path '{}'",
+            expected_path
+        );
+
+        // 两种方式找到的应该是同一个节点
+        assert_eq!(node.unwrap().name, node_by_path.unwrap().name);
+    }
 }
