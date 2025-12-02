@@ -2,6 +2,7 @@ use core::ops::Deref;
 
 use alloc::{
     collections::BTreeMap,
+    format,
     string::{String, ToString},
     vec,
     vec::Vec,
@@ -381,6 +382,218 @@ impl Fdt {
     /// 获取根节点（可变）
     pub fn root_mut(&mut self) -> &mut Node {
         &mut self.root
+    }
+
+    /// 应用设备树覆盖 (Device Tree Overlay)
+    ///
+    /// 支持两种 overlay 格式：
+    /// 1. fragment 格式：包含 fragment@N 节点，每个 fragment 有 target/target-path 和 __overlay__
+    /// 2. 简单格式：直接包含 __overlay__ 节点
+    ///
+    /// # 示例
+    /// ```ignore
+    /// // fragment 格式
+    /// fragment@0 {
+    ///     target-path = "/soc";
+    ///     __overlay__ {
+    ///         new_node { ... };
+    ///     };
+    /// };
+    /// ```
+    pub fn apply_overlay(&mut self, overlay: &Fdt) -> Result<(), FdtError> {
+        // 遍历 overlay 根节点的所有子节点
+        for child in &overlay.root.children {
+            if child.name.starts_with("fragment@") || child.name == "fragment" {
+                // fragment 格式
+                self.apply_fragment(child)?;
+            } else if child.name == "__overlay__" {
+                // 简单格式：直接应用到根节点
+                self.merge_overlay_to_root(child)?;
+            } else if child.name == "__symbols__"
+                || child.name == "__fixups__"
+                || child.name == "__local_fixups__"
+            {
+                // 跳过这些特殊节点
+                continue;
+            }
+        }
+
+        // 重建 phandle 缓存
+        self.rebuild_phandle_cache();
+
+        Ok(())
+    }
+
+    /// 应用单个 fragment
+    fn apply_fragment(&mut self, fragment: &Node) -> Result<(), FdtError> {
+        // 获取目标路径
+        let target_path = self.resolve_fragment_target(fragment)?;
+
+        // 找到 __overlay__ 子节点
+        let overlay_node = fragment
+            .find_child("__overlay__")
+            .ok_or(FdtError::NotFound)?;
+
+        // 找到目标节点并应用覆盖
+        // 需要克隆路径因为后面要修改 self
+        let target_path_owned = target_path.to_string();
+
+        // 应用覆盖到目标节点
+        self.apply_overlay_to_target(&target_path_owned, overlay_node)?;
+
+        Ok(())
+    }
+
+    /// 解析 fragment 的目标路径
+    fn resolve_fragment_target(&self, fragment: &Node) -> Result<String, FdtError> {
+        // 优先使用 target-path（字符串路径）
+        if let Some(crate::Property::Raw(raw)) = fragment.find_property("target-path") {
+            let data = raw.data();
+            let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
+            if let Ok(path) = core::str::from_utf8(&data[..len]) {
+                return Ok(path.to_string());
+            }
+        }
+
+        // 使用 target（phandle 引用）
+        if let Some(crate::Property::Raw(raw)) = fragment.find_property("target") {
+            let data = raw.data();
+            if data.len() >= 4 {
+                let phandle_val = u32::from_be_bytes(data[..4].try_into().unwrap());
+                let phandle = Phandle::from(phandle_val);
+                // 通过 phandle 找到节点，然后构建路径
+                if let Some(node) = self.find_by_phandle(phandle) {
+                    // 需要构建节点的完整路径
+                    if let Some(path) = self.get_node_path(node) {
+                        return Ok(path);
+                    }
+                }
+            }
+        }
+
+        Err(FdtError::NotFound)
+    }
+
+    /// 获取节点的完整路径
+    fn get_node_path(&self, target: &Node) -> Option<String> {
+        Self::find_node_path_recursive(&self.root, target, String::from("/"))
+    }
+
+    /// 递归查找节点路径
+    fn find_node_path_recursive(current: &Node, target: &Node, path: String) -> Option<String> {
+        // 检查是否是目标节点（通过指针比较）
+        if core::ptr::eq(current, target) {
+            return Some(path);
+        }
+
+        // 递归搜索子节点
+        for child in &current.children {
+            let child_path = if path == "/" {
+                format!("/{}", child.name)
+            } else {
+                format!("{}/{}", path, child.name)
+            };
+            if let Some(found) = Self::find_node_path_recursive(child, target, child_path) {
+                return Some(found);
+            }
+        }
+
+        None
+    }
+
+    /// 将 overlay 应用到目标节点
+    fn apply_overlay_to_target(
+        &mut self,
+        target_path: &str,
+        overlay_node: &Node,
+    ) -> Result<(), FdtError> {
+        // 找到目标节点
+        let target = self
+            .find_by_path_mut(target_path)
+            .ok_or(FdtError::NotFound)?;
+
+        // 合并 overlay 的属性和子节点
+        Self::merge_nodes(target, overlay_node);
+
+        Ok(())
+    }
+
+    /// 合并 overlay 节点到根节点
+    fn merge_overlay_to_root(&mut self, overlay: &Node) -> Result<(), FdtError> {
+        // 合并属性和子节点到根节点
+        for prop in &overlay.properties {
+            self.root.set_property(prop.clone());
+        }
+
+        for child in &overlay.children {
+            if let Some(existing) = self.root.children.iter_mut().find(|c| c.name == child.name) {
+                // 合并到现有子节点
+                Self::merge_nodes(existing, child);
+            } else {
+                // 添加新子节点
+                self.root.children.push(child.clone());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 递归合并两个节点
+    fn merge_nodes(target: &mut Node, source: &Node) {
+        // 合并属性（source 覆盖 target）
+        for prop in &source.properties {
+            target.set_property(prop.clone());
+        }
+
+        // 合并子节点
+        for source_child in &source.children {
+            if let Some(target_child) = target
+                .children
+                .iter_mut()
+                .find(|c| c.name == source_child.name)
+            {
+                // 递归合并
+                Self::merge_nodes(target_child, source_child);
+            } else {
+                // 添加新子节点
+                target.children.push(source_child.clone());
+            }
+        }
+    }
+
+    /// 删除节点（通过设置 status = "disabled" 或直接删除）
+    ///
+    /// 如果 overlay 中的节点有 status = "disabled"，则禁用目标节点
+    pub fn apply_overlay_with_delete(
+        &mut self,
+        overlay: &Fdt,
+        delete_disabled: bool,
+    ) -> Result<(), FdtError> {
+        self.apply_overlay(overlay)?;
+
+        if delete_disabled {
+            // 移除所有 status = "disabled" 的节点
+            Self::remove_disabled_nodes(&mut self.root);
+            self.rebuild_phandle_cache();
+        }
+
+        Ok(())
+    }
+
+    /// 递归移除 disabled 的节点
+    fn remove_disabled_nodes(node: &mut Node) {
+        // 移除 disabled 的子节点
+        node.children.retain(|child| {
+            !matches!(
+                child.find_property("status"),
+                Some(crate::Property::Status(crate::Status::Disabled))
+            )
+        });
+
+        // 递归处理剩余子节点
+        for child in &mut node.children {
+            Self::remove_disabled_nodes(child);
+        }
     }
 
     /// 序列化为 FDT 二进制数据

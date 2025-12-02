@@ -311,3 +311,119 @@ fn test_find_by_alias() {
         assert_eq!(node.unwrap().name, node_by_path.unwrap().name);
     }
 }
+
+#[test]
+fn test_apply_overlay() {
+    // 创建基础 FDT
+    let mut base_fdt = Fdt::new();
+    base_fdt
+        .root
+        .add_property(Property::address_cells(2))
+        .add_property(Property::size_cells(2));
+
+    // 添加 soc 节点
+    let mut soc = Node::new("soc");
+    soc.add_property(Property::address_cells(1))
+        .add_property(Property::size_cells(1));
+
+    // 添加一个 uart 节点
+    let mut uart0 = Node::new("uart@10000");
+    uart0
+        .add_property(Property::compatible_from_strs(&["ns16550"]))
+        .add_property(Property::Status(Status::Okay));
+    soc.add_child(uart0);
+
+    base_fdt.root.add_child(soc);
+
+    // 创建 overlay FDT
+    let mut overlay_fdt = Fdt::new();
+
+    // 创建 fragment
+    let mut fragment = Node::new("fragment@0");
+    fragment.add_property(Property::Raw(RawProperty::from_string(
+        "target-path",
+        "/soc",
+    )));
+
+    // 创建 __overlay__ 节点
+    let mut overlay_content = Node::new("__overlay__");
+
+    // 添加新的 gpio 节点
+    let mut gpio = Node::new("gpio@20000");
+    gpio.add_property(Property::compatible_from_strs(&["simple-gpio"]))
+        .add_property(Property::Status(Status::Okay));
+    overlay_content.add_child(gpio);
+
+    // 修改现有 uart 的属性
+    let mut uart_overlay = Node::new("uart@10000");
+    uart_overlay.add_property(Property::raw_string("custom-prop", "overlay-value"));
+    overlay_content.add_child(uart_overlay);
+
+    fragment.add_child(overlay_content);
+    overlay_fdt.root.add_child(fragment);
+
+    // 应用 overlay
+    base_fdt.apply_overlay(&overlay_fdt).unwrap();
+
+    // 验证 overlay 结果
+    // 1. gpio 节点应该被添加
+    let gpio = base_fdt.find_by_path("/soc/gpio@20000");
+    assert!(gpio.is_some(), "gpio node should be added");
+    assert!(gpio.unwrap().find_property("compatible").is_some());
+
+    // 2. uart 节点应该有新属性
+    let uart = base_fdt.find_by_path("/soc/uart@10000");
+    assert!(uart.is_some(), "uart node should still exist");
+    assert!(
+        uart.unwrap().find_property("custom-prop").is_some(),
+        "uart should have overlay property"
+    );
+
+    // 3. uart 的原有属性应该保留
+    assert!(
+        uart.unwrap().find_property("compatible").is_some(),
+        "uart should keep original compatible"
+    );
+}
+
+#[test]
+fn test_apply_overlay_with_delete() {
+    // 创建基础 FDT
+    let mut base_fdt = Fdt::new();
+
+    let mut soc = Node::new("soc");
+
+    let mut uart0 = Node::new("uart@10000");
+    uart0.add_property(Property::Status(Status::Okay));
+    soc.add_child(uart0);
+
+    let mut uart1 = Node::new("uart@11000");
+    uart1.add_property(Property::Status(Status::Okay));
+    soc.add_child(uart1);
+
+    base_fdt.root.add_child(soc);
+
+    // 创建 overlay 来禁用 uart1
+    let mut overlay_fdt = Fdt::new();
+    let mut fragment = Node::new("fragment@0");
+    fragment.add_property(Property::Raw(RawProperty::from_string(
+        "target-path",
+        "/soc/uart@11000",
+    )));
+
+    let mut overlay_content = Node::new("__overlay__");
+    overlay_content.add_property(Property::Status(Status::Disabled));
+    fragment.add_child(overlay_content);
+    overlay_fdt.root.add_child(fragment);
+
+    // 应用 overlay 并删除 disabled 节点
+    base_fdt
+        .apply_overlay_with_delete(&overlay_fdt, true)
+        .unwrap();
+
+    // 验证 uart0 还在
+    assert!(base_fdt.find_by_path("/soc/uart@10000").is_some());
+
+    // 验证 uart1 被删除
+    assert!(base_fdt.find_by_path("/soc/uart@11000").is_none());
+}
