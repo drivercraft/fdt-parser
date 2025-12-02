@@ -1,4 +1,4 @@
-use crate::{FdtError, NodeIter, data::Bytes, header::Header, iter::FdtIter};
+use crate::{FdtError, data::Bytes, header::Header, iter::FdtIter};
 
 #[derive(Clone)]
 pub struct Fdt<'a> {

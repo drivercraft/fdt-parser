@@ -1,7 +1,4 @@
-use core::{
-    ffi::CStr,
-    ops::{Deref, Range},
-};
+use core::ops::{Deref, Range};
 
 use crate::define::{FdtError, Token};
 
@@ -107,5 +104,10 @@ impl<'a> Reader<'a> {
         self.iter += size;
         self.iter = (self.iter + 3) & !3;
         Ok(())
+    }
+
+    pub fn backtrack(&mut self, size: usize) {
+        assert!(size <= self.iter);
+        self.iter -= size;
     }
 }
