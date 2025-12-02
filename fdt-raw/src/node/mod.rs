@@ -8,7 +8,7 @@ use crate::{
 
 mod prop;
 
-pub use prop::{PropIter, Property, StrIter, U32Iter};
+pub use prop::{PropIter, Property, Reg, RegInfo, RegIter, StrIter, U32Iter};
 
 /// 地址范围转换条目
 /// 用于将子地址空间映射到父地址空间
@@ -128,20 +128,57 @@ impl<'a> Node<'a> {
 
     /// 获取节点属性迭代器
     pub fn properties(&self) -> PropIter<'a> {
-        PropIter::new(self.data.reader(), self.strings.clone())
+        PropIter::new(
+            self.data.reader(),
+            self.strings.clone(),
+            self.context.clone(),
+        )
     }
+
+    /// 查找并解析 reg 属性，返回 Reg 迭代器
+    pub fn reg(&self) -> Option<Reg<'a>> {
+        for prop in self.properties() {
+            if let Property::Reg(reg) = prop {
+                return Some(reg);
+            }
+        }
+        None
+    }
+
+    /// 查找并解析 reg 属性，返回所有 RegInfo 条目
+    pub fn reg_array<const N: usize>(&self) -> heapless::Vec<RegInfo, N> {
+        let mut result = heapless::Vec::new();
+        if let Some(reg) = self.reg() {
+            for info in reg.iter() {
+                if result.push(info).is_err() {
+                    break; // 数组已满
+                }
+            }
+        }
+        result
+    }
+}
+
+/// 写入缩进
+fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Result {
+    for _ in 0..count {
+        write!(f, "{}", ch)?;
+    }
+    Ok(())
 }
 
 impl fmt::Display for Node<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let indent = "    ".repeat(self.level);
+        write_indent(f, self.level, "    ")?;
         let name = if self.name.is_empty() { "/" } else { self.name };
 
-        writeln!(f, "{}{} {{", indent, name)?;
+        writeln!(f, "{} {{", name)?;
         for prop in self.properties() {
-            writeln!(f, "{}    {};", indent, prop)?;
+            write_indent(f, self.level + 1, "    ")?;
+            writeln!(f, "{};", prop)?;
         }
-        write!(f, "{}}}", indent)
+        write_indent(f, self.level, "    ")?;
+        write!(f, "}}")
     }
 }
 

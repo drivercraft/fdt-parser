@@ -3,18 +3,8 @@ use log::error;
 use crate::{
     Fdt, FdtError, Node, Token,
     data::{Bytes, Reader},
-    node::{NodeContext, OneNodeIter, OneNodeState, RangeEntry},
+    node::{NodeContext, OneNodeIter, OneNodeState},
 };
-
-/// 节点栈条目，用于追踪父节点信息
-struct StackEntry {
-    /// 节点的 #address-cells
-    address_cells: u8,
-    /// 节点的 #size-cells
-    size_cells: u8,
-    /// 节点的 ranges（用于地址转换）
-    ranges: heapless::Vec<RangeEntry, 16>,
-}
 
 pub struct FdtIter<'a> {
     fdt: Fdt<'a>,
@@ -26,10 +16,8 @@ pub struct FdtIter<'a> {
     finished: bool,
     /// 当前层级深度
     level: usize,
-    /// 节点栈，用于追踪父节点的 cells 和 ranges
-    stack: heapless::Vec<StackEntry, 32>,
-    /// 当前上下文（传递给子节点）
-    current_context: NodeContext,
+    /// 上下文栈，栈顶为当前上下文
+    context_stack: heapless::Vec<NodeContext, 32>,
 }
 
 impl<'a> FdtIter<'a> {
@@ -44,6 +32,10 @@ impl<'a> FdtIter<'a> {
             .data
             .slice(strings_offset..strings_offset + strings_size);
 
+        // 初始化上下文栈，压入默认上下文
+        let mut context_stack = heapless::Vec::new();
+        let _ = context_stack.push(NodeContext::default());
+
         Self {
             fdt,
             reader,
@@ -51,9 +43,15 @@ impl<'a> FdtIter<'a> {
             node_iter: None,
             level: 0,
             finished: false,
-            stack: heapless::Vec::new(),
-            current_context: NodeContext::default(),
+            context_stack,
         }
+    }
+
+    /// 获取当前上下文（栈顶）
+    #[inline]
+    fn current_context(&self) -> &NodeContext {
+        // 栈永远不为空，因为初始化时压入了默认上下文
+        self.context_stack.last().unwrap()
     }
 
     /// 处理错误：输出错误日志并终止迭代
@@ -88,13 +86,7 @@ impl<'a> Iterator for FdtIter<'a> {
                         if self.level > 0 {
                             self.level -= 1;
                             // 弹出栈顶，恢复父节点上下文
-                            if let Some(parent) = self.stack.pop() {
-                                self.current_context = NodeContext {
-                                    parent_address_cells: parent.address_cells,
-                                    parent_size_cells: parent.size_cells,
-                                    ranges: parent.ranges,
-                                };
-                            }
+                            self.context_stack.pop();
                         }
                         // 继续循环处理下一个 token
                     }
@@ -118,7 +110,7 @@ impl<'a> Iterator for FdtIter<'a> {
                         self.reader.clone(),
                         self.strings.clone(),
                         self.level,
-                        self.current_context.clone(),
+                        self.current_context().clone(),
                     );
 
                     // 读取节点名称
@@ -133,20 +125,14 @@ impl<'a> Iterator for FdtIter<'a> {
                                     node.address_cells = props.address_cells.unwrap_or(2);
                                     node.size_cells = props.size_cells.unwrap_or(1);
 
-                                    // 保存当前节点信息到栈
-                                    let entry = StackEntry {
-                                        address_cells: node.address_cells,
-                                        size_cells: node.size_cells,
-                                        ranges: props.ranges.clone(),
-                                    };
-                                    let _ = self.stack.push(entry);
-
-                                    // 更新当前上下文为子节点准备
-                                    self.current_context = node.create_child_context(&props.ranges);
-
                                     // 根据状态决定下一步动作
                                     match state {
                                         OneNodeState::ChildBegin => {
+                                            // 有子节点，压入子节点上下文
+                                            let child_context =
+                                                node.create_child_context(&props.ranges);
+                                            let _ = self.context_stack.push(child_context);
+
                                             // 有子节点，更新 reader 位置
                                             self.reader = node_iter.reader().clone();
                                             // 增加层级（节点有子节点）
@@ -155,8 +141,7 @@ impl<'a> Iterator for FdtIter<'a> {
                                         OneNodeState::End => {
                                             // 节点已结束（没有子节点），更新 reader
                                             self.reader = node_iter.reader().clone();
-                                            // 弹出刚才压入的栈条目，因为节点已经结束
-                                            self.stack.pop();
+                                            // 不压栈，不更新上下文，因为节点没有子节点
                                             // 不增加层级，因为节点已经关闭
                                         }
                                         OneNodeState::Processing => {
@@ -184,14 +169,8 @@ impl<'a> Iterator for FdtIter<'a> {
                     // 顶层 EndNode，降低层级
                     if self.level > 0 {
                         self.level -= 1;
-                        // 弹出栈顶
-                        if let Some(parent) = self.stack.pop() {
-                            self.current_context = NodeContext {
-                                parent_address_cells: parent.address_cells,
-                                parent_size_cells: parent.size_cells,
-                                ranges: parent.ranges,
-                            };
-                        }
+                        // 弹出栈顶，恢复父节点上下文
+                        self.context_stack.pop();
                     }
                     continue;
                 }

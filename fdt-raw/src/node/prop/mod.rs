@@ -1,8 +1,15 @@
+//! 属性相关类型和迭代器
+
+mod reg;
+
 use core::ffi::CStr;
 use core::fmt;
 
 use log::error;
 
+pub use reg::{Reg, RegInfo, RegIter};
+
+use super::NodeContext;
 use crate::{
     FdtError, Phandle, Status, Token,
     data::{Bytes, Reader},
@@ -38,7 +45,7 @@ impl<'a> RawProperty<'a> {
 
     /// 作为 u32 迭代器
     pub fn as_u32_iter(&self) -> U32Iter<'a> {
-        U32Iter { data: self.data }
+        U32Iter::new(self.data)
     }
 
     /// 作为字符串迭代器（用于 compatible 等属性）
@@ -84,8 +91,8 @@ pub enum Property<'a> {
     AddressCells(u8),
     /// #size-cells 属性
     SizeCells(u8),
-    /// reg 属性（原始数据，需要根据 cells 解析）
-    Reg(&'a [u8]),
+    /// reg 属性（已解析）
+    Reg(Reg<'a>),
     /// ranges 属性（原始数据，需要根据 cells 解析）
     Ranges(&'a [u8]),
     /// compatible 属性（字符串列表）
@@ -141,7 +148,7 @@ impl<'a> Property<'a> {
     }
 
     /// 从名称和数据创建类型化属性
-    fn from_raw(name: &'a str, data: &'a [u8]) -> Self {
+    fn from_raw(name: &'a str, data: &'a [u8], context: &NodeContext) -> Self {
         match name {
             "#address-cells" => {
                 if data.len() == 4 {
@@ -167,7 +174,16 @@ impl<'a> Property<'a> {
                     Property::Unknown(RawProperty::new(name, data))
                 }
             }
-            "reg" => Property::Reg(data),
+            "reg" => {
+                // 使用 context 中的 cells 信息解析 reg
+                let reg = Reg::new(
+                    data,
+                    context.parent_address_cells,
+                    context.parent_size_cells,
+                    context.ranges.clone(),
+                );
+                Property::Reg(reg)
+            }
             "ranges" => Property::Ranges(data),
             "compatible" => Property::Compatible(StrIter { data }),
             "model" => {
@@ -255,9 +271,9 @@ impl fmt::Display for Property<'_> {
             Property::AddressCells(v) => write!(f, "#address-cells = <{:#x}>", v),
             Property::SizeCells(v) => write!(f, "#size-cells = <{:#x}>", v),
             Property::InterruptCells(v) => write!(f, "#interrupt-cells = <{:#x}>", v),
-            Property::Reg(data) => {
+            Property::Reg(reg) => {
                 write!(f, "reg = ")?;
-                format_bytes(f, data)
+                format_bytes(f, reg.as_slice())
             }
             Property::Ranges(data) => {
                 if data.is_empty() {
@@ -371,14 +387,16 @@ fn format_bytes(f: &mut fmt::Formatter<'_>, data: &[u8]) -> fmt::Result {
 pub struct PropIter<'a> {
     reader: Reader<'a>,
     strings: Bytes<'a>,
+    context: NodeContext,
     finished: bool,
 }
 
 impl<'a> PropIter<'a> {
-    pub(crate) fn new(reader: Reader<'a>, strings: Bytes<'a>) -> Self {
+    pub(crate) fn new(reader: Reader<'a>, strings: Bytes<'a>, context: NodeContext) -> Self {
         Self {
             reader,
             strings,
+            context,
             finished: false,
         }
     }
@@ -481,7 +499,7 @@ impl<'a> Iterator for PropIter<'a> {
                     // 对齐到 4 字节边界
                     self.align4();
 
-                    return Some(Property::from_raw(name, prop_data));
+                    return Some(Property::from_raw(name, prop_data, &self.context));
                 }
                 Token::BeginNode | Token::EndNode | Token::End => {
                     // 遇到节点边界，回溯并终止属性迭代
@@ -509,6 +527,12 @@ impl<'a> Iterator for PropIter<'a> {
 #[derive(Clone)]
 pub struct U32Iter<'a> {
     data: &'a [u8],
+}
+
+impl<'a> U32Iter<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Self { data }
+    }
 }
 
 impl Iterator for U32Iter<'_> {
