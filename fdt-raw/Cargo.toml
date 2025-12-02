@@ -1,0 +1,17 @@
+[package]
+authors = ["周睿 <zrufo747@outlook.com>"]
+categories = ["embedded", "no-std"]
+description = "A crate for parsing FDT"
+documentation = "https://docs.rs/fdt-parser"
+edition = "2024"
+name = "fdt-raw"
+version = "0.1.0"
+
+[dependencies]
+heapless = "0.9"
+log = "0.4"
+thiserror = {version = "2", default-features = false}
+
+[dev-dependencies]
+dtb-file = { path = "../dtb-file" }
+env_logger = "0.11"
