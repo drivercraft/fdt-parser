@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use crate::Property;
+use crate::{Phandle, Property};
 
 /// 可编辑的节点
 #[derive(Clone, Debug)]
@@ -100,6 +100,22 @@ impl Node {
             Property::SizeCells(v) => Some(*v),
             _ => None,
         })
+    }
+
+    /// 获取 phandle 值
+    pub fn phandle(&self) -> Option<Phandle> {
+        self.find_property("phandle")
+            .and_then(|p| match p {
+                Property::Phandle(v) => Some(*v),
+                _ => None,
+            })
+            .or_else(|| {
+                // 也检查 linux,phandle
+                self.find_property("linux,phandle").and_then(|p| match p {
+                    Property::LinuxPhandle(v) => Some(*v),
+                    _ => None,
+                })
+            })
     }
 }
 

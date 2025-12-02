@@ -1,7 +1,7 @@
 use core::ops::Deref;
 
-use alloc::{string::String, vec, vec::Vec};
-use fdt_raw::{FdtError, Token, FDT_MAGIC};
+use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
+use fdt_raw::{FdtError, Phandle, Token, FDT_MAGIC};
 
 use crate::Node;
 
@@ -12,6 +12,9 @@ pub struct MemoryReservation {
     pub size: u64,
 }
 
+/// 节点路径索引
+type NodeIndex = Vec<usize>;
+
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]
 pub struct Fdt {
@@ -21,6 +24,8 @@ pub struct Fdt {
     pub memory_reservations: Vec<MemoryReservation>,
     /// 根节点
     pub root: Node,
+    /// phandle 到节点路径的缓存
+    phandle_cache: BTreeMap<Phandle, NodeIndex>,
 }
 
 impl Default for Fdt {
@@ -36,6 +41,7 @@ impl Fdt {
             boot_cpuid_phys: 0,
             memory_reservations: Vec::new(),
             root: Node::root(),
+            phandle_cache: BTreeMap::new(),
         }
     }
 
@@ -62,6 +68,7 @@ impl Fdt {
             boot_cpuid_phys: header.boot_cpuid_phys,
             memory_reservations: Vec::new(),
             root: Node::root(),
+            phandle_cache: BTreeMap::new(),
         };
 
         // 解析内存保留块
@@ -116,7 +123,193 @@ impl Fdt {
             }
         }
 
+        // 构建 phandle 缓存
+        fdt.rebuild_phandle_cache();
+
         Ok(fdt)
+    }
+
+    /// 重建 phandle 缓存
+    pub fn rebuild_phandle_cache(&mut self) {
+        self.phandle_cache.clear();
+        self.build_phandle_cache_recursive(&self.root.clone(), Vec::new());
+    }
+
+    /// 递归构建 phandle 缓存
+    fn build_phandle_cache_recursive(&mut self, node: &Node, current_index: NodeIndex) {
+        // 检查节点是否有 phandle 属性
+        if let Some(phandle) = node.phandle() {
+            self.phandle_cache.insert(phandle, current_index.clone());
+        }
+
+        // 递归处理子节点
+        for (i, child) in node.children.iter().enumerate() {
+            let mut child_index = current_index.clone();
+            child_index.push(i);
+            self.build_phandle_cache_recursive(child, child_index);
+        }
+    }
+
+    /// 根据路径查找节点
+    ///
+    /// 路径格式: "/node1/node2/node3" 或 "node1/node2"（相对于根节点）
+    pub fn find_by_path(&self, path: &str) -> Option<&Node> {
+        let path = path.trim_start_matches('/');
+        if path.is_empty() {
+            return Some(&self.root);
+        }
+
+        let mut current = &self.root;
+        for part in path.split('/') {
+            if part.is_empty() {
+                continue;
+            }
+            current = current.find_child(part)?;
+        }
+        Some(current)
+    }
+
+    /// 根据路径查找节点（可变）
+    pub fn find_by_path_mut(&mut self, path: &str) -> Option<&mut Node> {
+        let path = path.trim_start_matches('/');
+        if path.is_empty() {
+            return Some(&mut self.root);
+        }
+
+        let mut current = &mut self.root;
+        for part in path.split('/') {
+            if part.is_empty() {
+                continue;
+            }
+            current = current.find_child_mut(part)?;
+        }
+        Some(current)
+    }
+
+    /// 根据路径查找所有匹配的节点
+    ///
+    /// 支持通配符 '*' 匹配任意节点名
+    /// 例如: "/soc/*/serial" 会匹配所有 soc 下任意子节点中的 serial 节点
+    pub fn find_all_by_path(&self, path: &str) -> Vec<&Node> {
+        let path = path.trim_start_matches('/');
+        if path.is_empty() {
+            return vec![&self.root];
+        }
+
+        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        if parts.is_empty() {
+            return vec![&self.root];
+        }
+
+        let mut results = Vec::new();
+        Self::find_all_by_path_recursive(&self.root, &parts, 0, &mut results);
+        results
+    }
+
+    /// 递归查找路径匹配的节点
+    fn find_all_by_path_recursive<'a>(
+        node: &'a Node,
+        parts: &[&str],
+        index: usize,
+        results: &mut Vec<&'a Node>,
+    ) {
+        if index >= parts.len() {
+            results.push(node);
+            return;
+        }
+
+        let part = parts[index];
+        if part == "*" {
+            // 通配符：遍历所有子节点
+            for child in &node.children {
+                Self::find_all_by_path_recursive(child, parts, index + 1, results);
+            }
+        } else {
+            // 精确匹配：可能有多个同名节点
+            for child in &node.children {
+                if child.name == part {
+                    Self::find_all_by_path_recursive(child, parts, index + 1, results);
+                }
+            }
+        }
+    }
+
+    /// 根据节点名称查找所有匹配的节点（递归搜索整个树）
+    ///
+    /// 返回所有名称匹配的节点引用
+    pub fn find_by_name(&self, name: &str) -> Vec<&Node> {
+        let mut results = Vec::new();
+        Self::find_by_name_recursive(&self.root, name, &mut results);
+        results
+    }
+
+    /// 递归按名称查找节点
+    fn find_by_name_recursive<'a>(node: &'a Node, name: &str, results: &mut Vec<&'a Node>) {
+        // 检查当前节点
+        if node.name == name {
+            results.push(node);
+        }
+
+        // 递归检查所有子节点
+        for child in &node.children {
+            Self::find_by_name_recursive(child, name, results);
+        }
+    }
+
+    /// 根据节点名称前缀查找所有匹配的节点
+    ///
+    /// 例如: find_by_name_prefix("gpio") 会匹配 "gpio", "gpio0", "gpio@1000" 等
+    pub fn find_by_name_prefix(&self, prefix: &str) -> Vec<&Node> {
+        let mut results = Vec::new();
+        Self::find_by_name_prefix_recursive(&self.root, prefix, &mut results);
+        results
+    }
+
+    /// 递归按名称前缀查找节点
+    fn find_by_name_prefix_recursive<'a>(
+        node: &'a Node,
+        prefix: &str,
+        results: &mut Vec<&'a Node>,
+    ) {
+        // 检查当前节点
+        if node.name.starts_with(prefix) {
+            results.push(node);
+        }
+
+        // 递归检查所有子节点
+        for child in &node.children {
+            Self::find_by_name_prefix_recursive(child, prefix, results);
+        }
+    }
+
+    /// 根据 phandle 查找节点
+    pub fn find_by_phandle(&self, phandle: Phandle) -> Option<&Node> {
+        let index = self.phandle_cache.get(&phandle)?;
+        self.get_node_by_index(index)
+    }
+
+    /// 根据 phandle 查找节点（可变）
+    pub fn find_by_phandle_mut(&mut self, phandle: Phandle) -> Option<&mut Node> {
+        let index = self.phandle_cache.get(&phandle)?.clone();
+        self.get_node_by_index_mut(&index)
+    }
+
+    /// 根据索引获取节点
+    fn get_node_by_index(&self, index: &NodeIndex) -> Option<&Node> {
+        let mut current = &self.root;
+        for &i in index {
+            current = current.children.get(i)?;
+        }
+        Some(current)
+    }
+
+    /// 根据索引获取节点（可变）
+    fn get_node_by_index_mut(&mut self, index: &NodeIndex) -> Option<&mut Node> {
+        let mut current = &mut self.root;
+        for &i in index {
+            current = current.children.get_mut(i)?;
+        }
+        Some(current)
     }
 
     /// 获取根节点

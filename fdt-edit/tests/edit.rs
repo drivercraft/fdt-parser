@@ -13,7 +13,10 @@ fn test_parse_and_rebuild() {
     assert!(fdt.root.name.is_empty(), "root node should have empty name");
 
     // 验证有属性
-    assert!(!fdt.root.properties.is_empty(), "root should have properties");
+    assert!(
+        !fdt.root.properties.is_empty(),
+        "root should have properties"
+    );
 
     // 验证有子节点
     assert!(!fdt.root.children.is_empty(), "root should have children");
@@ -154,4 +157,126 @@ fn test_rpi4b_parse() {
     let rebuilt = fdt.to_bytes();
     let reparsed = Fdt::from_bytes(&rebuilt).unwrap();
     assert_eq!(fdt.root.children.len(), reparsed.root.children.len());
+}
+
+#[test]
+fn test_find_by_path() {
+    let raw = fdt_rpi_4b();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // 测试根节点
+    let root = fdt.find_by_path("/");
+    assert!(root.is_some());
+    assert!(root.unwrap().name.is_empty());
+
+    // 测试 soc 节点
+    let soc = fdt.find_by_path("/soc");
+    assert!(soc.is_some());
+    assert_eq!(soc.unwrap().name, "soc");
+
+    // 测试相对路径（不带前导 /）
+    let soc2 = fdt.find_by_path("soc");
+    assert!(soc2.is_some());
+    assert_eq!(soc2.unwrap().name, "soc");
+
+    // 测试不存在的路径
+    let not_found = fdt.find_by_path("/not/exist");
+    assert!(not_found.is_none());
+}
+
+#[test]
+fn test_find_by_name() {
+    let raw = fdt_rpi_4b();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // 查找所有名为 "clocks" 的节点
+    let clocks_nodes = fdt.find_by_name("clocks");
+    // 可能有多个或没有，但至少应该返回空 Vec 而不是 panic
+    println!("Found {} nodes named 'clocks'", clocks_nodes.len());
+
+    // 查找不存在的名称
+    let not_found = fdt.find_by_name("this-node-does-not-exist");
+    assert!(not_found.is_empty());
+}
+
+#[test]
+fn test_find_by_name_prefix() {
+    let raw = fdt_rpi_4b();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // 查找所有以 "gpio" 开头的节点
+    let gpio_nodes = fdt.find_by_name_prefix("gpio");
+    println!("Found {} nodes starting with 'gpio'", gpio_nodes.len());
+
+    // 所有找到的节点名称都应该以 "gpio" 开头
+    for node in &gpio_nodes {
+        assert!(
+            node.name.starts_with("gpio"),
+            "Node '{}' should start with 'gpio'",
+            node.name
+        );
+    }
+}
+
+#[test]
+fn test_find_all_by_path() {
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // 查找根节点
+    let root_nodes = fdt.find_all_by_path("/");
+    assert_eq!(root_nodes.len(), 1);
+    assert!(root_nodes[0].name.is_empty());
+
+    // 使用通配符查找
+    // 查找所有一级子节点
+    let first_level = fdt.find_all_by_path("/*");
+    assert!(!first_level.is_empty(), "should have first level children");
+    println!("Found {} first level nodes", first_level.len());
+
+    // 通配符测试：查找 /soc 下的所有子节点（如果存在 soc）
+    let soc_children = fdt.find_all_by_path("/soc/*");
+    println!("Found {} children under /soc", soc_children.len());
+}
+
+#[test]
+fn test_find_by_phandle() {
+    let raw = fdt_rpi_4b();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // 遍历所有节点找到一个有 phandle 的节点
+    fn find_phandle_node(node: &Node) -> Option<(Phandle, String)> {
+        if let Some(phandle) = node.phandle() {
+            return Some((phandle, node.name.clone()));
+        }
+        for child in &node.children {
+            if let Some(result) = find_phandle_node(child) {
+                return Some(result);
+            }
+        }
+        None
+    }
+
+    // 如果找到了有 phandle 的节点，测试 find_by_phandle
+    if let Some((phandle, name)) = find_phandle_node(&fdt.root) {
+        let found = fdt.find_by_phandle(phandle);
+        assert!(found.is_some(), "should find node by phandle");
+        assert_eq!(found.unwrap().name, name);
+    }
+}
+
+#[test]
+fn test_find_by_path_mut() {
+    let raw = fdt_qemu();
+    let mut fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // 通过路径修改节点
+    if let Some(memory) = fdt.find_by_path_mut("memory@40000000") {
+        memory.add_property(Property::raw_string("test-prop", "test-value"));
+    }
+
+    // 验证修改
+    let memory = fdt.find_by_path("memory@40000000");
+    assert!(memory.is_some());
+    assert!(memory.unwrap().find_property("test-prop").is_some());
 }
