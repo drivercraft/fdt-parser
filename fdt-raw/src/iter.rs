@@ -116,7 +116,7 @@ impl<'a> Iterator for FdtIter<'a> {
                     // 读取节点名称
                     match node_iter.read_node_name() {
                         Ok(mut node) => {
-                            // 先处理节点属性以获取 address-cells, size-cells, ranges
+                            // 先处理节点属性以获取 address-cells, size-cells
                             match node_iter.process() {
                                 Ok(state) => {
                                     let props = node_iter.parsed_props();
@@ -129,8 +129,7 @@ impl<'a> Iterator for FdtIter<'a> {
                                     match state {
                                         OneNodeState::ChildBegin => {
                                             // 有子节点，压入子节点上下文
-                                            let child_context =
-                                                node.create_child_context(&props.ranges);
+                                            let child_context = node.create_child_context();
                                             let _ = self.context_stack.push(child_context);
 
                                             // 有子节点，更新 reader 位置

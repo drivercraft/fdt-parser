@@ -176,12 +176,7 @@ impl<'a> Property<'a> {
             }
             "reg" => {
                 // 使用 context 中的 cells 信息解析 reg
-                let reg = Reg::new(
-                    data,
-                    context.parent_address_cells,
-                    context.parent_size_cells,
-                    context.ranges.clone(),
-                );
+                let reg = Reg::new(data, context.parent_address_cells, context.parent_size_cells);
                 Property::Reg(reg)
             }
             "ranges" => Property::Ranges(data),

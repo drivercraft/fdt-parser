@@ -142,11 +142,7 @@ impl fmt::Debug for Fdt<'_> {
                             if i > 0 {
                                 write!(f, ", ")?;
                             }
-                            write!(
-                                f,
-                                "{{addr: {:#x}, child: {:#x}, size: {:?}}}",
-                                info.address, info.child_bus_address, info.size
-                            )?;
+                            write!(f, "{{addr: {:#x}, size: {:?}}}", info.address, info.size)?;
                         }
                         writeln!(f, "]")?;
                     }

@@ -57,7 +57,6 @@ fn test_fdt_debug() {
     // 验证属性解析（reg 应该显示解析后的地址）
     assert!(output.contains("reg: ["));
     assert!(output.contains("addr:"));
-    assert!(output.contains("child:"));
 }
 
 #[test]
@@ -88,14 +87,13 @@ fn test_node_context() {
 
     for node in fdt.all_nodes() {
         info!(
-            "node: {} (level={}, addr_cells={}, size_cells={}, parent_addr_cells={}, parent_size_cells={}, ranges_count={})",
+            "node: {} (level={}, addr_cells={}, size_cells={}, parent_addr_cells={}, parent_size_cells={})",
             node.name(),
             node.level(),
             node.address_cells,
             node.size_cells,
             node.reg_address_cells(),
-            node.reg_size_cells(),
-            node.context.ranges.len()
+            node.reg_size_cells()
         );
     }
 }
@@ -171,8 +169,8 @@ fn test_reg_parsing() {
             // 测试 RegInfo iter
             for reg_info in reg.iter() {
                 info!(
-                    "  RegInfo: child_bus_addr={:#x}, address={:#x}, size={:?}",
-                    reg_info.child_bus_address, reg_info.address, reg_info.size
+                    "  RegInfo: address={:#x}, size={:?}",
+                    reg_info.address, reg_info.size
                 );
             }
         }
@@ -180,187 +178,76 @@ fn test_reg_parsing() {
 }
 
 #[test]
-fn test_rpi4b_ranges() {
+fn test_memory_node() {
     init_logging();
+
+    // 测试 RPi 4B DTB
+    info!("=== Testing RPi 4B DTB ===");
     let raw = fdt_rpi_4b();
-    let fdt = Fdt::from_bytes(&raw).unwrap();
+    test_memory_in_fdt(&raw, "RPi 4B");
 
-    info!("=== RPi 4B Ranges Test ===");
+    // 测试 QEMU DTB
+    info!("\n=== Testing QEMU DTB ===");
+    let raw = fdt_qemu();
+    test_memory_in_fdt(&raw, "QEMU");
+}
 
-    // 收集需要验证的节点信息
-    let mut serial_7e201000_found = false;
-    let mut mmc_7e202000_found = false;
-    let mut local_intc_found = false;
-    let mut gic_found = false;
-    let mut v3d_found = false;
-    let mut pcie_found = false;
-    let mut usb_xhci_found = false;
+fn test_memory_in_fdt(raw: &[u8], name: &str) {
+    let fdt = Fdt::from_bytes(raw).unwrap();
 
+    let mut memory_found = false;
     for node in fdt.all_nodes() {
-        let ranges_count = node.context.ranges.len();
-        if ranges_count > 0 || node.name().contains("soc") || node.name().contains("pci") {
+        if node.name().starts_with("memory@") || node.name() == "memory" {
+            memory_found = true;
             info!(
-                "node: {} (level={}, ranges_count={})",
+                "[{}] Found memory node: {} (level={})",
+                name,
                 node.name(),
-                node.level(),
-                ranges_count
+                node.level()
+            );
+            info!(
+                "[{}]   parent_address_cells={}, parent_size_cells={}",
+                name, node.context.parent_address_cells, node.context.parent_size_cells
             );
 
-            // 打印 ranges 条目
-            for (i, range) in node.context.ranges.iter().enumerate() {
-                info!(
-                    "  range[{}]: child_bus={:#x}, parent_bus={:#x}, length={:#x}",
-                    i, range.child_bus_addr, range.parent_bus_addr, range.length
-                );
-            }
-
-            // 如果有 reg 属性，解析并显示地址转换
+            // 解析 reg 属性
             if let Some(reg) = node.reg() {
+                info!("[{}]   reg property found:", name);
                 info!(
-                    "  reg: address_cells={}, size_cells={}",
+                    "[{}]     address_cells={}, size_cells={}",
+                    name,
                     node.reg_address_cells(),
                     node.reg_size_cells()
                 );
-                for reg_info in reg.iter() {
+                // 打印原始数据
+                let raw_data = reg.as_slice();
+                info!(
+                    "[{}]     raw data ({} bytes): {:02x?}",
+                    name,
+                    raw_data.len(),
+                    raw_data
+                );
+                // 打印 u32 值
+                let u32_values: Vec<_> = reg.as_u32_iter().collect();
+                info!("[{}]     u32 values: {:x?}", name, u32_values);
+
+                for (i, reg_info) in reg.iter().enumerate() {
                     info!(
-                        "    child_bus_addr={:#x} -> address={:#x}, size={:?}",
-                        reg_info.child_bus_address, reg_info.address, reg_info.size
+                        "[{}]     reg[{}]: address={:#x}, size={:?}",
+                        name, i, reg_info.address, reg_info.size
                     );
                 }
+            } else {
+                info!("[{}]   No reg property found", name);
             }
-        }
 
-        // 验证 serial@7e201000: 0x7e201000 -> 0xfe201000 (通过 range 0x7e000000 -> 0xfe000000)
-        if node.name() == "serial@7e201000" {
-            serial_7e201000_found = true;
-            assert_eq!(
-                node.context.ranges.len(),
-                3,
-                "serial@7e201000 should have 3 ranges"
-            );
-            // 验证第一个 range
-            assert_eq!(node.context.ranges[0].child_bus_addr, 0x7e000000);
-            assert_eq!(node.context.ranges[0].parent_bus_addr, 0xfe000000);
-            assert_eq!(node.context.ranges[0].length, 0x1800000);
-
-            if let Some(reg) = node.reg() {
-                let reg_info = reg.iter().next().unwrap();
-                assert_eq!(reg_info.child_bus_address, 0x7e201000);
-                assert_eq!(
-                    reg_info.address, 0xfe201000,
-                    "serial address translation failed"
-                );
-                assert_eq!(reg_info.size, Some(512));
-            }
-        }
-
-        // 验证 mmc@7e202000: 0x7e202000 -> 0xfe202000
-        if node.name() == "mmc@7e202000" {
-            mmc_7e202000_found = true;
-            if let Some(reg) = node.reg() {
-                let reg_info = reg.iter().next().unwrap();
-                assert_eq!(reg_info.child_bus_address, 0x7e202000);
-                assert_eq!(
-                    reg_info.address, 0xfe202000,
-                    "mmc address translation failed"
-                );
-                assert_eq!(reg_info.size, Some(256));
-            }
-        }
-
-        // 验证 local_intc@40000000: 0x40000000 -> 0xff800000 (通过 range 0x40000000 -> 0xff800000)
-        if node.name() == "local_intc@40000000" {
-            local_intc_found = true;
-            if let Some(reg) = node.reg() {
-                let reg_info = reg.iter().next().unwrap();
-                assert_eq!(reg_info.child_bus_address, 0x40000000);
-                assert_eq!(
-                    reg_info.address, 0xff800000,
-                    "local_intc address translation failed"
-                );
-                assert_eq!(reg_info.size, Some(256));
-            }
-        }
-
-        // 验证 interrupt-controller@40041000 (GIC): 0x40041000 -> 0xff841000
-        if node.name() == "interrupt-controller@40041000" {
-            gic_found = true;
-            if let Some(reg) = node.reg() {
-                let regs: Vec<_> = reg.iter().collect();
-                assert!(regs.len() >= 4, "GIC should have at least 4 reg entries");
-                // 第一个 reg: 0x40041000 -> 0xff841000
-                assert_eq!(regs[0].child_bus_address, 0x40041000);
-                assert_eq!(
-                    regs[0].address, 0xff841000,
-                    "GIC distributor address translation failed"
-                );
-                assert_eq!(regs[0].size, Some(4096));
-                // 第二个 reg: 0x40042000 -> 0xff842000
-                assert_eq!(regs[1].child_bus_address, 0x40042000);
-                assert_eq!(regs[1].address, 0xff842000);
-            }
-        }
-
-        // 验证 v3d@7ec04000: 使用不同的 ranges
-        if node.name() == "v3d@7ec04000" {
-            v3d_found = true;
-            assert_eq!(node.context.ranges.len(), 2, "v3d should have 2 ranges");
-            // 验证 v3d 的特殊 ranges
-            assert_eq!(node.context.ranges[0].child_bus_addr, 0x7c500000);
-            assert_eq!(node.context.ranges[0].parent_bus_addr, 0xfc500000);
-
-            if let Some(reg) = node.reg() {
-                let regs: Vec<_> = reg.iter().collect();
-                assert_eq!(regs.len(), 2);
-                // 0x7ec00000 通过 range 0x7c500000->0xfc500000 映射
-                // 偏移 = 0x7ec00000 - 0x7c500000 = 0x700000
-                // 结果 = 0xfc500000 + 0x700000 = 0xfcc00000? 不对
-                // 实际上应该是 0xfec00000，说明用了别的映射规则
-                assert_eq!(regs[0].child_bus_address, 0x7ec00000);
-                assert_eq!(
-                    regs[0].address, 0xfec00000,
-                    "v3d reg[0] address translation failed"
-                );
-            }
-        }
-
-        // 验证 pcie@7d500000
-        if node.name() == "pcie@7d500000" {
-            pcie_found = true;
-            assert_eq!(node.context.ranges.len(), 4, "pcie should have 4 ranges");
-            if let Some(reg) = node.reg() {
-                let reg_info = reg.iter().next().unwrap();
-                assert_eq!(reg_info.child_bus_address, 0x7d500000);
-                assert_eq!(
-                    reg_info.address, 0xfd500000,
-                    "pcie address translation failed"
-                );
-            }
-        }
-
-        // 验证 xhci@7e9c0000
-        if node.name() == "xhci@7e9c0000" {
-            usb_xhci_found = true;
-            if let Some(reg) = node.reg() {
-                let reg_info = reg.iter().next().unwrap();
-                assert_eq!(reg_info.child_bus_address, 0x7e9c0000);
-                assert_eq!(
-                    reg_info.address, 0xfe9c0000,
-                    "xhci address translation failed"
-                );
-                assert_eq!(reg_info.size, Some(1048576)); // 1MB
+            // 打印所有属性
+            info!("[{}]   All properties:", name);
+            for prop in node.properties() {
+                info!("[{}]     {}", name, prop.name());
             }
         }
     }
 
-    // 确保所有关键节点都被找到并验证
-    assert!(serial_7e201000_found, "serial@7e201000 not found");
-    assert!(mmc_7e202000_found, "mmc@7e202000 not found");
-    assert!(local_intc_found, "local_intc@40000000 not found");
-    assert!(gic_found, "interrupt-controller@40041000 not found");
-    assert!(v3d_found, "v3d@7ec04000 not found");
-    assert!(pcie_found, "pcie@7d500000 not found");
-    assert!(usb_xhci_found, "xhci@7e9c0000 not found");
-
-    info!("=== All RPi 4B ranges assertions passed! ===");
+    assert!(memory_found, "{}: memory node not found", name);
 }

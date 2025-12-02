@@ -1,26 +1,18 @@
 //! Reg 属性相关类型
 
-use super::super::RangeEntry;
-
 /// Reg 条目信息
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RegInfo {
-    /// 父总线地址（经过 ranges 转换后的地址）
+    /// 地址
     pub address: u64,
-    /// 子总线地址（原始地址）
-    pub child_bus_address: u64,
     /// 区域大小
     pub size: Option<u64>,
 }
 
 impl RegInfo {
     /// 创建新的 RegInfo
-    pub fn new(child_bus_address: u64, address: u64, size: Option<u64>) -> Self {
-        Self {
-            address,
-            child_bus_address,
-            size,
-        }
+    pub fn new(address: u64, size: Option<u64>) -> Self {
+        Self { address, size }
     }
 }
 
@@ -30,22 +22,15 @@ pub struct Reg<'a> {
     data: &'a [u8],
     address_cells: u8,
     size_cells: u8,
-    ranges: heapless::Vec<RangeEntry, 16>,
 }
 
 impl<'a> Reg<'a> {
     /// 创建新的 Reg
-    pub fn new(
-        data: &'a [u8],
-        address_cells: u8,
-        size_cells: u8,
-        ranges: heapless::Vec<RangeEntry, 16>,
-    ) -> Self {
+    pub fn new(data: &'a [u8], address_cells: u8, size_cells: u8) -> Self {
         Self {
             data,
             address_cells,
             size_cells,
-            ranges,
         }
     }
 
@@ -65,7 +50,6 @@ impl<'a> Reg<'a> {
             data: self.data,
             address_cells: self.address_cells,
             size_cells: self.size_cells,
-            ranges: self.ranges.clone(),
         }
     }
 
@@ -87,7 +71,6 @@ pub struct RegIter<'a> {
     data: &'a [u8],
     address_cells: u8,
     size_cells: u8,
-    ranges: heapless::Vec<RangeEntry, 16>,
 }
 
 impl RegIter<'_> {
@@ -109,17 +92,6 @@ impl RegIter<'_> {
         };
         Some((value, bytes_needed))
     }
-
-    /// 将子地址通过 ranges 转换为父地址
-    fn translate_address(&self, child_addr: u64) -> u64 {
-        let mut addr = child_addr;
-        for range in self.ranges.iter().rev() {
-            if let Some(translated) = range.translate(addr) {
-                addr = translated;
-            }
-        }
-        addr
-    }
 }
 
 impl Iterator for RegIter<'_> {
@@ -131,7 +103,7 @@ impl Iterator for RegIter<'_> {
         }
 
         // 读取地址
-        let (child_bus_address, addr_bytes) = Self::read_value(self.data, self.address_cells)?;
+        let (address, addr_bytes) = Self::read_value(self.data, self.address_cells)?;
         self.data = &self.data[addr_bytes..];
 
         // 读取大小
@@ -143,9 +115,6 @@ impl Iterator for RegIter<'_> {
             None
         };
 
-        // 转换地址
-        let address = self.translate_address(child_bus_address);
-
-        Some(RegInfo::new(child_bus_address, address, size))
+        Some(RegInfo::new(address, size))
     }
 }

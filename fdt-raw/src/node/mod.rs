@@ -10,31 +10,6 @@ mod prop;
 
 pub use prop::{PropIter, Property, Reg, RegInfo, RegIter, StrIter, U32Iter};
 
-/// 地址范围转换条目
-/// 用于将子地址空间映射到父地址空间
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RangeEntry {
-    /// 子地址空间中的起始地址
-    pub child_bus_addr: u64,
-    /// 父地址空间中的起始地址
-    pub parent_bus_addr: u64,
-    /// 范围长度
-    pub length: u64,
-}
-
-impl RangeEntry {
-    /// 将子地址转换为父地址
-    pub fn translate(&self, child_addr: u64) -> Option<u64> {
-        if child_addr >= self.child_bus_addr
-            && child_addr < self.child_bus_addr.saturating_add(self.length)
-        {
-            Some(self.parent_bus_addr + (child_addr - self.child_bus_addr))
-        } else {
-            None
-        }
-    }
-}
-
 /// 节点上下文，保存从父节点继承的信息
 #[derive(Debug, Clone)]
 pub struct NodeContext {
@@ -42,8 +17,6 @@ pub struct NodeContext {
     pub parent_address_cells: u8,
     /// 父节点的 #size-cells (用于解析当前节点的 reg)
     pub parent_size_cells: u8,
-    /// 累积的地址转换范围（从根节点到当前节点的父节点）
-    pub ranges: heapless::Vec<RangeEntry, 16>,
 }
 
 impl Default for NodeContext {
@@ -52,21 +25,7 @@ impl Default for NodeContext {
             // 默认值根据 DTSpec: 2 for address, 1 for size
             parent_address_cells: 2,
             parent_size_cells: 1,
-            ranges: heapless::Vec::new(),
         }
-    }
-}
-
-impl NodeContext {
-    /// 将子地址通过所有 ranges 转换为根地址
-    pub fn translate_address(&self, child_addr: u64) -> u64 {
-        let mut addr = child_addr;
-        for range in self.ranges.iter().rev() {
-            if let Some(translated) = range.translate(addr) {
-                addr = translated;
-            }
-        }
-        addr
     }
 }
 
@@ -107,23 +66,12 @@ impl<'a> Node<'a> {
         self.context.parent_size_cells
     }
 
-    /// 将节点地址转换为根地址空间
-    pub fn translate_address(&self, addr: u64) -> u64 {
-        self.context.translate_address(addr)
-    }
-
     /// 为子节点创建上下文
-    pub(crate) fn create_child_context(&self, child_ranges: &[RangeEntry]) -> NodeContext {
-        let mut ctx = NodeContext {
+    pub(crate) fn create_child_context(&self) -> NodeContext {
+        NodeContext {
             parent_address_cells: self.address_cells,
             parent_size_cells: self.size_cells,
-            ranges: self.context.ranges.clone(),
-        };
-        // 添加当前节点的 ranges 到累积列表
-        for range in child_ranges {
-            let _ = ctx.ranges.push(*range);
         }
-        ctx
     }
 
     /// 获取节点属性迭代器
@@ -187,8 +135,6 @@ impl fmt::Display for Node<'_> {
 pub(crate) struct ParsedProps {
     pub address_cells: Option<u8>,
     pub size_cells: Option<u8>,
-    pub ranges: heapless::Vec<RangeEntry, 16>,
-    pub ranges_empty: bool, // ranges 属性存在但为空（1:1 映射）
 }
 
 /// 单节点迭代状态
@@ -293,61 +239,6 @@ impl<'a> OneNodeIter<'a> {
         u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as u64
     }
 
-    /// 读取 u64 从大端字节
-    fn read_u64_be(data: &[u8], offset: usize) -> u64 {
-        u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap())
-    }
-
-    /// 根据 cells 数量读取值
-    fn read_cells(data: &[u8], offset: usize, cells: u8) -> u64 {
-        match cells {
-            1 => Self::read_u32_be(data, offset),
-            2 => Self::read_u64_be(data, offset),
-            _ => Self::read_u32_be(data, offset),
-        }
-    }
-
-    /// 解析 ranges 属性
-    fn parse_ranges(&mut self, data: &[u8]) {
-        if data.is_empty() {
-            // 空 ranges 表示 1:1 映射
-            self.parsed_props.ranges_empty = true;
-            return;
-        }
-
-        // ranges 格式: child_bus_addr, parent_bus_addr, length
-        // 使用当前节点的 address_cells 和 size_cells (用于 child 和 length)
-        // 使用父节点的 address_cells (用于 parent)
-        let child_addr_cells = self.parsed_props.address_cells.unwrap_or(2);
-        let parent_addr_cells = self.context.parent_address_cells;
-        let size_cells = self.parsed_props.size_cells.unwrap_or(1);
-
-        let entry_size =
-            (child_addr_cells as usize + parent_addr_cells as usize + size_cells as usize) * 4;
-
-        if entry_size == 0 {
-            return;
-        }
-
-        let mut offset = 0;
-        while offset + entry_size <= data.len() {
-            let child_bus_addr = Self::read_cells(data, offset, child_addr_cells);
-            offset += child_addr_cells as usize * 4;
-
-            let parent_bus_addr = Self::read_cells(data, offset, parent_addr_cells);
-            offset += parent_addr_cells as usize * 4;
-
-            let length = Self::read_cells(data, offset, size_cells);
-            offset += size_cells as usize * 4;
-
-            let _ = self.parsed_props.ranges.push(RangeEntry {
-                child_bus_addr,
-                parent_bus_addr,
-                length,
-            });
-        }
-    }
-
     /// 处理节点内容，解析关键属性，遇到子节点或结束时返回
     pub fn process(&mut self) -> Result<OneNodeState, FdtError> {
         loop {
@@ -397,9 +288,6 @@ impl<'a> OneNodeIter<'a> {
                             "#size-cells" if len == 4 => {
                                 self.parsed_props.size_cells =
                                     Some(Self::read_u32_be(prop_data, 0) as u8);
-                            }
-                            "ranges" => {
-                                self.parse_ranges(prop_data);
                             }
                             _ => {}
                         }
