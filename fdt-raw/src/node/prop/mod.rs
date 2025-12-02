@@ -93,8 +93,6 @@ pub enum Property<'a> {
     SizeCells(u8),
     /// reg 属性（已解析）
     Reg(Reg<'a>),
-    /// ranges 属性（原始数据，需要根据 cells 解析）
-    Ranges(&'a [u8]),
     /// compatible 属性（字符串列表）
     Compatible(StrIter<'a>),
     /// model 属性
@@ -109,12 +107,8 @@ pub enum Property<'a> {
     DeviceType(&'a str),
     /// interrupt-parent 属性
     InterruptParent(Phandle),
-    /// interrupts 属性（原始数据）
-    Interrupts(&'a [u8]),
     /// interrupt-cells 属性
     InterruptCells(u8),
-    /// clocks 属性（原始数据）
-    Clocks(&'a [u8]),
     /// clock-names 属性
     ClockNames(StrIter<'a>),
     /// dma-coherent 属性（无数据）
@@ -130,7 +124,6 @@ impl<'a> Property<'a> {
             Property::AddressCells(_) => "#address-cells",
             Property::SizeCells(_) => "#size-cells",
             Property::Reg(_) => "reg",
-            Property::Ranges(_) => "ranges",
             Property::Compatible(_) => "compatible",
             Property::Model(_) => "model",
             Property::Status(_) => "status",
@@ -138,9 +131,7 @@ impl<'a> Property<'a> {
             Property::LinuxPhandle(_) => "linux,phandle",
             Property::DeviceType(_) => "device_type",
             Property::InterruptParent(_) => "interrupt-parent",
-            Property::Interrupts(_) => "interrupts",
             Property::InterruptCells(_) => "#interrupt-cells",
-            Property::Clocks(_) => "clocks",
             Property::ClockNames(_) => "clock-names",
             Property::DmaCoherent => "dma-coherent",
             Property::Unknown(raw) => raw.name(),
@@ -176,10 +167,13 @@ impl<'a> Property<'a> {
             }
             "reg" => {
                 // 使用 context 中的 cells 信息解析 reg
-                let reg = Reg::new(data, context.parent_address_cells, context.parent_size_cells);
+                let reg = Reg::new(
+                    data,
+                    context.parent_address_cells,
+                    context.parent_size_cells,
+                );
                 Property::Reg(reg)
             }
-            "ranges" => Property::Ranges(data),
             "compatible" => Property::Compatible(StrIter { data }),
             "model" => {
                 if let Some(s) = Self::parse_str(data) {
@@ -230,8 +224,7 @@ impl<'a> Property<'a> {
                     Property::Unknown(RawProperty::new(name, data))
                 }
             }
-            "interrupts" | "interrupts-extended" => Property::Interrupts(data),
-            "clocks" => Property::Clocks(data),
+
             "clock-names" => Property::ClockNames(StrIter { data }),
             "dma-coherent" => Property::DmaCoherent,
             _ => Property::Unknown(RawProperty::new(name, data)),
@@ -270,14 +263,7 @@ impl fmt::Display for Property<'_> {
                 write!(f, "reg = ")?;
                 format_bytes(f, reg.as_slice())
             }
-            Property::Ranges(data) => {
-                if data.is_empty() {
-                    write!(f, "ranges")
-                } else {
-                    write!(f, "ranges = ")?;
-                    format_bytes(f, data)
-                }
-            }
+
             Property::Compatible(iter) => {
                 write!(f, "compatible = ")?;
                 let mut first = true;
@@ -296,14 +282,6 @@ impl fmt::Display for Property<'_> {
             Property::Phandle(p) => write!(f, "phandle = {}", p),
             Property::LinuxPhandle(p) => write!(f, "linux,phandle = {}", p),
             Property::InterruptParent(p) => write!(f, "interrupt-parent = {}", p),
-            Property::Interrupts(data) => {
-                write!(f, "interrupts = ")?;
-                format_bytes(f, data)
-            }
-            Property::Clocks(data) => {
-                write!(f, "clocks = ")?;
-                format_bytes(f, data)
-            }
             Property::ClockNames(iter) => {
                 write!(f, "clock-names = ")?;
                 let mut first = true;

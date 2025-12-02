@@ -126,9 +126,6 @@ fn test_node_properties() {
                     info!("  clock-names = {:?}", strs);
                 }
                 Property::Reg(reg) => info!("  reg ({} bytes)", reg.as_slice().len()),
-                Property::Ranges(data) => info!("  ranges ({} bytes)", data.len()),
-                Property::Interrupts(data) => info!("  interrupts ({} bytes)", data.len()),
-                Property::Clocks(data) => info!("  clocks ({} bytes)", data.len()),
                 Property::DmaCoherent => info!("  dma-coherent"),
                 Property::Unknown(raw) => {
                     if let Some(s) = raw.as_str() {

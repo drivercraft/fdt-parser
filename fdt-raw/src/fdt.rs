@@ -146,13 +146,7 @@ impl fmt::Debug for Fdt<'_> {
                         }
                         writeln!(f, "]")?;
                     }
-                    crate::Property::Ranges(data) => {
-                        if data.is_empty() {
-                            writeln!(f, "ranges: <empty> (1:1 mapping)")?;
-                        } else {
-                            writeln!(f, "ranges: <{} bytes>", data.len())?;
-                        }
-                    }
+
                     crate::Property::Compatible(iter) => {
                         write!(f, "compatible: [")?;
                         for (i, s) in iter.clone().enumerate() {
@@ -190,12 +184,7 @@ impl fmt::Debug for Fdt<'_> {
                     crate::Property::InterruptParent(p) => {
                         writeln!(f, "interrupt-parent: {}", p)?;
                     }
-                    crate::Property::Interrupts(data) => {
-                        writeln!(f, "interrupts: <{} bytes>", data.len())?;
-                    }
-                    crate::Property::Clocks(data) => {
-                        writeln!(f, "clocks: <{} bytes>", data.len())?;
-                    }
+
                     crate::Property::ClockNames(iter) => {
                         write!(f, "clock-names: [")?;
                         for (i, s) in iter.clone().enumerate() {
