@@ -167,17 +167,16 @@ fn test_find_by_path() {
     // 测试根节点
     let root = fdt.find_by_path("/");
     assert!(root.is_some());
-    assert!(root.unwrap().name.is_empty());
+    let (node, path) = root.unwrap();
+    assert!(node.name.is_empty());
+    assert_eq!(path, "/");
 
     // 测试 soc 节点
     let soc = fdt.find_by_path("/soc");
     assert!(soc.is_some());
-    assert_eq!(soc.unwrap().name, "soc");
-
-    // 测试相对路径（不带前导 /）
-    let soc2 = fdt.find_by_path("soc");
-    assert!(soc2.is_some());
-    assert_eq!(soc2.unwrap().name, "soc");
+    let (node, path) = soc.unwrap();
+    assert_eq!(node.name, "soc");
+    assert_eq!(path, "/soc");
 
     // 测试不存在的路径
     let not_found = fdt.find_by_path("/not/exist");
@@ -193,6 +192,9 @@ fn test_find_by_name() {
     let clocks_nodes = fdt.find_by_name("clocks");
     // 可能有多个或没有，但至少应该返回空 Vec 而不是 panic
     println!("Found {} nodes named 'clocks'", clocks_nodes.len());
+    for (node, path) in &clocks_nodes {
+        println!("  {} at {}", node.name, path);
+    }
 
     // 查找不存在的名称
     let not_found = fdt.find_by_name("this-node-does-not-exist");
@@ -209,12 +211,13 @@ fn test_find_by_name_prefix() {
     println!("Found {} nodes starting with 'gpio'", gpio_nodes.len());
 
     // 所有找到的节点名称都应该以 "gpio" 开头
-    for node in &gpio_nodes {
+    for (node, path) in &gpio_nodes {
         assert!(
             node.name.starts_with("gpio"),
             "Node '{}' should start with 'gpio'",
             node.name
         );
+        println!("  {} at {}", node.name, path);
     }
 }
 
@@ -226,13 +229,18 @@ fn test_find_all_by_path() {
     // 查找根节点
     let root_nodes = fdt.find_all_by_path("/");
     assert_eq!(root_nodes.len(), 1);
-    assert!(root_nodes[0].name.is_empty());
+    let (node, path) = &root_nodes[0];
+    assert!(node.name.is_empty());
+    assert_eq!(path, "/");
 
     // 使用通配符查找
     // 查找所有一级子节点
     let first_level = fdt.find_all_by_path("/*");
     assert!(!first_level.is_empty(), "should have first level children");
     println!("Found {} first level nodes", first_level.len());
+    for (node, path) in &first_level {
+        println!("  {} at {}", node.name, path);
+    }
 
     // 通配符测试：查找 /soc 下的所有子节点（如果存在 soc）
     let soc_children = fdt.find_all_by_path("/soc/*");
@@ -261,7 +269,9 @@ fn test_find_by_phandle() {
     if let Some((phandle, name)) = find_phandle_node(&fdt.root) {
         let found = fdt.find_by_phandle(phandle);
         assert!(found.is_some(), "should find node by phandle");
-        assert_eq!(found.unwrap().name, name);
+        let (node, path) = found.unwrap();
+        assert_eq!(node.name, name);
+        println!("Found node '{}' at path '{}' by phandle", name, path);
     }
 }
 
@@ -271,14 +281,16 @@ fn test_find_by_path_mut() {
     let mut fdt = Fdt::from_bytes(&raw).unwrap();
 
     // 通过路径修改节点
-    if let Some(memory) = fdt.find_by_path_mut("/memory@40000000") {
+    if let Some((memory, path)) = fdt.find_by_path_mut("/memory@40000000") {
+        println!("Modifying node at path: {}", path);
         memory.add_property(Property::raw_string("test-prop", "test-value"));
     }
 
     // 验证修改
     let memory = fdt.find_by_path("/memory@40000000");
     assert!(memory.is_some());
-    assert!(memory.unwrap().find_property("test-prop").is_some());
+    let (node, _path) = memory.unwrap();
+    assert!(node.find_property("test-prop").is_some());
 }
 
 #[test]
@@ -296,19 +308,29 @@ fn test_find_by_alias() {
     // 如果有别名，测试通过别名查找
     if let Some((alias_name, expected_path)) = aliases.first() {
         // 通过别名查找
-        let node = fdt.find_by_path(alias_name);
-        assert!(node.is_some(), "should find node by alias '{}'", alias_name);
+        let result = fdt.find_by_path(alias_name);
+        assert!(
+            result.is_some(),
+            "should find node by alias '{}'",
+            alias_name
+        );
+        let (node, resolved_path) = result.unwrap();
+        println!(
+            "Alias '{}' resolved to path '{}'",
+            alias_name, resolved_path
+        );
 
         // 通过完整路径查找
-        let node_by_path = fdt.find_by_path(expected_path);
+        let result_by_path = fdt.find_by_path(expected_path);
         assert!(
-            node_by_path.is_some(),
+            result_by_path.is_some(),
             "should find node by path '{}'",
             expected_path
         );
+        let (node_by_path, _) = result_by_path.unwrap();
 
         // 两种方式找到的应该是同一个节点
-        assert_eq!(node.unwrap().name, node_by_path.unwrap().name);
+        assert_eq!(node.name, node_by_path.name);
     }
 }
 
@@ -369,19 +391,22 @@ fn test_apply_overlay() {
     // 1. gpio 节点应该被添加
     let gpio = base_fdt.find_by_path("/soc/gpio@20000");
     assert!(gpio.is_some(), "gpio node should be added");
-    assert!(gpio.unwrap().find_property("compatible").is_some());
+    let (gpio_node, gpio_path) = gpio.unwrap();
+    assert!(gpio_node.find_property("compatible").is_some());
+    println!("gpio node added at {}", gpio_path);
 
     // 2. uart 节点应该有新属性
     let uart = base_fdt.find_by_path("/soc/uart@10000");
     assert!(uart.is_some(), "uart node should still exist");
+    let (uart_node, _) = uart.unwrap();
     assert!(
-        uart.unwrap().find_property("custom-prop").is_some(),
+        uart_node.find_property("custom-prop").is_some(),
         "uart should have overlay property"
     );
 
     // 3. uart 的原有属性应该保留
     assert!(
-        uart.unwrap().find_property("compatible").is_some(),
+        uart_node.find_property("compatible").is_some(),
         "uart should keep original compatible"
     );
 }

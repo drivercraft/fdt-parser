@@ -159,7 +159,8 @@ impl Fdt {
     ///
     /// 路径格式: "/node1/node2/node3"
     /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
-    pub fn find_by_path(&self, path: &str) -> Option<&Node> {
+    /// 返回 (节点引用, 完整路径)
+    pub fn find_by_path(&self, path: &str) -> Option<(&Node, String)> {
         // 如果路径以 '/' 开头，直接按路径查找
         // 否则解析 alias
         let resolved_path = if path.starts_with('/') {
@@ -168,25 +169,26 @@ impl Fdt {
             self.resolve_alias(path)?
         };
 
-        let path = resolved_path.trim_start_matches('/');
-        if path.is_empty() {
-            return Some(&self.root);
+        let path_str = resolved_path.trim_start_matches('/');
+        if path_str.is_empty() {
+            return Some((&self.root, String::from("/")));
         }
 
         let mut current = &self.root;
-        for part in path.split('/') {
+        for part in path_str.split('/') {
             if part.is_empty() {
                 continue;
             }
             current = current.find_child(part)?;
         }
-        Some(current)
+        Some((current, resolved_path))
     }
 
     /// 根据路径查找节点（可变）
     ///
     /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
-    pub fn find_by_path_mut(&mut self, path: &str) -> Option<&mut Node> {
+    /// 返回 (节点可变引用, 完整路径)
+    pub fn find_by_path_mut(&mut self, path: &str) -> Option<(&mut Node, String)> {
         // 如果路径以 '/' 开头，直接按路径查找
         // 否则解析 alias
         let resolved_path = if path.starts_with('/') {
@@ -195,19 +197,19 @@ impl Fdt {
             self.resolve_alias(path)?
         };
 
-        let path = resolved_path.trim_start_matches('/');
-        if path.is_empty() {
-            return Some(&mut self.root);
+        let path_str = resolved_path.trim_start_matches('/');
+        if path_str.is_empty() {
+            return Some((&mut self.root, String::from("/")));
         }
 
         let mut current = &mut self.root;
-        for part in path.split('/') {
+        for part in path_str.split('/') {
             if part.is_empty() {
                 continue;
             }
             current = current.find_child_mut(part)?;
         }
-        Some(current)
+        Some((current, resolved_path))
     }
 
     /// 解析别名，返回对应的完整路径
@@ -252,19 +254,20 @@ impl Fdt {
     ///
     /// 支持通配符 '*' 匹配任意节点名
     /// 例如: "/soc/*/serial" 会匹配所有 soc 下任意子节点中的 serial 节点
-    pub fn find_all_by_path(&self, path: &str) -> Vec<&Node> {
+    /// 返回 Vec<(节点引用, 完整路径)>
+    pub fn find_all_by_path(&self, path: &str) -> Vec<(&Node, String)> {
         let path = path.trim_start_matches('/');
         if path.is_empty() {
-            return vec![&self.root];
+            return vec![(&self.root, String::from("/"))];
         }
 
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         if parts.is_empty() {
-            return vec![&self.root];
+            return vec![(&self.root, String::from("/"))];
         }
 
         let mut results = Vec::new();
-        Self::find_all_by_path_recursive(&self.root, &parts, 0, &mut results);
+        Self::find_all_by_path_recursive(&self.root, &parts, 0, String::from("/"), &mut results);
         results
     }
 
@@ -273,10 +276,11 @@ impl Fdt {
         node: &'a Node,
         parts: &[&str],
         index: usize,
-        results: &mut Vec<&'a Node>,
+        current_path: String,
+        results: &mut Vec<(&'a Node, String)>,
     ) {
         if index >= parts.len() {
-            results.push(node);
+            results.push((node, current_path));
             return;
         }
 
@@ -284,13 +288,23 @@ impl Fdt {
         if part == "*" {
             // 通配符：遍历所有子节点
             for child in &node.children {
-                Self::find_all_by_path_recursive(child, parts, index + 1, results);
+                let child_path = if current_path == "/" {
+                    format!("/{}", child.name)
+                } else {
+                    format!("{}/{}", current_path, child.name)
+                };
+                Self::find_all_by_path_recursive(child, parts, index + 1, child_path, results);
             }
         } else {
             // 精确匹配：可能有多个同名节点
             for child in &node.children {
                 if child.name == part {
-                    Self::find_all_by_path_recursive(child, parts, index + 1, results);
+                    let child_path = if current_path == "/" {
+                        format!("/{}", child.name)
+                    } else {
+                        format!("{}/{}", current_path, child.name)
+                    };
+                    Self::find_all_by_path_recursive(child, parts, index + 1, child_path, results);
                 }
             }
         }
@@ -298,32 +312,43 @@ impl Fdt {
 
     /// 根据节点名称查找所有匹配的节点（递归搜索整个树）
     ///
-    /// 返回所有名称匹配的节点引用
-    pub fn find_by_name(&self, name: &str) -> Vec<&Node> {
+    /// 返回所有名称匹配的节点 Vec<(节点引用, 完整路径)>
+    pub fn find_by_name(&self, name: &str) -> Vec<(&Node, String)> {
         let mut results = Vec::new();
-        Self::find_by_name_recursive(&self.root, name, &mut results);
+        Self::find_by_name_recursive(&self.root, name, String::from("/"), &mut results);
         results
     }
 
     /// 递归按名称查找节点
-    fn find_by_name_recursive<'a>(node: &'a Node, name: &str, results: &mut Vec<&'a Node>) {
+    fn find_by_name_recursive<'a>(
+        node: &'a Node,
+        name: &str,
+        current_path: String,
+        results: &mut Vec<(&'a Node, String)>,
+    ) {
         // 检查当前节点
         if node.name == name {
-            results.push(node);
+            results.push((node, current_path.clone()));
         }
 
         // 递归检查所有子节点
         for child in &node.children {
-            Self::find_by_name_recursive(child, name, results);
+            let child_path = if current_path == "/" {
+                format!("/{}", child.name)
+            } else {
+                format!("{}/{}", current_path, child.name)
+            };
+            Self::find_by_name_recursive(child, name, child_path, results);
         }
     }
 
     /// 根据节点名称前缀查找所有匹配的节点
     ///
     /// 例如: find_by_name_prefix("gpio") 会匹配 "gpio", "gpio0", "gpio@1000" 等
-    pub fn find_by_name_prefix(&self, prefix: &str) -> Vec<&Node> {
+    /// 返回 Vec<(节点引用, 完整路径)>
+    pub fn find_by_name_prefix(&self, prefix: &str) -> Vec<(&Node, String)> {
         let mut results = Vec::new();
-        Self::find_by_name_prefix_recursive(&self.root, prefix, &mut results);
+        Self::find_by_name_prefix_recursive(&self.root, prefix, String::from("/"), &mut results);
         results
     }
 
@@ -331,29 +356,62 @@ impl Fdt {
     fn find_by_name_prefix_recursive<'a>(
         node: &'a Node,
         prefix: &str,
-        results: &mut Vec<&'a Node>,
+        current_path: String,
+        results: &mut Vec<(&'a Node, String)>,
     ) {
         // 检查当前节点
         if node.name.starts_with(prefix) {
-            results.push(node);
+            results.push((node, current_path.clone()));
         }
 
         // 递归检查所有子节点
         for child in &node.children {
-            Self::find_by_name_prefix_recursive(child, prefix, results);
+            let child_path = if current_path == "/" {
+                format!("/{}", child.name)
+            } else {
+                format!("{}/{}", current_path, child.name)
+            };
+            Self::find_by_name_prefix_recursive(child, prefix, child_path, results);
         }
     }
 
     /// 根据 phandle 查找节点
-    pub fn find_by_phandle(&self, phandle: Phandle) -> Option<&Node> {
+    /// 返回 (节点引用, 完整路径)
+    pub fn find_by_phandle(&self, phandle: Phandle) -> Option<(&Node, String)> {
         let index = self.phandle_cache.get(&phandle)?;
-        self.get_node_by_index(index)
+        let node = self.get_node_by_index(index)?;
+        let path = self.get_node_path(node)?;
+        Some((node, path))
     }
 
     /// 根据 phandle 查找节点（可变）
-    pub fn find_by_phandle_mut(&mut self, phandle: Phandle) -> Option<&mut Node> {
+    /// 返回 (节点可变引用, 完整路径)
+    pub fn find_by_phandle_mut(&mut self, phandle: Phandle) -> Option<(&mut Node, String)> {
         let index = self.phandle_cache.get(&phandle)?.clone();
-        self.get_node_by_index_mut(&index)
+        let path = self.get_path_by_index(&index);
+        let node = self.get_node_by_index_mut(&index)?;
+        Some((node, path))
+    }
+
+    /// 根据索引获取路径
+    fn get_path_by_index(&self, index: &NodeIndex) -> String {
+        if index.is_empty() {
+            return String::from("/");
+        }
+        let mut path = String::new();
+        let mut current = &self.root;
+        for &i in index {
+            if let Some(child) = current.children.get(i) {
+                path.push('/');
+                path.push_str(&child.name);
+                current = child;
+            }
+        }
+        if path.is_empty() {
+            String::from("/")
+        } else {
+            path
+        }
     }
 
     /// 根据索引获取节点
@@ -462,11 +520,8 @@ impl Fdt {
                 let phandle_val = u32::from_be_bytes(data[..4].try_into().unwrap());
                 let phandle = Phandle::from(phandle_val);
                 // 通过 phandle 找到节点，然后构建路径
-                if let Some(node) = self.find_by_phandle(phandle) {
-                    // 需要构建节点的完整路径
-                    if let Some(path) = self.get_node_path(node) {
-                        return Ok(path);
-                    }
+                if let Some((_node, path)) = self.find_by_phandle(phandle) {
+                    return Ok(path);
                 }
             }
         }
@@ -508,7 +563,7 @@ impl Fdt {
         overlay_node: &Node,
     ) -> Result<(), FdtError> {
         // 找到目标节点
-        let target = self
+        let (target, _path) = self
             .find_by_path_mut(target_path)
             .ok_or(FdtError::NotFound)?;
 
