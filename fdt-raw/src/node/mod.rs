@@ -1,4 +1,5 @@
 use core::ffi::CStr;
+use core::fmt;
 
 use crate::{
     FdtError, Token,
@@ -128,6 +129,19 @@ impl<'a> Node<'a> {
     /// 获取节点属性迭代器
     pub fn properties(&self) -> PropIter<'a> {
         PropIter::new(self.data.reader(), self.strings.clone())
+    }
+}
+
+impl fmt::Display for Node<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let indent = "    ".repeat(self.level);
+        let name = if self.name.is_empty() { "/" } else { self.name };
+
+        writeln!(f, "{}{} {{", indent, name)?;
+        for prop in self.properties() {
+            writeln!(f, "{}    {};", indent, prop)?;
+        }
+        write!(f, "{}}}", indent)
     }
 }
 

@@ -1,4 +1,5 @@
 use core::ffi::CStr;
+use core::fmt;
 
 use log::error;
 
@@ -245,6 +246,124 @@ impl<'a> Property<'a> {
             Property::Unknown(raw) => Some(raw),
             _ => None,
         }
+    }
+}
+
+impl fmt::Display for Property<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Property::AddressCells(v) => write!(f, "#address-cells = <{:#x}>", v),
+            Property::SizeCells(v) => write!(f, "#size-cells = <{:#x}>", v),
+            Property::InterruptCells(v) => write!(f, "#interrupt-cells = <{:#x}>", v),
+            Property::Reg(data) => {
+                write!(f, "reg = ")?;
+                format_bytes(f, data)
+            }
+            Property::Ranges(data) => {
+                if data.is_empty() {
+                    write!(f, "ranges")
+                } else {
+                    write!(f, "ranges = ")?;
+                    format_bytes(f, data)
+                }
+            }
+            Property::Compatible(iter) => {
+                write!(f, "compatible = ")?;
+                let mut first = true;
+                for s in iter.clone() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "\"{}\"", s)?;
+                    first = false;
+                }
+                Ok(())
+            }
+            Property::Model(s) => write!(f, "model = \"{}\"", s),
+            Property::DeviceType(s) => write!(f, "device_type = \"{}\"", s),
+            Property::Status(s) => write!(f, "status = \"{:?}\"", s),
+            Property::Phandle(p) => write!(f, "phandle = {}", p),
+            Property::LinuxPhandle(p) => write!(f, "linux,phandle = {}", p),
+            Property::InterruptParent(p) => write!(f, "interrupt-parent = {}", p),
+            Property::Interrupts(data) => {
+                write!(f, "interrupts = ")?;
+                format_bytes(f, data)
+            }
+            Property::Clocks(data) => {
+                write!(f, "clocks = ")?;
+                format_bytes(f, data)
+            }
+            Property::ClockNames(iter) => {
+                write!(f, "clock-names = ")?;
+                let mut first = true;
+                for s in iter.clone() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "\"{}\"", s)?;
+                    first = false;
+                }
+                Ok(())
+            }
+            Property::DmaCoherent => write!(f, "dma-coherent"),
+            Property::Unknown(raw) => {
+                if raw.is_empty() {
+                    write!(f, "{}", raw.name())
+                } else if let Some(s) = raw.as_str() {
+                    // 检查是否有多个字符串
+                    if raw.data().iter().filter(|&&b| b == 0).count() > 1 {
+                        write!(f, "{} = ", raw.name())?;
+                        let mut first = true;
+                        for s in raw.as_str_iter() {
+                            if !first {
+                                write!(f, ", ")?;
+                            }
+                            write!(f, "\"{}\"", s)?;
+                            first = false;
+                        }
+                        Ok(())
+                    } else {
+                        write!(f, "{} = \"{}\"", raw.name(), s)
+                    }
+                } else if raw.len() == 4 {
+                    // 单个 u32
+                    let v = u32::from_be_bytes(raw.data().try_into().unwrap());
+                    write!(f, "{} = <{:#x}>", raw.name(), v)
+                } else {
+                    // 原始字节
+                    write!(f, "{} = ", raw.name())?;
+                    format_bytes(f, raw.data())
+                }
+            }
+        }
+    }
+}
+
+/// 格式化字节数组为 DTS 格式
+fn format_bytes(f: &mut fmt::Formatter<'_>, data: &[u8]) -> fmt::Result {
+    if data.len().is_multiple_of(4) {
+        // 按 u32 格式化
+        write!(f, "<")?;
+        let mut first = true;
+        for chunk in data.chunks(4) {
+            if !first {
+                write!(f, " ")?;
+            }
+            let v = u32::from_be_bytes(chunk.try_into().unwrap());
+            write!(f, "{:#x}", v)?;
+            first = false;
+        }
+        write!(f, ">")
+    } else {
+        // 按字节格式化
+        write!(f, "[")?;
+        for (i, b) in data.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{:02x}", b)?;
+        }
+        write!(f, "]")
     }
 }
 

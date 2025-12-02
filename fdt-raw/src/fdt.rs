@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::{FdtError, data::Bytes, header::Header, iter::FdtIter};
 
 #[derive(Clone)]
@@ -47,5 +49,51 @@ impl<'a> Fdt<'a> {
 
     pub fn all_nodes(&self) -> FdtIter<'a> {
         FdtIter::new(self.clone())
+    }
+}
+
+impl fmt::Display for Fdt<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "/dts-v1/;")?;
+        writeln!(f)?;
+
+        let mut prev_level = 0;
+
+        for node in self.all_nodes() {
+            let level = node.level();
+
+            // 关闭前一层级的节点
+            while prev_level > level {
+                prev_level -= 1;
+                let indent = "    ".repeat(prev_level);
+                writeln!(f, "{}}};\n", indent)?;
+            }
+
+            let indent = "    ".repeat(level);
+            let name = if node.name().is_empty() {
+                "/"
+            } else {
+                node.name()
+            };
+
+            // 打印节点头部
+            writeln!(f, "{}{} {{", indent, name)?;
+
+            // 打印属性
+            for prop in node.properties() {
+                writeln!(f, "{}    {};", indent, prop)?;
+            }
+
+            prev_level = level + 1;
+        }
+
+        // 关闭剩余的节点
+        while prev_level > 0 {
+            prev_level -= 1;
+            let indent = "    ".repeat(prev_level);
+            writeln!(f, "{}}};\n", indent)?;
+        }
+
+        Ok(())
     }
 }

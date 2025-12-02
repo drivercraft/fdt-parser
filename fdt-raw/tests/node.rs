@@ -24,6 +24,21 @@ fn test_phandle_display() {
 }
 
 #[test]
+fn test_fdt_display() {
+    init_logging();
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+    let output = format!("{}", fdt);
+    info!("FDT Display:\n{}", output);
+
+    // 验证输出包含预期的结构
+    assert!(output.contains("/dts-v1/;"));
+    assert!(output.contains("/ {"));
+    assert!(output.contains("psci {"));
+    assert!(output.contains("compatible ="));
+}
+
+#[test]
 fn test_new() {
     init_logging();
     let raw = fdt_qemu();
