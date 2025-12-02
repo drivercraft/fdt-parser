@@ -1,9 +1,12 @@
-use core::{ffi::FromBytesUntilNulError, fmt::{Debug, Display}};
+use core::{
+    ffi::FromBytesUntilNulError,
+    fmt::{Debug, Display},
+};
 
 pub const FDT_MAGIC: u32 = 0xd00dfeed;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum Token {
+pub enum Token {
     BeginNode,
     EndNode,
     Prop,
@@ -21,6 +24,19 @@ impl From<u32> for Token {
             0x4 => Token::Nop,
             0x9 => Token::End,
             _ => Token::Data(value),
+        }
+    }
+}
+
+impl From<Token> for u32 {
+    fn from(value: Token) -> Self {
+        match value {
+            Token::BeginNode => 0x1,
+            Token::EndNode => 0x2,
+            Token::Prop => 0x3,
+            Token::Nop => 0x4,
+            Token::End => 0x9,
+            Token::Data(v) => v,
         }
     }
 }
