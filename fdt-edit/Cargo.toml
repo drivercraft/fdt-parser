@@ -1,0 +1,10 @@
+[package]
+edition = "2021"
+name = "fdt-edit"
+version = "0.1.0"
+
+[dependencies]
+fdt-raw = {path = "../fdt-raw"}
+
+[dev-dependencies]
+dtb-file = {path = "../dtb-file"}

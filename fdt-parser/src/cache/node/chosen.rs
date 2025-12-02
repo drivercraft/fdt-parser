@@ -32,14 +32,10 @@ impl Chosen {
         let params = sp.next();
 
         // 尝试在cache中找到节点
-        if let Some(node) = self.node.fdt.get_node_by_path(name) {
-            Some(Stdout {
-                params: params.map(|s| s.to_string()),
-                node,
-            })
-        } else {
-            None
-        }
+        self.node.fdt.get_node_by_path(name).map(|node| Stdout {
+            params: params.map(|s| s.to_string()),
+            node,
+        })
     }
 
     pub fn debugcon(&self) -> Option<DebugConCache> {

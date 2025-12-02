@@ -4,3 +4,4 @@
 /.project.toml
 /.vscode
 /Cargo.lock
+.spec-workflow

@@ -102,7 +102,7 @@ impl Clock {
         let output_names = node
             .find_property("clock-output-names")
             .map(|p| p.str_list().map(|s| s.to_string()).collect())
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
 
         Self {
             node,

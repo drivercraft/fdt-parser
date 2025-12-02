@@ -240,7 +240,7 @@ impl NodeBase {
         let cells = parent.interrupt_cells()?;
         let mut iter = U32Iter2D::new(&res.data, cells as _);
         let mut out = Vec::new();
-        while let Some(entry) = iter.next() {
+        for entry in iter {
             out.push(entry.collect());
         }
         Ok(out)
@@ -257,7 +257,7 @@ impl NodeBase {
         let clock_names: Vec<String> = self
             .find_property("clock-names")
             .map(|p| p.str_list().map(|s| s.to_string()).collect())
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
 
         let mut index = 0usize;
         while !data.remain().as_ref().is_empty() {

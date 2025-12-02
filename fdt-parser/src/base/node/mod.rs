@@ -209,7 +209,7 @@ impl<'a> NodeBase<'a> {
 
     pub fn clock_frequency(&self) -> Result<u32, FdtError> {
         let prop = self.find_property("clock-frequency")?;
-        Ok(prop.u32()?)
+        prop.u32()
     }
 
     pub fn children(&self) -> NodeChildIter<'a> {
