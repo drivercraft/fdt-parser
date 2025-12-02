@@ -1,39 +1,73 @@
+use log::error;
+
 use crate::{
     Fdt, FdtError, Node, Token,
-    data::Reader,
-    node::{OneNodeIter, OneNodeState},
+    data::{Bytes, Reader},
+    node::{NodeContext, OneNodeIter, OneNodeState, RangeEntry},
 };
+
+/// 节点栈条目，用于追踪父节点信息
+struct StackEntry {
+    /// 节点的 #address-cells
+    address_cells: u8,
+    /// 节点的 #size-cells
+    size_cells: u8,
+    /// 节点的 ranges（用于地址转换）
+    ranges: heapless::Vec<RangeEntry, 16>,
+}
 
 pub struct FdtIter<'a> {
     fdt: Fdt<'a>,
     reader: Reader<'a>,
+    strings: Bytes<'a>,
     /// 当前正在处理的节点迭代器
     node_iter: Option<OneNodeIter<'a>>,
-    has_err: bool,
+    /// 是否已终止（出错或结束）
+    finished: bool,
     /// 当前层级深度
     level: usize,
+    /// 节点栈，用于追踪父节点的 cells 和 ranges
+    stack: heapless::Vec<StackEntry, 32>,
+    /// 当前上下文（传递给子节点）
+    current_context: NodeContext,
 }
 
 impl<'a> FdtIter<'a> {
     pub fn new(fdt: Fdt<'a>) -> Self {
         let header = fdt.header();
         let struct_offset = header.off_dt_struct as usize;
+        let strings_offset = header.off_dt_strings as usize;
+        let strings_size = header.size_dt_strings as usize;
+
         let reader = fdt.data.reader_at(struct_offset);
+        let strings = fdt
+            .data
+            .slice(strings_offset..strings_offset + strings_size);
+
         Self {
             fdt,
             reader,
+            strings,
             node_iter: None,
             level: 0,
-            has_err: false,
+            finished: false,
+            stack: heapless::Vec::new(),
+            current_context: NodeContext::default(),
         }
+    }
+
+    /// 处理错误：输出错误日志并终止迭代
+    fn handle_error(&mut self, err: FdtError) {
+        error!("FDT parse error: {}", err);
+        self.finished = true;
     }
 }
 
 impl<'a> Iterator for FdtIter<'a> {
-    type Item = Result<Node<'a>, FdtError>;
+    type Item = Node<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.has_err {
+        if self.finished {
             return None;
         }
 
@@ -53,6 +87,14 @@ impl<'a> Iterator for FdtIter<'a> {
                         self.node_iter = None;
                         if self.level > 0 {
                             self.level -= 1;
+                            // 弹出栈顶，恢复父节点上下文
+                            if let Some(parent) = self.stack.pop() {
+                                self.current_context = NodeContext {
+                                    parent_address_cells: parent.address_cells,
+                                    parent_size_cells: parent.size_cells,
+                                    ranges: parent.ranges,
+                                };
+                            }
                         }
                         // 继续循环处理下一个 token
                     }
@@ -61,8 +103,8 @@ impl<'a> Iterator for FdtIter<'a> {
                         continue;
                     }
                     Err(e) => {
-                        self.has_err = true;
-                        return Some(Err(e));
+                        self.handle_error(e);
+                        return None;
                     }
                 }
                 continue;
@@ -72,20 +114,69 @@ impl<'a> Iterator for FdtIter<'a> {
             match self.reader.read_token() {
                 Ok(Token::BeginNode) => {
                     // 创建新的节点迭代器来处理这个节点
-                    let mut node_iter = OneNodeIter::new(self.reader.clone(), self.level);
+                    let mut node_iter = OneNodeIter::new(
+                        self.reader.clone(),
+                        self.strings.clone(),
+                        self.level,
+                        self.current_context.clone(),
+                    );
 
                     // 读取节点名称
                     match node_iter.read_node_name() {
-                        Ok(node) => {
-                            // 保存节点迭代器以便后续处理属性和子节点
-                            self.node_iter = Some(node_iter);
-                            // 增加层级
-                            self.level += 1;
-                            return Some(Ok(node));
+                        Ok(mut node) => {
+                            // 先处理节点属性以获取 address-cells, size-cells, ranges
+                            match node_iter.process() {
+                                Ok(state) => {
+                                    let props = node_iter.parsed_props();
+
+                                    // 更新节点的 cells
+                                    node.address_cells = props.address_cells.unwrap_or(2);
+                                    node.size_cells = props.size_cells.unwrap_or(1);
+
+                                    // 保存当前节点信息到栈
+                                    let entry = StackEntry {
+                                        address_cells: node.address_cells,
+                                        size_cells: node.size_cells,
+                                        ranges: props.ranges.clone(),
+                                    };
+                                    let _ = self.stack.push(entry);
+
+                                    // 更新当前上下文为子节点准备
+                                    self.current_context = node.create_child_context(&props.ranges);
+
+                                    // 根据状态决定下一步动作
+                                    match state {
+                                        OneNodeState::ChildBegin => {
+                                            // 有子节点，更新 reader 位置
+                                            self.reader = node_iter.reader().clone();
+                                            // 增加层级（节点有子节点）
+                                            self.level += 1;
+                                        }
+                                        OneNodeState::End => {
+                                            // 节点已结束（没有子节点），更新 reader
+                                            self.reader = node_iter.reader().clone();
+                                            // 弹出刚才压入的栈条目，因为节点已经结束
+                                            self.stack.pop();
+                                            // 不增加层级，因为节点已经关闭
+                                        }
+                                        OneNodeState::Processing => {
+                                            // 不应该到达这里，因为 process() 应该总是返回 ChildBegin 或 End
+                                            self.node_iter = Some(node_iter);
+                                            self.level += 1;
+                                        }
+                                    }
+
+                                    return Some(node);
+                                }
+                                Err(e) => {
+                                    self.handle_error(e);
+                                    return None;
+                                }
+                            }
                         }
                         Err(e) => {
-                            self.has_err = true;
-                            return Some(Err(e));
+                            self.handle_error(e);
+                            return None;
                         }
                     }
                 }
@@ -93,11 +184,20 @@ impl<'a> Iterator for FdtIter<'a> {
                     // 顶层 EndNode，降低层级
                     if self.level > 0 {
                         self.level -= 1;
+                        // 弹出栈顶
+                        if let Some(parent) = self.stack.pop() {
+                            self.current_context = NodeContext {
+                                parent_address_cells: parent.address_cells,
+                                parent_size_cells: parent.size_cells,
+                                ranges: parent.ranges,
+                            };
+                        }
                     }
                     continue;
                 }
                 Ok(Token::End) => {
                     // 结构块结束
+                    self.finished = true;
                     return None;
                 }
                 Ok(Token::Nop) => {
@@ -106,14 +206,14 @@ impl<'a> Iterator for FdtIter<'a> {
                 }
                 Ok(Token::Prop) | Ok(Token::Data(_)) => {
                     // 在顶层遇到属性或未知数据是错误的
-                    self.has_err = true;
-                    return Some(Err(FdtError::BufferTooSmall {
+                    self.handle_error(FdtError::BufferTooSmall {
                         pos: self.reader.position(),
-                    }));
+                    });
+                    return None;
                 }
                 Err(e) => {
-                    self.has_err = true;
-                    return Some(Err(e));
+                    self.handle_error(e);
+                    return None;
                 }
             }
         }
