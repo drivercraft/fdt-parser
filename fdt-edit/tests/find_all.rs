@@ -21,12 +21,8 @@ mod tests {
         root.add_child(gpio1);
         root.add_child(uart);
 
-        // 测试 find_all 与通配符
-        let all_nodes = root.find_all("*");
-        assert_eq!(all_nodes.len(), 3); // 应该找到所有直接子节点
-
         // 测试 find_all 与前缀匹配
-        let gpio_nodes = root.find_all("gpio*");
+        let gpio_nodes = root.find_all("gpio");
         assert_eq!(gpio_nodes.len(), 2); // 应该找到两个 GPIO 节点
 
         // 验证返回的路径是正确的
@@ -58,11 +54,11 @@ mod tests {
         root.add_child(soc);
 
         // 测试嵌套查找
-        let i2c_nodes = root.find_all("soc/i2c*");
-        assert_eq!(i2c_nodes.len(), 2); // 应该找到两个 i2c 节点
+        let i2c_nodes = root.find_all("soc/i2c");
+        assert_eq!(i2c_nodes.len(), 2); // 应该找到 i2c@0 和 i2c@1 节点
 
-        let eeprom_nodes = root.find_all("soc/i2c@0/eeprom@50");
-        assert_eq!(eeprom_nodes.len(), 1); // 应该找到 eeprom 节点
+        let eeprom_nodes = root.find_all("soc/i2c@0/eeprom");
+        assert_eq!(eeprom_nodes.len(), 1); // 应该找到 eeprom@50 节点
     }
 
     #[test]

@@ -78,8 +78,6 @@ pub struct MemoryReservation {
     pub size: u64,
 }
 
-/// 节点路径索引
-type NodeIndex = Vec<String>;
 
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]
@@ -90,8 +88,8 @@ pub struct Fdt {
     pub memory_reservations: Vec<MemoryReservation>,
     /// 根节点
     pub root: Node,
-    /// phandle 到节点路径的缓存
-    phandle_cache: BTreeMap<Phandle, NodeIndex>,
+    /// phandle 到节点完整路径的缓存
+    phandle_cache: BTreeMap<Phandle, String>,
 }
 
 impl Default for Fdt {
@@ -197,30 +195,35 @@ impl Fdt {
     /// 重建 phandle 缓存
     pub fn rebuild_phandle_cache(&mut self) {
         self.phandle_cache.clear();
-        self.build_phandle_cache_recursive(&self.root.clone(), Vec::new());
+        let root_clone = self.root.clone();
+        self.build_phandle_cache_recursive(&root_clone, "/");
     }
 
     /// 递归构建 phandle 缓存
-    fn build_phandle_cache_recursive(&mut self, node: &Node, current_index: NodeIndex) {
+    fn build_phandle_cache_recursive(&mut self, node: &Node, current_path: &str) {
         // 检查节点是否有 phandle 属性
         if let Some(phandle) = node.phandle() {
-            self.phandle_cache.insert(phandle, current_index.clone());
+            self.phandle_cache.insert(phandle, current_path.to_string());
         }
 
         // 递归处理子节点
         for (child_name, child) in node.children.iter() {
-            let mut child_index = current_index.clone();
-            child_index.push(child_name.clone());
-            self.build_phandle_cache_recursive(child, child_index);
+            let child_path = if current_path == "/" {
+                format!("/{}", child_name)
+            } else {
+                format!("{}/{}", current_path, child_name)
+            };
+            self.build_phandle_cache_recursive(child, &child_path);
         }
     }
 
-    /// 根据路径查找节点
+    /// 根据路径查找节点（非精确匹配）
     ///
     /// 路径格式: "/node1/node2/node3"
     /// 支持 node-name@unit-address 格式，如 "/soc/i2c@40002000"
     /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
-    /// 返回 (节点引用, 完整路径)
+    /// 支持智能匹配：中间级别只支持精确匹配，最后一级支持前缀匹配（忽略 @unit-address）
+    /// 返回所有匹配的节点及其完整路径
     pub fn find_by_path(&self, path: &str) -> Vec<(&Node, String)> {
         // 如果路径以 '/' 开头，直接按路径查找
         // 否则解析 alias
@@ -243,6 +246,13 @@ impl Fdt {
         self.root.find_all(&resolved_path)
     }
 
+    /// 根据路径精确查找节点
+    ///
+    /// 路径格式: "/node1/node2/node3"
+    /// 支持 node-name@unit-address 格式，如 "/soc/i2c@40002000"
+    /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
+    /// 只支持精确匹配，不支持模糊匹配
+    /// 返回 (节点引用, 完整路径)
     pub fn get_by_path(&self, path: &str) -> Option<(&Node, String)> {
         // 如果路径以 '/' 开头，直接按路径查找
         // 否则解析 alias
@@ -258,7 +268,7 @@ impl Fdt {
             return Some((&self.root, String::from("/")));
         }
 
-        // 使用 Node 的智能查找功能
+        // 使用 Node 的精确查找功能
         if let Some(node) = self.root.get_by_path(&resolved_path) {
             Some((node, resolved_path))
         } else {
@@ -266,10 +276,11 @@ impl Fdt {
         }
     }
 
-    /// 根据路径查找节点（可变）
+    /// 根据路径精确查找节点（可变）
     ///
     /// 支持 node-name@unit-address 格式，如 "/soc/i2c@40002000"
     /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
+    /// 只支持精确匹配，不支持模糊匹配
     /// 返回 (节点可变引用, 完整路径)
     pub fn get_by_path_mut(&mut self, path: &str) -> Option<(&mut Node, String)> {
         // 如果路径以 '/' 开头，直接按路径查找
@@ -286,12 +297,46 @@ impl Fdt {
             return Some((&mut self.root, String::from("/")));
         }
 
-        // 使用 Node 的智能查找功能
+        // 使用 Node 的精确查找功能
         if let Some(node) = self.root.get_by_path_mut(&resolved_path) {
             Some((node, resolved_path))
         } else {
             None
         }
+    }
+
+    /// 根据节点名称查找所有匹配的节点
+    /// 支持智能匹配（精确匹配和前缀匹配）
+    pub fn find_by_name(&self, name: &str) -> Vec<(&Node, String)> {
+        self.root.find_all(name)
+    }
+
+    /// 根据节点名称前缀查找所有匹配的节点
+    pub fn find_by_name_prefix(&self, prefix: &str) -> Vec<(&Node, String)> {
+        self.root.find_all(prefix)
+    }
+
+    /// 根据路径查找所有匹配的节点
+    pub fn find_all_by_path(&self, path: &str) -> Vec<(&Node, String)> {
+        // 如果路径以 '/' 开头，直接按路径查找
+        // 否则解析 alias
+        let resolved_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            let Some(path) = self.resolve_alias(path) else {
+                return Vec::new();
+            };
+            path
+        };
+
+        // 对于根路径，直接返回根节点
+        let path_str = resolved_path.trim_start_matches('/');
+        if path_str.is_empty() {
+            return vec![(&self.root, String::from("/"))];
+        }
+
+        // 使用 Node 的智能查找功能
+        self.root.find_all(&resolved_path)
     }
 
     /// 解析别名，返回对应的完整路径
@@ -332,37 +377,20 @@ impl Fdt {
         result
     }
 
-    /// 根据 phandle 查找节点（可变）
-    /// 返回 (节点可变引用, 完整路径)
-    pub fn find_by_phandle_mut(&mut self, phandle: Phandle) -> Option<(&mut Node, String)> {
-        let index = self.phandle_cache.get(&phandle)?.clone();
-        let path = self.get_path_by_index(&index);
-        let node = self.get_node_by_index_mut(&index)?;
+    /// 根据 phandle 查找节点
+    /// 返回 (节点引用, 完整路径)
+    pub fn find_by_phandle(&self, phandle: Phandle) -> Option<(&Node, String)> {
+        let path = self.phandle_cache.get(&phandle)?.clone();
+        let node = self.root.get_by_path(&path)?;
         Some((node, path))
     }
 
-    /// 根据索引获取路径 (临时兼容性方法，建议使用 find_by_path)
-    fn get_path_by_index(&self, index: &NodeIndex) -> String {
-        // 这个方法在新的 BTreeMap 结构中已经不再适用
-        // 为了保持兼容性，返回根路径
-        // TODO: 重构调用此方法的代码以使用路径查找
-        String::from("/")
-    }
-
-    /// 根据索引获取节点 (临时兼容性方法，建议使用 find_by_path)
-    fn get_node_by_index(&self, _index: &NodeIndex) -> Option<&Node> {
-        // 这个方法在新的 BTreeMap 结构中已经不再适用
-        // 为了保持兼容性，返回根节点
-        // TODO: 重构调用此方法的代码以使用路径查找
-        Some(&self.root)
-    }
-
-    /// 根据索引获取节点（可变） (临时兼容性方法，建议使用 find_by_path_mut)
-    fn get_node_by_index_mut(&mut self, _index: &NodeIndex) -> Option<&mut Node> {
-        // 这个方法在新的 BTreeMap 结构中已经不再适用
-        // 为了保持兼容性，返回根节点
-        // TODO: 重构调用此方法的代码以使用路径查找
-        Some(&mut self.root)
+    /// 根据 phandle 查找节点（可变）
+    /// 返回 (节点可变引用, 完整路径)
+    pub fn find_by_phandle_mut(&mut self, phandle: Phandle) -> Option<(&mut Node, String)> {
+        let path = self.phandle_cache.get(&phandle)?.clone();
+        let node = self.root.get_by_path_mut(&path)?;
+        Some((node, path))
     }
 
     /// 获取根节点
@@ -613,6 +641,53 @@ impl Fdt {
         }
     }
 
+    /// 通过精确路径删除节点及其子树
+    /// 只支持精确路径匹配，不支持模糊匹配
+    /// 支持通过别名删除节点，并自动删除对应的别名条目
+    ///
+    /// # 参数
+    /// - `path`: 删除路径，格式如 "soc/gpio@1000" 或 "/soc/gpio@1000" 或别名
+    ///
+    /// # 返回值
+    /// `Ok(Option<Node>)`: 如果找到并删除了节点，返回被删除的节点；如果路径不存在，返回 None
+    /// `Err(FdtError)`: 如果路径格式无效
+    ///
+    /// # 示例
+    /// ```rust
+    /// // 精确删除节点
+    /// let removed = fdt.remove_node("soc/gpio@1000")?;
+    ///
+    /// // 通过别名删除节点
+    /// let removed = fdt.remove_node("serial0")?;
+    /// ```
+    pub fn remove_node(&mut self, path: &str) -> Result<Option<Node>, FdtError> {
+        let normalized_path = path.trim_start_matches('/');
+        if normalized_path.is_empty() {
+            return Err(FdtError::InvalidInput);
+        }
+
+        // 首先检查是否是别名
+        if !path.starts_with('/') {
+            // 可能是别名，尝试解析
+            if let Some(resolved_path) = self.resolve_alias(path) {
+                // 删除别名条目
+                let _ = self.remove_alias_entry(path);
+                // 删除实际节点
+                return self.root.remove_by_path(&resolved_path);
+            }
+        }
+
+        // 直接使用精确路径删除
+        let result = self.root.remove_by_path(path)?;
+
+        // 如果删除成功且结果是 None，说明路径不存在
+        if result.is_none() {
+            return Err(FdtError::NotFound);
+        }
+
+        Ok(result)
+    }
+
     /// 序列化为 FDT 二进制数据
     pub fn to_bytes(&self) -> FdtData {
         let mut builder = FdtBuilder::new();
@@ -750,6 +825,7 @@ impl FdtBuilder {
         }
     }
 
+    
     /// 生成最终 FDT 数据
     fn finalize(self, boot_cpuid_phys: u32, memory_reservations: &[MemoryReservation]) -> FdtData {
         // 计算各部分大小和偏移

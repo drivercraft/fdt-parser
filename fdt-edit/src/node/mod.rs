@@ -99,6 +99,27 @@ impl Node {
         self.children.get(name)
     }
 
+    /// 查找子节点（支持智能匹配，等同于 remove_child 的查找逻辑）
+    pub fn find_child(&self, name: &str) -> Option<&Node> {
+        // 首先尝试精确匹配
+        if let Some(child) = self.children.get(name) {
+            return Some(child);
+        }
+
+        // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
+        let name_base = name.split('@').next().unwrap_or(name);
+
+        // 找到匹配的节点
+        for child in self.children.values() {
+            let child_base = child.name.split('@').next().unwrap_or(&child.name);
+            if child_base == name_base {
+                return Some(child);
+            }
+        }
+
+        None
+    }
+
     /// 精确匹配子节点（可变），不支持部分匹配
     pub fn find_child_exact_mut(&mut self, name: &str) -> Option<&mut Node> {
         self.children.get_mut(name)
@@ -168,7 +189,7 @@ impl Node {
     }
 
     /// 根据路径查找所有匹配的节点
-    /// 支持通配符和智能匹配，返回所有找到的节点及其完整路径
+    /// 支持智能匹配，返回所有找到的节点及其完整路径
     ///
     /// # 匹配规则
     /// - **中间级别**：只支持精确匹配
@@ -176,7 +197,7 @@ impl Node {
     /// - **前缀匹配**：在最后一级，节点名以指定前缀开头（忽略 @unit-address）
     ///
     /// # 参数
-    /// - `path`: 查找路径，支持通配符 "*" 和前缀匹配
+    /// - `path`: 查找路径，支持前缀匹配
     ///
     /// # 返回值
     /// 返回 Vec<(&Node, String)>，包含所有匹配的节点及其完整路径
@@ -252,15 +273,74 @@ impl Node {
     fn find_children_with_prefix(&self, prefix: &str) -> Vec<(String, &Node)> {
         let mut matches = Vec::new();
 
-        // 找到实际的键名并返回
+        // 找到所有匹配的键名并返回
         for (child_name, child_value) in &self.children {
             if child_name.starts_with(prefix) {
                 matches.push((child_name.to_string(), child_value));
-                break;
             }
         }
 
         matches
+    }
+
+    /// 通过精确路径删除子节点及其子树
+    /// 只支持精确路径匹配，不支持模糊匹配
+    ///
+    /// # 参数
+    /// - `path`: 删除路径，格式如 "soc/gpio@1000" 或 "/soc/gpio@1000"
+    ///
+    /// # 返回值
+    /// `Ok(Option<Node>)`: 如果找到并删除了节点，返回被删除的节点；如果路径不存在，返回 None
+    /// `Err(FdtError)`: 如果路径格式无效
+    ///
+    /// # 示例
+    /// ```rust
+    /// // 精确删除节点
+    /// let removed = node.remove_by_path("soc/gpio@1000")?;
+    ///
+    /// // 精确删除嵌套节点
+    /// let removed = node.remove_by_path("soc/i2c@0/eeprom@50")?;
+    /// ```
+    pub fn remove_by_path(&mut self, path: &str) -> Result<Option<Node>, fdt_raw::FdtError> {
+        let normalized_path = path.trim_start_matches('/');
+        if normalized_path.is_empty() {
+            return Err(fdt_raw::FdtError::InvalidInput);
+        }
+
+        let parts: Vec<&str> = normalized_path.split('/').collect();
+        if parts.is_empty() {
+            return Err(fdt_raw::FdtError::InvalidInput);
+        }
+
+        if parts.len() == 1 {
+            // 删除直接子节点
+            let child_name = parts[0];
+            Ok(self.children.remove(child_name))
+        } else {
+            // 需要递归到父节点进行删除
+            self.remove_child_recursive(&parts, 0)
+        }
+    }
+
+    /// 递归删除子节点的实现
+    /// 找到要删除节点的父节点，然后从父节点中删除目标子节点
+    fn remove_child_recursive(&mut self, parts: &[&str], index: usize) -> Result<Option<Node>, fdt_raw::FdtError> {
+        if index >= parts.len() - 1 {
+            // 已经到达要删除节点的父级
+            let child_name_to_remove = parts[index];
+            Ok(self.children.remove(child_name_to_remove))
+        } else {
+            // 继续向下递归
+            let current_part = parts[index];
+
+            // 中间级别只支持精确匹配
+            if let Some(child) = self.children.get_mut(current_part) {
+                child.remove_child_recursive(parts, index + 1)
+            } else {
+                // 路径不存在
+                Ok(None)
+            }
+        }
     }
 
     /// 设置或更新属性
