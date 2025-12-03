@@ -545,40 +545,61 @@ impl Fdt {
             return Err(FdtError::InvalidInput);
         }
 
-        // 2. 高级路径规范化
-        let normalized_path = Self::normalize_path_advanced(trimmed_path)?;
-
-        // 3. 解析别名或处理绝对路径
-        let final_path = if normalized_path.starts_with('/') {
-            normalized_path
+        // 2. 首先检查是否为别名（在规范化之前）
+        let trimmed_for_alias_check = trimmed_path.trim();
+        let (final_path, is_alias_name, alias_name) = if let Some(resolved) = self.resolve_alias(trimmed_for_alias_check) {
+            // 是别名，解析为目标路径
+            (ensure_absolute_path(&resolved), true, Some(trimmed_for_alias_check.to_string()))
         } else {
-            // 尝试别名解析
-            match self.resolve_alias(&normalized_path) {
-                Some(resolved) => {
-                    // 确保解析的路径是绝对路径
-                    ensure_absolute_path(&resolved)
-                }
-                None => {
-                    // 不是别名，转换为绝对路径
-                    ensure_absolute_path(&normalized_path)
-                }
-            }
+            // 不是别名，规范化路径
+            let normalized_path = Self::normalize_path_advanced(trimmed_path)?;
+            (normalized_path.clone(), false, None)
         };
 
-        // 4. 最终路径验证
+        // 3. 最终路径验证
         if final_path == "/" || final_path.is_empty() {
             return Err(FdtError::InvalidInput);
         }
 
-        // 5. 执行删除操作
+        // 4. 执行删除操作
         let result = self.remove_node_by_absolute_path(&final_path);
 
-        // 6. 只有删除成功时才重建缓存
+        // 5. 如果删除成功且使用了别名，尝试删除别名条目
+        if result.is_ok() && is_alias_name {
+            if let Some(ref alias) = alias_name {
+                self.remove_alias_entry(alias)?;
+            }
+        }
+
+        // 6. 重建缓存
         if result.is_ok() {
             self.rebuild_phandle_cache();
         }
 
         result
+    }
+
+    /// 删除别名条目
+    ///
+    /// 从 /aliases 节点中删除指定的别名属性
+    fn remove_alias_entry(&mut self, alias_name: &str) -> Result<(), FdtError> {
+        if let Some(aliases_node) = self.root.find_child_mut("aliases") {
+            // 查找并删除别名属性
+            aliases_node.properties.retain(|prop| {
+                if let crate::Property::Raw(raw) = prop {
+                    // 检查属性名是否匹配
+                    raw.name() != alias_name
+                } else {
+                    true
+                }
+            });
+
+            // 如果 aliases 节点没有其他属性了，可以考虑删除整个节点
+            // 但这里我们保留空节点以符合设备树规范
+        }
+
+        // 不论如何都返回成功，因为别名条目删除是可选的优化
+        Ok(())
     }
 
     /// 通过绝对路径删除节点（路径必须以 '/' 开头）

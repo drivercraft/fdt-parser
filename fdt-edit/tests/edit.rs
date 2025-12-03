@@ -579,6 +579,12 @@ fn test_remove_node_by_alias() {
     assert!(fdt.find_by_path("serial0").is_some());
     assert!(fdt.find_by_path("/soc/uart@10000").is_some());
 
+    // 验证别名存在
+    let aliases_before = fdt.aliases();
+    assert!(!aliases_before.is_empty(), "should have aliases before removal");
+    assert!(aliases_before.iter().any(|(name, _)| *name == "serial0"), "should have serial0 alias");
+    let aliases_before_count = aliases_before.len();
+
     // 通过别名删除节点
     let result = fdt.remove_node("serial0");
     assert!(result.is_ok(), "should successfully remove node by alias");
@@ -586,6 +592,11 @@ fn test_remove_node_by_alias() {
     // 验证节点已被删除
     assert!(fdt.find_by_path("serial0").is_none());
     assert!(fdt.find_by_path("/soc/uart@10000").is_none());
+
+    // 验证别名已被删除
+    let aliases_after = fdt.aliases();
+    assert!(aliases_after.iter().all(|(name, _)| *name != "serial0"), "serial0 alias should be removed");
+    assert!(aliases_after.len() < aliases_before_count, "should have fewer aliases after removal");
 }
 
 #[test]
