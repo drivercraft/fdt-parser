@@ -23,13 +23,13 @@ enum ChildMatchResult<'a> {
 /// 通用节点匹配逻辑
 fn find_child_match_result<'a>(parent: &'a Node, path_part: &str) -> ChildMatchResult<'a> {
     // 1. 精确匹配完整名称（包含 @address）
-    if let Some(child) = parent.children.iter().find(|c| c.name == path_part) {
+    if let Some(child) = parent.find_child_exact(path_part) {
         return ChildMatchResult::Exact(child);
     }
 
     // 2. 提取 node-name 进行部分匹配
     let node_name_base = extract_node_name_base(path_part);
-    for child in &parent.children {
+    for child in parent.children.values() {
         let child_base = extract_node_name_base(&child.name);
         if child_base == node_name_base {
             return ChildMatchResult::Partial(child);
@@ -81,7 +81,7 @@ pub struct MemoryReservation {
 }
 
 /// 节点路径索引
-type NodeIndex = Vec<usize>;
+type NodeIndex = Vec<String>;
 
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]
@@ -170,7 +170,7 @@ impl Fdt {
             while node_stack.len() > level {
                 let child = node_stack.pop().unwrap();
                 if let Some(parent) = node_stack.last_mut() {
-                    parent.children.push(child);
+                    parent.add_child(child);
                 } else {
                     // 这是根节点
                     fdt.root = child;
@@ -183,7 +183,7 @@ impl Fdt {
         // 弹出所有剩余节点
         while let Some(child) = node_stack.pop() {
             if let Some(parent) = node_stack.last_mut() {
-                parent.children.push(child);
+                parent.add_child(child);
             } else {
                 // 这是根节点
                 fdt.root = child;
@@ -210,9 +210,9 @@ impl Fdt {
         }
 
         // 递归处理子节点
-        for (i, child) in node.children.iter().enumerate() {
+        for (child_name, child) in node.children.iter() {
             let mut child_index = current_index.clone();
-            child_index.push(i);
+            child_index.push(child_name.clone());
             self.build_phandle_cache_recursive(child, child_index);
         }
     }
@@ -227,22 +227,27 @@ impl Fdt {
 
     /// 查找匹配的子节点（可变），支持 node-name@unit-address 格式
     fn find_child_matching_mut<'a>(parent: &'a mut Node, path_part: &str) -> Option<&'a mut Node> {
-        // 先查找索引，然后返回可变引用
-        if let Some(index) = Self::find_child_index_helper(parent, path_part) {
-            Some(&mut parent.children[index])
-        } else {
-            None
-        }
+        // 直接使用节点的 find_child_mut 方法
+        parent.find_child_mut(path_part)
     }
 
-    /// 查找子节点索引的辅助函数
-    fn find_child_index_helper(parent: &Node, path_part: &str) -> Option<usize> {
-        match find_child_match_result(parent, path_part) {
-            ChildMatchResult::Exact(target_child) | ChildMatchResult::Partial(target_child) => {
-                parent.children.iter().position(|c| core::ptr::eq(c, target_child))
-            }
-            ChildMatchResult::None => None,
+    /// 查找子节点键的辅助函数
+    fn find_child_key_helper(parent: &Node, path_part: &str) -> Option<String> {
+        // 首先尝试精确匹配
+        if parent.children.contains_key(path_part) {
+            return Some(path_part.to_string());
         }
+
+        // 然后尝试部分匹配（node-name@unit-address）
+        let name_base = path_part.split('@').next().unwrap_or(path_part);
+        for (child_name, child) in &parent.children {
+            let child_base = child_name.split('@').next().unwrap_or(child_name);
+            if child_base == name_base {
+                return Some(child_name.clone());
+            }
+        }
+
+        None
     }
 
     /// 根据路径查找节点
@@ -382,13 +387,13 @@ impl Fdt {
         let part = parts[index];
         if part == "*" {
             // 通配符：遍历所有子节点
-            for child in &node.children {
+            for child in node.children.values() {
                 let child_path = build_child_path(&current_path, &child.name);
                 Self::find_all_by_path_recursive(child, parts, index + 1, child_path, results);
             }
         } else {
             // 精确匹配：可能有多个同名节点
-            for child in &node.children {
+            for child in node.children.values() {
                 if child.name == part {
                     let child_path = build_child_path(&current_path, &child.name);
                     Self::find_all_by_path_recursive(child, parts, index + 1, child_path, results);
@@ -635,69 +640,62 @@ impl Fdt {
         }
 
         // 从根节点开始，逐级查找
-        let mut node_indices: Vec<usize> = Vec::new();
+        let mut node_keys: Vec<String> = Vec::new();
         let mut parent = &self.root;
 
         // 遍历到倒数第二级节点
         for i in 0..segments.len() - 1 {
             let child_name = segments[i];
-            let child_index = Self::find_child_index_static(parent, child_name)?;
-            node_indices.push(child_index);
+            let child_key = Self::find_child_key_static(parent, child_name)?;
+            node_keys.push(child_key);
 
             // 切换到下一个节点
-            parent = &parent.children[child_index];
+            parent = &parent.children[&node_keys[node_keys.len() - 1]];
         }
 
         // 在最后一级节点删除目标子节点
         let target_name = segments[segments.len() - 1];
-        Self::remove_child_from_node_mut(&mut self.root, &node_indices, target_name)
+        Self::remove_child_from_node_mut(&mut self.root, &node_keys, target_name)
     }
 
-    /// 静态方法：根据节点索引向量删除子节点
+    /// 静态方法：根据节点键向量删除子节点
     fn remove_child_from_node_mut(
         root: &mut Node,
-        indices: &[usize],
+        keys: &[String],
         child_name: &str
     ) -> Result<(), FdtError> {
         let mut current = root;
 
-        // 根据索引路径导航到目标父节点
-        for &index in indices {
-            current = &mut current.children[index];
+        // 根据键路径导航到目标父节点
+        for key in keys {
+            current = current.children.get_mut(key).ok_or(FdtError::NotFound)?;
         }
 
         // 在目标父节点中删除子节点
         Self::remove_child_from_node(current, child_name)
     }
 
-    /// 静态方法：查找子节点索引
-    fn find_child_index_static(parent: &Node, child_name: &str) -> Result<usize, FdtError> {
+    /// 静态方法：查找子节点键
+    fn find_child_key_static(parent: &Node, child_name: &str) -> Result<String, FdtError> {
+        // 首先尝试精确匹配
+        if parent.children.contains_key(child_name) {
+            return Ok(child_name.to_string());
+        }
+
+        // 然后尝试部分匹配（node-name@unit-address）
         let child_name_base = extract_node_name_base(child_name);
 
-        for (i, child) in parent.children.iter().enumerate() {
+        for (key, child) in parent.children.iter() {
             let child_base = extract_node_name_base(&child.name);
             if child_base == child_name_base {
-                return Ok(i);
+                return Ok(key.clone());
             }
         }
 
         Err(FdtError::NotFound)
     }
 
-    /// 查找子节点索引
-    fn find_child_index(&self, parent: &Node, child_name: &str) -> Result<usize, FdtError> {
-        let child_name_base = extract_node_name_base(child_name);
-
-        for (i, child) in parent.children.iter().enumerate() {
-            let child_base = extract_node_name_base(&child.name);
-            if child_base == child_name_base {
-                return Ok(i);
-            }
-        }
-
-        Err(FdtError::NotFound)
-    }
-
+    
     /// 高级路径规范化函数
     ///
     /// 处理各种边界情况：
@@ -925,17 +923,13 @@ impl Fdt {
         }
 
         // 合并子节点
-        for source_child in &source.children {
-            if let Some(target_child) = target
-                .children
-                .iter_mut()
-                .find(|c| c.name == source_child.name)
-            {
+        for (child_name, source_child) in &source.children {
+            if let Some(target_child) = target.children.get_mut(child_name) {
                 // 递归合并
                 Self::merge_nodes(target_child, source_child);
             } else {
                 // 添加新子节点
-                target.children.push(source_child.clone());
+                target.children.insert(child_name.clone(), source_child.clone());
             }
         }
     }

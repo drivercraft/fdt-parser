@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{string::String, vec::Vec, collections::BTreeMap};
 
 use crate::{Phandle, Property, Status};
 
@@ -7,7 +7,7 @@ use crate::{Phandle, Property, Status};
 pub struct Node {
     pub name: String,
     pub properties: Vec<Property>,
-    pub children: Vec<Node>,
+    pub children: BTreeMap<String, Node>,
 }
 
 impl Node {
@@ -16,7 +16,7 @@ impl Node {
         Self {
             name: name.into(),
             properties: Vec::new(),
-            children: Vec::new(),
+            children: BTreeMap::new(),
         }
     }
 
@@ -33,7 +33,8 @@ impl Node {
 
     /// 添加子节点
     pub fn add_child(&mut self, child: Node) -> &mut Self {
-        self.children.push(child);
+        let child_name = child.name.clone();
+        self.children.insert(child_name, child);
         self
     }
 
@@ -47,14 +48,51 @@ impl Node {
         self.properties.iter_mut().find(|p| p.name() == name)
     }
 
-    /// 按名称查找子节点
+    /// 按名称查找子节点，支持 node-name@unit-address 格式
+    ///
+    /// # 匹配规则
+    /// - 精确匹配：如果名称包含 @，优先精确匹配完整名称
+    /// - 部分匹配：如果精确匹配失败，尝试匹配节点名部分（忽略 @unit-address）
     pub fn find_child(&self, name: &str) -> Option<&Node> {
-        self.children.iter().find(|c| c.name == name)
+        // 首先尝试精确匹配
+        if let Some(child) = self.children.get(name) {
+            return Some(child);
+        }
+
+        // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
+        let name_base = name.split('@').next().unwrap_or(name);
+
+        for child in self.children.values() {
+            let child_base = child.name.split('@').next().unwrap_or(&child.name);
+            if child_base == name_base {
+                return Some(child);
+            }
+        }
+
+        None
     }
 
-    /// 按名称查找子节点（可变）
+    /// 按名称查找子节点（可变），支持 node-name@unit-address 格式
     pub fn find_child_mut(&mut self, name: &str) -> Option<&mut Node> {
-        self.children.iter_mut().find(|c| c.name == name)
+        // 首先尝试精确匹配
+        if self.children.contains_key(name) {
+            return self.children.get_mut(name);
+        }
+
+        // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
+        let name_base = name.split('@').next().unwrap_or(name);
+
+        // 找到匹配的键
+        let matching_key = self.children.keys().find(|child_name| {
+            let child_base = child_name.split('@').next().unwrap_or(child_name);
+            child_base == name_base
+        });
+
+        if let Some(key) = matching_key {
+            self.children.get_mut(key)
+        } else {
+            None
+        }
     }
 
     /// 移除属性
@@ -66,13 +104,71 @@ impl Node {
         }
     }
 
-    /// 移除子节点
+    /// 移除子节点，支持 node-name@unit-address 格式
+    ///
+    /// # 匹配规则
+    /// - 精确匹配：如果名称包含 @，优先精确匹配完整名称
+    /// - 部分匹配：如果精确匹配失败，尝试匹配节点名部分（忽略 @unit-address）
     pub fn remove_child(&mut self, name: &str) -> Option<Node> {
-        if let Some(pos) = self.children.iter().position(|c| c.name == name) {
-            Some(self.children.remove(pos))
+        // 首先尝试精确匹配
+        if let Some(child) = self.children.remove(name) {
+            return Some(child);
+        }
+
+        // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
+        let name_base = name.split('@').next().unwrap_or(name);
+
+        // 找到匹配的节点名称
+        let matching_key = self.children.keys().find(|child_name| {
+            let child_base = child_name.split('@').next().unwrap_or(child_name);
+            child_base == name_base
+        }).cloned();
+
+        if let Some(key) = matching_key {
+            self.children.remove(&key)
         } else {
             None
         }
+    }
+
+    /// 精确匹配子节点，不支持部分匹配
+    pub fn find_child_exact(&self, name: &str) -> Option<&Node> {
+        self.children.get(name)
+    }
+
+    /// 精确匹配子节点（可变），不支持部分匹配
+    pub fn find_child_exact_mut(&mut self, name: &str) -> Option<&mut Node> {
+        self.children.get_mut(name)
+    }
+
+    /// 获取所有子节点名称（按字典序排序）
+    pub fn child_names(&self) -> Vec<&String> {
+        self.children.keys().collect()
+    }
+
+    /// 获取子节点数量
+    pub fn child_count(&self) -> usize {
+        self.children.len()
+    }
+
+    /// 检查是否有指定名称的子节点（支持部分匹配）
+    pub fn has_child(&self, name: &str) -> bool {
+        self.find_child(name).is_some()
+    }
+
+    /// 精确检查是否有指定名称的子节点
+    pub fn has_child_exact(&self, name: &str) -> bool {
+        self.children.contains_key(name)
+    }
+
+    /// 兼容性方法：获取子节点的 Vec 形式
+    pub fn children_vec(&self) -> Vec<&Node> {
+        self.children.values().collect()
+    }
+
+    /// 兼容性方法：获取子节点的可变 Vec 形式
+    pub fn children_vec_mut(&mut self) -> Vec<&mut Node> {
+        self.children.values_mut().map(|(_, v)| v).collect()
     }
 
     /// 设置或更新属性
