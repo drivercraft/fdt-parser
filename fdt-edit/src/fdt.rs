@@ -147,7 +147,8 @@ impl Fdt {
         }
 
         // 递归处理子节点
-        for (child_name, child) in node.children.iter() {
+        for child in node.children.iter() {
+            let child_name = &child.name;
             let child_path = if current_path == "/" {
                 format!("/{}", child_name)
             } else {
@@ -384,7 +385,7 @@ impl Fdt {
     /// ```
     pub fn apply_overlay(&mut self, overlay: &Fdt) -> Result<(), FdtError> {
         // 遍历 overlay 根节点的所有子节点
-        for child in overlay.root.children.values() {
+        for child in overlay.root.children.iter() {
             if child.name.starts_with("fragment@") || child.name == "fragment" {
                 // fragment 格式
                 self.apply_fragment(child)?;
@@ -477,13 +478,14 @@ impl Fdt {
             self.root.set_property(prop.clone());
         }
 
-        for (child_name, child) in &overlay.children {
-            if let Some(existing) = self.root.children.get_mut(child_name) {
+        for child in &overlay.children {
+            let child_name = &child.name;
+            if let Some(existing) = self.root.find_child_mut(child_name) {
                 // 合并到现有子节点
                 Self::merge_nodes(existing, child);
             } else {
                 // 添加新子节点
-                self.root.children.insert(child_name.clone(), child.clone());
+                self.root.add_child(child.clone());
             }
         }
 
@@ -498,15 +500,14 @@ impl Fdt {
         }
 
         // 合并子节点
-        for (child_name, source_child) in &source.children {
-            if let Some(target_child) = target.children.get_mut(child_name) {
+        for source_child in &source.children {
+            let child_name = &source_child.name;
+            if let Some(target_child) = target.find_child_mut(child_name) {
                 // 递归合并
                 Self::merge_nodes(target_child, source_child);
             } else {
                 // 添加新子节点
-                target
-                    .children
-                    .insert(child_name.clone(), source_child.clone());
+                target.add_child(source_child.clone());
             }
         }
     }
@@ -534,21 +535,21 @@ impl Fdt {
     fn remove_disabled_nodes(node: &mut Node) {
         // 移除 disabled 的子节点
         let mut to_remove = Vec::new();
-        for (child_name, child) in &node.children {
+        for child in &node.children {
             if matches!(
                 child.find_property("status"),
                 Some(crate::Property::Status(crate::Status::Disabled))
             ) {
-                to_remove.push(child_name.clone());
+                to_remove.push(child.name.clone());
             }
         }
 
         for child_name in to_remove {
-            node.children.remove(&child_name);
+            node.remove_child(&child_name);
         }
 
         // 递归处理剩余子节点
-        for child in node.children.values_mut() {
+        for child in node.children.iter_mut() {
             Self::remove_disabled_nodes(child);
         }
     }
@@ -629,7 +630,7 @@ impl Fdt {
         nodes.push(node);
 
         // 递归处理所有子节点
-        for child in node.children.values() {
+        for child in node.children.iter() {
             self.collect_all_nodes(child, nodes);
         }
     }
@@ -744,7 +745,7 @@ impl FdtBuilder {
         for prop in &node.properties {
             self.get_or_add_string(prop.name());
         }
-        for child in node.children.values() {
+        for child in node.children.iter() {
             self.collect_strings(child);
         }
     }
@@ -801,7 +802,7 @@ impl FdtBuilder {
         }
 
         // 子节点
-        for child in node.children.values() {
+        for child in node.children.iter() {
             self.build_node(child);
         }
 
@@ -1004,7 +1005,7 @@ impl Fdt {
         }
 
         // 写入子节点
-        for (_child_name, child) in &node.children {
+        for child in &node.children {
             self.fmt_node(f, child, indent + 1)?;
         }
 

@@ -121,14 +121,14 @@ mod tests {
 
         let nodes = fdt.all_nodes();
 
-        // 应该有根节点 + memory + soc + uart0 + uart1，共5个节点
-        // BTreeMap 按键名字母顺序迭代，所以 "memory" 在 "soc" 前面
+        // 应该有根节点 + soc + uart0 + uart1 + memory，共5个节点
+        // 深度优先遍历：根节点 -> soc -> uart0 -> uart1 -> memory
         assert_eq!(nodes.len(), 5);
         assert_eq!(nodes[0].name, "");       // 根节点
-        assert_eq!(nodes[1].name, "memory"); // 第一级子节点1（按字母顺序）
-        assert_eq!(nodes[2].name, "soc");    // 第一级子节点2（按字母顺序）
-        assert_eq!(nodes[3].name, "uart0");  // soc的子节点1
-        assert_eq!(nodes[4].name, "uart1");  // soc的子节点2
+        assert_eq!(nodes[1].name, "soc");    // 第一级子节点1（按插入顺序，深度优先遍历）
+        assert_eq!(nodes[2].name, "uart0");  // soc的子节点1
+        assert_eq!(nodes[3].name, "uart1");  // soc的子节点2
+        assert_eq!(nodes[4].name, "memory"); // 第一级子节点2（按插入顺序，在soc的子树处理完后）
     }
 
     #[test]

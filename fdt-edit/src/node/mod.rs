@@ -13,7 +13,10 @@ use crate::{Phandle, Property, Status};
 pub struct Node {
     pub name: String,
     pub properties: Vec<Property>,
-    pub children: BTreeMap<String, Node>,
+    // 子节点列表，保持原始顺序
+    pub children: Vec<Node>,
+    // 名称到索引的缓存映射，用于快速查找
+    children_cache: BTreeMap<String, usize>,
 }
 
 impl Node {
@@ -22,7 +25,8 @@ impl Node {
         Self {
             name: name.into(),
             properties: Vec::new(),
-            children: BTreeMap::new(),
+            children: Vec::new(),
+            children_cache: BTreeMap::new(),
         }
     }
 
@@ -31,19 +35,31 @@ impl Node {
         Self::new("")
     }
 
+    /// 重建子节点缓存索引
+    /// 当手动修改children向量时调用此方法重新建立索引
+    fn rebuild_children_cache(&mut self) {
+        self.children_cache.clear();
+        for (index, child) in self.children.iter().enumerate() {
+            self.children_cache.insert(child.name.clone(), index);
+        }
+    }
+
+    /// 添加子节点
+    pub fn add_child(&mut self, child: Node) -> &mut Self {
+        let child_name = child.name.clone();
+        let index = self.children.len();
+        self.children.push(child);
+        self.children_cache.insert(child_name, index);
+        self
+    }
+
     /// 添加属性
     pub fn add_property(&mut self, prop: Property) -> &mut Self {
         self.properties.push(prop);
         self
     }
 
-    /// 添加子节点
-    pub fn add_child(&mut self, child: Node) -> &mut Self {
-        let child_name = child.name.clone();
-        self.children.insert(child_name, child);
-        self
-    }
-
+    
     /// 按名称查找属性
     pub fn find_property(&self, name: &str) -> Option<&Property> {
         self.properties.iter().find(|p| p.name() == name)
@@ -69,8 +85,12 @@ impl Node {
     /// - 精确匹配：如果名称包含 @，优先精确匹配完整名称
     /// - 部分匹配：如果精确匹配失败，尝试匹配节点名部分（忽略 @unit-address）
     pub fn remove_child(&mut self, name: &str) -> Option<Node> {
-        // 首先尝试精确匹配
-        if let Some(child) = self.children.remove(name) {
+        // 首先尝试精确匹配（使用缓存）
+        if let Some(&index) = self.children_cache.get(name) {
+            let child = self.children.remove(index);
+            self.children_cache.remove(name);
+            // 重建缓存，因为索引已经改变
+            self.rebuild_children_cache();
             return Some(child);
         }
 
@@ -78,17 +98,17 @@ impl Node {
         let name_base = name.split('@').next().unwrap_or(name);
 
         // 找到匹配的节点名称
-        let matching_key = self
-            .children
-            .keys()
-            .find(|child_name| {
-                let child_base = child_name.split('@').next().unwrap_or(child_name);
+        let matching_index = self.children.iter()
+            .position(|child| {
+                let child_base = child.name.split('@').next().unwrap_or(&child.name);
                 child_base == name_base
-            })
-            .cloned();
+            });
 
-        if let Some(key) = matching_key {
-            self.children.remove(&key)
+        if let Some(index) = matching_index {
+            let child = self.children.remove(index);
+            // 重建缓存，因为索引已经改变
+            self.rebuild_children_cache();
+            Some(child)
         } else {
             None
         }
@@ -96,21 +116,25 @@ impl Node {
 
     /// 精确匹配子节点，不支持部分匹配
     pub fn find_child_exact(&self, name: &str) -> Option<&Node> {
-        self.children.get(name)
+        if let Some(&index) = self.children_cache.get(name) {
+            self.children.get(index)
+        } else {
+            None
+        }
     }
 
     /// 查找子节点（支持智能匹配，等同于 remove_child 的查找逻辑）
     pub fn find_child(&self, name: &str) -> Option<&Node> {
-        // 首先尝试精确匹配
-        if let Some(child) = self.children.get(name) {
-            return Some(child);
+        // 首先尝试精确匹配（使用缓存）
+        if let Some(&index) = self.children_cache.get(name) {
+            return self.children.get(index);
         }
 
         // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
         let name_base = name.split('@').next().unwrap_or(name);
 
         // 找到匹配的节点
-        for child in self.children.values() {
+        for child in &self.children {
             let child_base = child.name.split('@').next().unwrap_or(&child.name);
             if child_base == name_base {
                 return Some(child);
@@ -122,17 +146,82 @@ impl Node {
 
     /// 精确匹配子节点（可变），不支持部分匹配
     pub fn find_child_exact_mut(&mut self, name: &str) -> Option<&mut Node> {
-        self.children.get_mut(name)
+        if let Some(&index) = self.children_cache.get(name) {
+            self.children.get_mut(index)
+        } else {
+            None
+        }
+    }
+
+    /// 查找子节点（支持智能匹配，等同于 remove_child 的查找逻辑）
+    pub fn find_child_mut(&mut self, name: &str) -> Option<&mut Node> {
+        // 首先尝试精确匹配（使用缓存）
+        if let Some(&index) = self.children_cache.get(name) {
+            return self.children.get_mut(index);
+        }
+
+        // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
+        let name_base = name.split('@').next().unwrap_or(name);
+
+        // 找到匹配的节点
+        for child in &mut self.children {
+            let child_base = child.name.split('@').next().unwrap_or(&child.name);
+            if child_base == name_base {
+                return Some(child);
+            }
+        }
+
+        None
+    }
+
+    /// 精确删除子节点，不支持部分匹配
+    pub fn remove_child_exact(&mut self, name: &str) -> Option<Node> {
+        if let Some(&index) = self.children_cache.get(name) {
+            let child = self.children.remove(index);
+            self.children_cache.remove(name);
+            // 重建缓存，因为索引已经改变
+            self.rebuild_children_cache();
+            Some(child)
+        } else {
+            None
+        }
+    }
+
+    /// 获取所有子节点名称（按原始顺序）
+    pub fn child_names(&self) -> Vec<&String> {
+        self.children.iter().map(|child| &child.name).collect()
     }
 
     /// 获取所有子节点名称（按字典序排序）
-    pub fn child_names(&self) -> Vec<&String> {
-        self.children.keys().collect()
+    pub fn child_names_sorted(&self) -> Vec<&String> {
+        let mut names = self.children.iter().map(|child| &child.name).collect::<Vec<_>>();
+        names.sort();
+        names
     }
 
     /// 获取子节点数量
     pub fn child_count(&self) -> usize {
         self.children.len()
+    }
+
+    /// 按索引获取子节点
+    pub fn child_at(&self, index: usize) -> Option<&Node> {
+        self.children.get(index)
+    }
+
+    /// 按索引获取子节点（可变）
+    pub fn child_at_mut(&mut self, index: usize) -> Option<&mut Node> {
+        self.children.get_mut(index)
+    }
+
+    /// 获取所有子节点的迭代器
+    pub fn children(&self) -> core::slice::Iter<'_, Node> {
+        self.children.iter()
+    }
+
+    /// 获取所有子节点的可变迭代器
+    pub fn children_mut(&mut self) -> core::slice::IterMut<'_, Node> {
+        self.children.iter_mut()
     }
 
     /// 根据路径查找节点
@@ -156,8 +245,12 @@ impl Node {
 
         let part = parts[index];
 
-        // 查找子节点
-        let child = self.children.get(part)?;
+        // 查找子节点（使用缓存）
+        let child = if let Some(&child_index) = self.children_cache.get(part) {
+            self.children.get(child_index)?
+        } else {
+            return None;
+        };
 
         // 在子节点中查找匹配的节点
         child.get_by_parts(parts, index + 1)
@@ -183,8 +276,14 @@ impl Node {
         }
 
         let part = parts[index];
-        // 获取可变引用并继续递归
-        let child = self.children.get_mut(part)?;
+        // 获取可变引用并继续递归（使用缓存）
+        let child = if let Some(&child_index) = self.children_cache.get(part) {
+            // 安全地获取两个可变引用：一个指向当前向量元素，一个递归调用
+            // 由于我们只访问一个子节点，所以是安全的
+            self.children.get_mut(child_index)?
+        } else {
+            return None;
+        };
         child.get_by_parts_mut(parts, index + 1)
     }
 
@@ -212,16 +311,7 @@ impl Node {
     pub fn find_all(&self, path: &str) -> Vec<(&Node, String)> {
         let normalized_path = path.trim_start_matches('/');
         if normalized_path.is_empty() {
-            // 空路径返回当前节点（如果是空路径）或所有直接子节点
-            if normalized_path.is_empty() {
-                vec![(self, "/".to_string())]
-            } else {
-                let mut results = Vec::new();
-                for (child_name, child) in &self.children {
-                    results.push((child, format!("/{}", child_name)));
-                }
-                results
-            }
+            vec![(self, "/".to_string())]
         } else {
             let parts: Vec<&str> = normalized_path.split('/').collect();
             self.find_all_by_parts(&parts, 0, "/")
@@ -249,9 +339,9 @@ impl Node {
             self.find_children_with_prefix(part)
         } else {
             let mut matches = Vec::new();
-            // 中间级别：只支持精确匹配
-            if let Some(child) = self.children.get(part) {
-                matches.push((part.to_string(), child));
+            // 中间级别：只支持精确匹配（使用缓存）
+            if let Some(&child_index) = self.children_cache.get(part) {
+                matches.push((part.to_string(), &self.children[child_index]));
             }
             matches
         };
@@ -275,10 +365,10 @@ impl Node {
     fn find_children_with_prefix(&self, prefix: &str) -> Vec<(String, &Node)> {
         let mut matches = Vec::new();
 
-        // 找到所有匹配的键名并返回
-        for (child_name, child_value) in &self.children {
-            if child_name.starts_with(prefix) {
-                matches.push((child_name.to_string(), child_value));
+        // 找到所有匹配的节点并返回
+        for child in &self.children {
+            if child.name.starts_with(prefix) {
+                matches.push((child.name.clone(), child));
             }
         }
 
@@ -318,9 +408,9 @@ impl Node {
         }
 
         if parts.len() == 1 {
-            // 删除直接子节点
+            // 删除直接子节点（精确匹配）
             let child_name = parts[0];
-            Ok(self.children.remove(child_name))
+            Ok(self.remove_child_exact(child_name))
         } else {
             // 需要递归到父节点进行删除
             self.remove_child_recursive(&parts, 0)
@@ -337,14 +427,14 @@ impl Node {
         if index >= parts.len() - 1 {
             // 已经到达要删除节点的父级
             let child_name_to_remove = parts[index];
-            Ok(self.children.remove(child_name_to_remove))
+            Ok(self.remove_child_exact(child_name_to_remove))
         } else {
             // 继续向下递归
             let current_part = parts[index];
 
-            // 中间级别只支持精确匹配
-            if let Some(child) = self.children.get_mut(current_part) {
-                child.remove_child_recursive(parts, index + 1)
+            // 中间级别只支持精确匹配（使用缓存）
+            if let Some(&child_index) = self.children_cache.get(current_part) {
+                self.children[child_index].remove_child_recursive(parts, index + 1)
             } else {
                 // 路径不存在
                 Ok(None)

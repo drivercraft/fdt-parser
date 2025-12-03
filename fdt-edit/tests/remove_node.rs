@@ -22,9 +22,9 @@ mod tests {
         assert_eq!(removed.unwrap().name, "gpio@1000");
 
         // 验证节点已删除
-        assert!(!root.children.contains_key("gpio@1000"));
-        assert!(root.children.contains_key("gpio@2000"));
-        assert!(root.children.contains_key("uart@3000"));
+        assert!(root.find_child_exact("gpio@1000").is_none());
+        assert!(root.find_child_exact("gpio@2000").is_some());
+        assert!(root.find_child_exact("uart@3000").is_some());
     }
 
     #[test]
@@ -47,13 +47,11 @@ mod tests {
 
         // 验证 eeprom 已删除但 i2c@0 还在
         let i2c_node = root
-            .children
-            .get("soc")
+            .find_child("soc")
             .unwrap()
-            .children
-            .get("i2c@0")
+            .find_child("i2c@0")
             .unwrap();
-        assert!(!i2c_node.children.contains_key("eeprom@50"));
+        assert!(i2c_node.find_child("eeprom@50").is_none());
     }
 
     #[test]
@@ -173,7 +171,7 @@ mod tests {
         assert!(removed.is_some(), "Should find and remove 'gpio@1000'");
 
         // 验证只有 gpio-controller@2000 还在
-        assert!(!root.children.contains_key("gpio@1000"));
-        assert!(root.children.contains_key("gpio-controller@2000"));
+        assert!(root.find_child("gpio@1000").is_none());
+        assert!(root.find_child("gpio-controller@2000").is_some());
     }
 }
