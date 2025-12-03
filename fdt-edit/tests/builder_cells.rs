@@ -32,7 +32,8 @@ mod tests {
         fdt.root.add_property(Property::SizeCells(0));
 
         // 当 size-cells = 0 时，reg 只有地址，没有大小
-        fdt.root.add_property(Property::reg(vec![RegInfo::new(0x1000, None)]));
+        fdt.root
+            .add_property(Property::reg(vec![RegInfo::new(0x1000, None)]));
 
         // 验证 FDT 构建成功，没有 panic
         let fdt_data = fdt.to_bytes();
@@ -81,7 +82,10 @@ mod tests {
         let mut soc = Node::new("soc");
         soc.add_property(Property::AddressCells(1));
         soc.add_property(Property::SizeCells(1));
-        soc.add_property(Property::reg(vec![RegInfo::new(0x40000000, Some(0x100000))]));
+        soc.add_property(Property::reg(vec![RegInfo::new(
+            0x40000000,
+            Some(0x100000),
+        )]));
 
         // 设备节点: 使用父节点的 1 cell address, 1 cell size
         let mut uart = Node::new("uart");

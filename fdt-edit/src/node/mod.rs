@@ -59,7 +59,6 @@ impl Node {
         self
     }
 
-    
     /// 按名称查找属性
     pub fn find_property(&self, name: &str) -> Option<&Property> {
         self.properties.iter().find(|p| p.name() == name)
@@ -98,11 +97,10 @@ impl Node {
         let name_base = name.split('@').next().unwrap_or(name);
 
         // 找到匹配的节点名称
-        let matching_index = self.children.iter()
-            .position(|child| {
-                let child_base = child.name.split('@').next().unwrap_or(&child.name);
-                child_base == name_base
-            });
+        let matching_index = self.children.iter().position(|child| {
+            let child_base = child.name.split('@').next().unwrap_or(&child.name);
+            child_base == name_base
+        });
 
         if let Some(index) = matching_index {
             let child = self.children.remove(index);
@@ -194,7 +192,11 @@ impl Node {
 
     /// 获取所有子节点名称（按字典序排序）
     pub fn child_names_sorted(&self) -> Vec<&String> {
-        let mut names = self.children.iter().map(|child| &child.name).collect::<Vec<_>>();
+        let mut names = self
+            .children
+            .iter()
+            .map(|child| &child.name)
+            .collect::<Vec<_>>();
         names.sort();
         names
     }

@@ -85,9 +85,9 @@ mod tests {
 
         // 应该有根节点 -> soc -> uart -> clock，共4个节点
         assert_eq!(nodes.len(), 4);
-        assert_eq!(nodes[0].name, "");      // 根节点
-        assert_eq!(nodes[1].name, "soc");   // 第一级子节点
-        assert_eq!(nodes[2].name, "uart");  // 第二级子节点
+        assert_eq!(nodes[0].name, ""); // 根节点
+        assert_eq!(nodes[1].name, "soc"); // 第一级子节点
+        assert_eq!(nodes[2].name, "uart"); // 第二级子节点
         assert_eq!(nodes[3].name, "clock"); // 第三级子节点
     }
 
@@ -114,7 +114,10 @@ mod tests {
         soc.add_child(uart1);
 
         let mut memory = Node::new("memory");
-        memory.add_property(Property::reg(vec![RegInfo::new(0x40000000, Some(0x10000000))]));
+        memory.add_property(Property::reg(vec![RegInfo::new(
+            0x40000000,
+            Some(0x10000000),
+        )]));
 
         fdt.root.add_child(soc);
         fdt.root.add_child(memory);
@@ -124,10 +127,10 @@ mod tests {
         // 应该有根节点 + soc + uart0 + uart1 + memory，共5个节点
         // 深度优先遍历：根节点 -> soc -> uart0 -> uart1 -> memory
         assert_eq!(nodes.len(), 5);
-        assert_eq!(nodes[0].name, "");       // 根节点
-        assert_eq!(nodes[1].name, "soc");    // 第一级子节点1（按插入顺序，深度优先遍历）
-        assert_eq!(nodes[2].name, "uart0");  // soc的子节点1
-        assert_eq!(nodes[3].name, "uart1");  // soc的子节点2
+        assert_eq!(nodes[0].name, ""); // 根节点
+        assert_eq!(nodes[1].name, "soc"); // 第一级子节点1（按插入顺序，深度优先遍历）
+        assert_eq!(nodes[2].name, "uart0"); // soc的子节点1
+        assert_eq!(nodes[3].name, "uart1"); // soc的子节点2
         assert_eq!(nodes[4].name, "memory"); // 第一级子节点2（按插入顺序，在soc的子树处理完后）
     }
 
@@ -151,10 +154,10 @@ mod tests {
 
         // 验证深度优先遍历顺序
         assert_eq!(nodes.len(), 5);
-        assert_eq!(nodes[0].name, "");           // 根节点
-        assert_eq!(nodes[1].name, "child1");     // 第一个子节点
+        assert_eq!(nodes[0].name, ""); // 根节点
+        assert_eq!(nodes[1].name, "child1"); // 第一个子节点
         assert_eq!(nodes[2].name, "grandchild1"); // child1的子节点
-        assert_eq!(nodes[3].name, "child2");     // 第二个子节点
+        assert_eq!(nodes[3].name, "child2"); // 第二个子节点
         assert_eq!(nodes[4].name, "grandchild2"); // child2的子节点
     }
 

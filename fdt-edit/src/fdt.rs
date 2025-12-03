@@ -663,7 +663,7 @@ impl Default for NodeContext {
     fn default() -> Self {
         Self {
             address_cells: 1, // 默认值
-            size_cells: 1,     // 默认值
+            size_cells: 1,    // 默认值
         }
     }
 }
@@ -707,7 +707,8 @@ impl FdtBuilder {
 
     /// 弹出当前节点上下文
     fn pop_context(&mut self) {
-        if self.node_stack.len() > 1 { // 保留根节点上下文
+        if self.node_stack.len() > 1 {
+            // 保留根节点上下文
             self.node_stack.pop();
         }
     }

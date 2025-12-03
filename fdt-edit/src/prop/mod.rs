@@ -5,7 +5,6 @@ pub use fdt_raw::{Phandle, RegInfo, Status};
 
 use crate::Node;
 
-
 /// Ranges 条目信息
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RangesEntry {
@@ -172,7 +171,12 @@ impl Property {
     }
 
     /// 将属性序列化为二进制数据，使用指定的父节点 address_cells 和 size_cells
-    pub fn to_bytes_with_cells(&self, _node: &Node, parent_address_cells: u8, parent_size_cells: u8) -> Vec<u8> {
+    pub fn to_bytes_with_cells(
+        &self,
+        _node: &Node,
+        parent_address_cells: u8,
+        parent_size_cells: u8,
+    ) -> Vec<u8> {
         match self {
             Property::AddressCells(v) => (*v as u32).to_be_bytes().to_vec(),
             Property::SizeCells(v) => (*v as u32).to_be_bytes().to_vec(),

@@ -46,11 +46,7 @@ mod tests {
         assert_eq!(removed.unwrap().name, "eeprom@50");
 
         // 验证 eeprom 已删除但 i2c@0 还在
-        let i2c_node = root
-            .find_child("soc")
-            .unwrap()
-            .find_child("i2c@0")
-            .unwrap();
+        let i2c_node = root.find_child("soc").unwrap().find_child("i2c@0").unwrap();
         assert!(i2c_node.find_child("eeprom@50").is_none());
     }
 

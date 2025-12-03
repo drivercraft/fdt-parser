@@ -19,7 +19,7 @@ mod tests {
         // SoC 节点: 作为根节点的子节点，应该使用父节点的 2+2 cells
         let mut soc = Node::new("soc");
         soc.add_property(Property::reg(vec![
-            RegInfo::new(0x40000000, Some(0x100000))  // 地址用2个cell，大小用2个cell
+            RegInfo::new(0x40000000, Some(0x100000)), // 地址用2个cell，大小用2个cell
         ]));
 
         // SoC 节点: address-cells = 1, size-cells = 1
@@ -30,7 +30,7 @@ mod tests {
         // UART 节点: 作为 SoC 的子节点，应该使用 SoC 的 1+1 cells
         let mut uart = Node::new("uart");
         uart.add_property(Property::reg(vec![
-            RegInfo::new(0x9000000, Some(0x1000))  // 地址用1个cell，大小用1个cell
+            RegInfo::new(0x9000000, Some(0x1000)), // 地址用1个cell，大小用1个cell
         ]));
 
         soc.add_child(uart);
@@ -62,7 +62,7 @@ mod tests {
         // 第二层: 中间节点 1+1 cells
         let mut middle = Node::new("middle");
         middle.add_property(Property::reg(vec![
-            RegInfo::new(0x10000000, Some(0x1000))  // 使用根节点的 2+2 cells
+            RegInfo::new(0x10000000, Some(0x1000)), // 使用根节点的 2+2 cells
         ]));
         middle.add_property(Property::AddressCells(1));
         middle.add_property(Property::SizeCells(1));
@@ -70,7 +70,7 @@ mod tests {
         // 第三层: 设备节点，继承中间节点的 1+1 cells
         let mut device = Node::new("device");
         device.add_property(Property::reg(vec![
-            RegInfo::new(0x2000, Some(0x100))  // 使用中间节点的 1+1 cells
+            RegInfo::new(0x2000, Some(0x100)), // 使用中间节点的 1+1 cells
         ]));
 
         middle.add_child(device);
@@ -91,7 +91,7 @@ mod tests {
 
         let mut device = Node::new("device");
         device.add_property(Property::reg(vec![
-            RegInfo::new(0x1000, Some(0x100))  // 使用默认的 1+1 cells
+            RegInfo::new(0x1000, Some(0x100)), // 使用默认的 1+1 cells
         ]));
 
         fdt.root.add_child(device);

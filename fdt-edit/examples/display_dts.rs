@@ -36,7 +36,10 @@ fn main() {
     // 添加 SOC 节点
     let mut soc = Node::new("soc");
     soc.add_property(Property::Compatible(vec!["simple-bus".to_string()]));
-    soc.add_property(Property::reg(vec![RegInfo::new(0x40000000, Some(0x100000))]));
+    soc.add_property(Property::reg(vec![RegInfo::new(
+        0x40000000,
+        Some(0x100000),
+    )]));
     soc.add_property(Property::Ranges {
         entries: vec![],
         child_address_cells: 1,

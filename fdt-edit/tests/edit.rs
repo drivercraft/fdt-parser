@@ -31,15 +31,11 @@ fn test_parse_and_rebuild() {
     cleanup();
 
     // 保存原始数据和重建数据到临时文件
-    fs::write(&original_dtb_path, &*raw_data)
-        .expect("无法写入原始DTB文件");
-    fs::write(&rebuilt_dtb_path, &fdt_data)
-        .expect("无法写入重建DTB文件");
+    fs::write(&original_dtb_path, &*raw_data).expect("无法写入原始DTB文件");
+    fs::write(&rebuilt_dtb_path, &fdt_data).expect("无法写入重建DTB文件");
 
     // 检查dtc命令是否可用
-    let dtc_check = Command::new("dtc")
-        .arg("--version")
-        .output();
+    let dtc_check = Command::new("dtc").arg("--version").output();
 
     if dtc_check.is_err() {
         cleanup();
@@ -48,36 +44,50 @@ fn test_parse_and_rebuild() {
 
     // 使用dtc将DTB文件转换为DTS文件
     let original_output = Command::new("dtc")
-        .args(["-I", "dtb", "-O", "dts", "-o",
-               original_dts_path.to_str().unwrap()])
+        .args([
+            "-I",
+            "dtb",
+            "-O",
+            "dts",
+            "-o",
+            original_dts_path.to_str().unwrap(),
+        ])
         .arg(original_dtb_path.to_str().unwrap())
         .output()
         .expect("执行dtc命令失败（原始文件）");
 
     if !original_output.status.success() {
         cleanup();
-        panic!("dtc转换原始DTB失败: {}",
-               String::from_utf8_lossy(&original_output.stderr));
+        panic!(
+            "dtc转换原始DTB失败: {}",
+            String::from_utf8_lossy(&original_output.stderr)
+        );
     }
 
     let rebuilt_output = Command::new("dtc")
-        .args(["-I", "dtb", "-O", "dts", "-o",
-               rebuilt_dts_path.to_str().unwrap()])
+        .args([
+            "-I",
+            "dtb",
+            "-O",
+            "dts",
+            "-o",
+            rebuilt_dts_path.to_str().unwrap(),
+        ])
         .arg(rebuilt_dtb_path.to_str().unwrap())
         .output()
         .expect("执行dtc命令失败（重建文件）");
 
     if !rebuilt_output.status.success() {
         cleanup();
-        panic!("dtc转换重建DTB失败: {}",
-               String::from_utf8_lossy(&rebuilt_output.stderr));
+        panic!(
+            "dtc转换重建DTB失败: {}",
+            String::from_utf8_lossy(&rebuilt_output.stderr)
+        );
     }
 
     // 读取生成的DTS文件并进行逐字对比
-    let original_dts = fs::read_to_string(&original_dts_path)
-        .expect("无法读取原始DTS文件");
-    let rebuilt_dts = fs::read_to_string(&rebuilt_dts_path)
-        .expect("无法读取重建DTS文件");
+    let original_dts = fs::read_to_string(&original_dts_path).expect("无法读取原始DTS文件");
+    let rebuilt_dts = fs::read_to_string(&rebuilt_dts_path).expect("无法读取重建DTS文件");
 
     // 进行逐字对比
     if original_dts != rebuilt_dts {
@@ -104,19 +114,26 @@ fn test_parse_and_rebuild() {
                 let context_end = (pos + 50).min(min_len);
 
                 println!("\n发现差异，位置: {}", pos);
-                println!("原始文件片段: {}{}{}",
-                         &original_dts[context_start..pos],
-                         ">>>DIFF<<<",
-                         &original_dts[pos..context_end]);
-                println!("重建文件片段: {}{}{}",
-                         &rebuilt_dts[context_start..pos],
-                         ">>>DIFF<<<",
-                         &rebuilt_dts[pos..context_end]);
+                println!(
+                    "原始文件片段: {}{}{}",
+                    &original_dts[context_start..pos],
+                    ">>>DIFF<<<",
+                    &original_dts[pos..context_end]
+                );
+                println!(
+                    "重建文件片段: {}{}{}",
+                    &rebuilt_dts[context_start..pos],
+                    ">>>DIFF<<<",
+                    &rebuilt_dts[pos..context_end]
+                );
             }
             None => {
                 if original_chars.len() != rebuilt_chars.len() {
-                    println!("文件长度不同: 原始={}, 重建={}",
-                           original_chars.len(), rebuilt_chars.len());
+                    println!(
+                        "文件长度不同: 原始={}, 重建={}",
+                        original_chars.len(),
+                        rebuilt_chars.len()
+                    );
                 }
             }
         }

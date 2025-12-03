@@ -16,7 +16,8 @@ mod tests {
         // 设置基本属性
         fdt.root.add_property(Property::AddressCells(1));
         fdt.root.add_property(Property::SizeCells(1));
-        fdt.root.add_property(Property::Compatible(vec!["test,soc".to_string()]));
+        fdt.root
+            .add_property(Property::Compatible(vec!["test,soc".to_string()]));
 
         let mut cpu_node = Node::new("cpu@0");
         cpu_node.add_property(Property::DeviceType("cpu".to_string()));
@@ -52,7 +53,8 @@ mod tests {
             size: 0x100000,
         });
 
-        fdt.root.add_property(Property::Model("Test Board".to_string()));
+        fdt.root
+            .add_property(Property::Model("Test Board".to_string()));
 
         let mut output = String::new();
         write!(&mut output, "{}", fdt).unwrap();
