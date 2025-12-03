@@ -610,6 +610,30 @@ impl Fdt {
         Ok(result)
     }
 
+    /// 获取所有节点的递归列表
+    ///
+    /// 返回包含根节点及其所有子节点的向量，按照深度优先遍历顺序
+    pub fn all_nodes(&self) -> Vec<&Node> {
+        let mut nodes = Vec::new();
+        self.collect_all_nodes(&self.root, &mut nodes);
+        nodes
+    }
+
+    /// 递归收集所有节点到结果向量中
+    ///
+    /// # 参数
+    /// - `node`: 当前要处理的节点
+    /// - `nodes`: 用于收集节点的结果向量
+    fn collect_all_nodes<'a>(&'a self, node: &'a Node, nodes: &mut Vec<&'a Node>) {
+        // 添加当前节点
+        nodes.push(node);
+
+        // 递归处理所有子节点
+        for child in node.children.values() {
+            self.collect_all_nodes(child, nodes);
+        }
+    }
+
     /// 序列化为 FDT 二进制数据
     pub fn to_bytes(&self) -> FdtData {
         let mut builder = FdtBuilder::new();
