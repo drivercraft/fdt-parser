@@ -46,7 +46,13 @@ mod tests {
         assert_eq!(removed.unwrap().name, "eeprom@50");
 
         // 验证 eeprom 已删除但 i2c@0 还在
-        let i2c_node = root.children.get("soc").unwrap().children.get("i2c@0").unwrap();
+        let i2c_node = root
+            .children
+            .get("soc")
+            .unwrap()
+            .children
+            .get("i2c@0")
+            .unwrap();
         assert!(!i2c_node.children.contains_key("eeprom@50"));
     }
 
@@ -60,7 +66,10 @@ mod tests {
 
         // 测试删除不存在的嵌套节点
         let removed = root.remove_by_path("soc/nonexistent").unwrap();
-        assert!(removed.is_none(), "Should return None for nonexistent nested node");
+        assert!(
+            removed.is_none(),
+            "Should return None for nonexistent nested node"
+        );
     }
 
     #[test]
@@ -154,7 +163,10 @@ mod tests {
         // 测试精确删除：删除 gpio@1000
         let removed = root.remove_by_path("gpio").unwrap();
         // 由于只支持精确匹配，这应该找不到 gpio@1000
-        assert!(removed.is_none(), "Should not find 'gpio' when only 'gpio@1000' exists");
+        assert!(
+            removed.is_none(),
+            "Should not find 'gpio' when only 'gpio@1000' exists"
+        );
 
         // 精确删除 gpio@1000
         let removed = root.remove_by_path("gpio@1000").unwrap();

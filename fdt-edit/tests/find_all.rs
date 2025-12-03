@@ -84,7 +84,11 @@ mod tests {
 
         // 验证找到的节点名称
         for (node, path) in &gpio_nodes {
-            assert!(node.name.starts_with("gpio"), "Node '{}' should start with 'gpio'", node.name);
+            assert!(
+                node.name.starts_with("gpio"),
+                "Node '{}' should start with 'gpio'",
+                node.name
+            );
             assert_eq!(path.as_str(), format!("/{}", node.name));
         }
 

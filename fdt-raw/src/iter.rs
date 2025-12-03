@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub struct FdtIter<'a> {
-    fdt: Fdt<'a>,
+    _fdt: Fdt<'a>,
     reader: Reader<'a>,
     strings: Bytes<'a>,
     /// 当前正在处理的节点迭代器
@@ -37,7 +37,7 @@ impl<'a> FdtIter<'a> {
         let _ = context_stack.push(NodeContext::default());
 
         Self {
-            fdt,
+            _fdt: fdt,
             reader,
             strings,
             node_iter: None,

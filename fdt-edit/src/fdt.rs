@@ -11,73 +11,12 @@ use fdt_raw::{FdtError, Phandle, Token, FDT_MAGIC};
 
 use crate::Node;
 
-/// 节点匹配结果枚举
-enum ChildMatchResult<'a> {
-    Exact(&'a Node),
-    Partial(&'a Node),
-    None,
-}
-
-/// 通用节点匹配逻辑
-fn find_child_match_result<'a>(parent: &'a Node, path_part: &str) -> ChildMatchResult<'a> {
-    // 1. 精确匹配完整名称（包含 @address）
-    if let Some(child) = parent.find_child_exact(path_part) {
-        return ChildMatchResult::Exact(child);
-    }
-
-    // 2. 提取 node-name 进行部分匹配
-    let node_name_base = extract_node_name_base(path_part);
-    for child in parent.children.values() {
-        let child_base = extract_node_name_base(&child.name);
-        if child_base == node_name_base {
-            return ChildMatchResult::Partial(child);
-        }
-    }
-
-    ChildMatchResult::None
-}
-
-/// 从节点名称中提取基础名称（去除 @unit-address 部分）
-///
-/// # Examples
-/// - "uart@1000" -> "uart"
-/// - "memory" -> "memory"
-/// - "gpio@20000" -> "gpio"
-fn extract_node_name_base(node_name: &str) -> &str {
-    node_name.split('@').next().unwrap_or(node_name)
-}
-
-/// 构建子节点路径
-///
-/// # Examples
-/// - build_child_path("/", "soc") -> "/soc"
-/// - build_child_path("/soc", "uart@10000") -> "/soc/uart@10000"
-fn build_child_path(parent_path: &str, child_name: &str) -> String {
-    if parent_path == "/" {
-        format!("/{}", child_name)
-    } else {
-        format!("{}/{}", parent_path, child_name)
-    }
-}
-
-/// 确保路径是绝对路径
-///
-/// 如果路径不以 '/' 开头，则添加 '/' 前缀
-fn ensure_absolute_path(path: &str) -> String {
-    if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("/{}", path)
-    }
-}
-
 /// Memory reservation block entry
 #[derive(Clone, Debug, Default)]
 pub struct MemoryReservation {
     pub address: u64,
     pub size: u64,
 }
-
 
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]
@@ -426,34 +365,6 @@ impl Fdt {
         Ok(())
     }
 
-    /// 高级路径规范化函数
-    ///
-    /// 处理各种边界情况：
-    /// - 多个连续斜杠： "//path//to//node" -> "/path/to/node"
-    /// - 前后空格： "  /path/to/node/  " -> "/path/to/node"
-    /// - 尾部斜杠： "/path/to/node/" -> "/path/to/node"
-    fn normalize_path_advanced(path: &str) -> Result<String, FdtError> {
-        let trimmed = path.trim();
-
-        // 特殊处理根路径
-        if trimmed == "/" {
-            return Ok("/".to_string());
-        }
-
-        // 分割并过滤空段，然后重新连接
-        let segments: Vec<&str> = trimmed
-            .split('/')
-            .filter(|segment| !segment.trim().is_empty())
-            .collect();
-
-        if segments.is_empty() {
-            return Ok("/".to_string());
-        }
-
-        // 确保返回绝对路径
-        Ok(ensure_absolute_path(&segments.join("/")))
-    }
-
     /// 应用设备树覆盖 (Device Tree Overlay)
     ///
     /// 支持两种 overlay 格式：
@@ -472,7 +383,7 @@ impl Fdt {
     /// ```
     pub fn apply_overlay(&mut self, overlay: &Fdt) -> Result<(), FdtError> {
         // 遍历 overlay 根节点的所有子节点
-        for (_child_name, child) in &overlay.root.children {
+        for child in overlay.root.children.values() {
             if child.name.starts_with("fragment@") || child.name == "fragment" {
                 // fragment 格式
                 self.apply_fragment(child)?;
@@ -636,7 +547,7 @@ impl Fdt {
         }
 
         // 递归处理剩余子节点
-        for (_child_name, child) in &mut node.children {
+        for child in node.children.values_mut() {
             Self::remove_disabled_nodes(child);
         }
     }
@@ -754,7 +665,7 @@ impl FdtBuilder {
         for prop in &node.properties {
             self.get_or_add_string(prop.name());
         }
-        for (_child_name, child) in &node.children {
+        for child in node.children.values() {
             self.collect_strings(child);
         }
     }
@@ -795,7 +706,7 @@ impl FdtBuilder {
         }
 
         // 子节点
-        for (_child_name, child) in &node.children {
+        for child in node.children.values() {
             self.build_node(child);
         }
 
@@ -835,7 +746,6 @@ impl FdtBuilder {
         }
     }
 
-    
     /// 生成最终 FDT 数据
     fn finalize(self, boot_cpuid_phys: u32, memory_reservations: &[MemoryReservation]) -> FdtData {
         // 计算各部分大小和偏移

@@ -52,10 +52,6 @@ impl<'a> Node<'a> {
         self.level
     }
 
-    pub(crate) fn data(&self) -> &Bytes<'a> {
-        &self.data
-    }
-
     /// 获取用于解析当前节点 reg 属性的 address cells
     pub fn reg_address_cells(&self) -> u8 {
         self.context.parent_address_cells
@@ -171,16 +167,8 @@ impl<'a> OneNodeIter<'a> {
         }
     }
 
-    pub fn state(&self) -> OneNodeState {
-        self.state
-    }
-
     pub fn reader(&self) -> &Reader<'a> {
         &self.reader
-    }
-
-    pub fn into_reader(self) -> Reader<'a> {
-        self.reader
     }
 
     pub fn parsed_props(&self) -> &ParsedProps {

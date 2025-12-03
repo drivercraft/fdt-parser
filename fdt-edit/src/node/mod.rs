@@ -329,7 +329,11 @@ impl Node {
 
     /// 递归删除子节点的实现
     /// 找到要删除节点的父节点，然后从父节点中删除目标子节点
-    fn remove_child_recursive(&mut self, parts: &[&str], index: usize) -> Result<Option<Node>, fdt_raw::FdtError> {
+    fn remove_child_recursive(
+        &mut self,
+        parts: &[&str],
+        index: usize,
+    ) -> Result<Option<Node>, fdt_raw::FdtError> {
         if index >= parts.len() - 1 {
             // 已经到达要删除节点的父级
             let child_name_to_remove = parts[index];

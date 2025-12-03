@@ -40,10 +40,6 @@ impl<'a> Bytes<'a> {
         self.range.end - self.range.start
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
     pub fn reader(&self) -> Reader<'a> {
         Reader {
             bytes: self.slice(0..self.len()),
@@ -89,21 +85,6 @@ impl<'a> Reader<'a> {
             pos: self.position(),
         })?;
         Ok(u32::from_be_bytes(bytes.try_into().unwrap()).into())
-    }
-
-    pub fn taken_len(&self) -> usize {
-        self.iter
-    }
-
-    pub fn skip_align(&mut self, size: usize) -> Result<(), FdtError> {
-        if self.iter + size > self.bytes.len() {
-            return Err(FdtError::BufferTooSmall {
-                pos: self.position(),
-            });
-        }
-        self.iter += size;
-        self.iter = (self.iter + 3) & !3;
-        Ok(())
     }
 
     pub fn backtrack(&mut self, size: usize) {

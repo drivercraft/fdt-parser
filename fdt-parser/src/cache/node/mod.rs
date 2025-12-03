@@ -238,7 +238,7 @@ impl NodeBase {
             .interrupt_parent()
             .ok_or(FdtError::PropertyNotFound("interrupt-parent"))?;
         let cells = parent.interrupt_cells()?;
-        let mut iter = U32Iter2D::new(&res.data, cells as _);
+        let iter = U32Iter2D::new(&res.data, cells as _);
         let mut out = Vec::new();
         for entry in iter {
             out.push(entry.collect());
