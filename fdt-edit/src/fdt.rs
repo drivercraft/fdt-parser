@@ -625,6 +625,24 @@ impl Fdt {
     }
 }
 
+/// 节点上下文信息
+#[derive(Debug, Clone)]
+struct NodeContext {
+    /// 当前节点的 address cells
+    address_cells: u8,
+    /// 当前节点的 size cells
+    size_cells: u8,
+}
+
+impl Default for NodeContext {
+    fn default() -> Self {
+        Self {
+            address_cells: 1, // 默认值
+            size_cells: 1,     // 默认值
+        }
+    }
+}
+
 /// FDT 构建器
 struct FdtBuilder {
     /// 结构块数据
@@ -633,6 +651,9 @@ struct FdtBuilder {
     strings_data: Vec<u8>,
     /// 字符串偏移映射
     string_offsets: Vec<(String, u32)>,
+    /// 节点栈，用于跟踪当前构建的节点层次结构
+    /// 栈顶是当前正在处理的节点的上下文
+    node_stack: Vec<NodeContext>,
 }
 
 impl FdtBuilder {
@@ -641,6 +662,39 @@ impl FdtBuilder {
             struct_data: Vec::new(),
             strings_data: Vec::new(),
             string_offsets: Vec::new(),
+            node_stack: vec![NodeContext::default()], // 初始化栈，包含根节点上下文
+        }
+    }
+
+    /// 获取当前节点的上下文
+    fn current_context(&self) -> &NodeContext {
+        self.node_stack.last().unwrap()
+    }
+
+    /// 推入新的节点上下文
+    fn push_context(&mut self, address_cells: u8, size_cells: u8) {
+        let context = NodeContext {
+            address_cells,
+            size_cells,
+        };
+        self.node_stack.push(context);
+    }
+
+    /// 弹出当前节点上下文
+    fn pop_context(&mut self) {
+        if self.node_stack.len() > 1 { // 保留根节点上下文
+            self.node_stack.pop();
+        }
+    }
+
+    /// 获取父节点的 address cells 和 size cells
+    fn get_parent_cells(&self) -> (u8, u8) {
+        if self.node_stack.len() >= 2 {
+            let parent_context = &self.node_stack[self.node_stack.len() - 2];
+            (parent_context.address_cells, parent_context.size_cells)
+        } else {
+            // 根节点的父节点，使用默认值
+            (1, 1)
         }
     }
 
@@ -681,6 +735,22 @@ impl FdtBuilder {
 
     /// 递归构建节点
     fn build_node(&mut self, node: &Node) {
+        // 首先分析当前节点的 address-cells 和 size-cells 属性
+        let mut address_cells = self.current_context().address_cells;
+        let mut size_cells = self.current_context().size_cells;
+
+        // 查找节点的 address-cells 和 size-cells 属性
+        for prop in &node.properties {
+            match prop {
+                crate::Property::AddressCells(value) => address_cells = *value,
+                crate::Property::SizeCells(value) => size_cells = *value,
+                _ => {}
+            }
+        }
+
+        // 推入当前节点的上下文
+        self.push_context(address_cells, size_cells);
+
         // BEGIN_NODE
         let begin_token: u32 = Token::BeginNode.into();
         self.struct_data.push(begin_token.to_be());
@@ -703,7 +773,7 @@ impl FdtBuilder {
 
         // 属性
         for prop in &node.properties {
-            self.build_property(prop);
+            self.build_property(node, prop);
         }
 
         // 子节点
@@ -714,16 +784,22 @@ impl FdtBuilder {
         // END_NODE
         let end_token: u32 = Token::EndNode.into();
         self.struct_data.push(end_token.to_be());
+
+        // 弹出当前节点的上下文
+        self.pop_context();
     }
 
     /// 构建属性
-    fn build_property(&mut self, prop: &crate::Property) {
+    fn build_property(&mut self, node: &Node, prop: &crate::Property) {
         // PROP token
         let prop_token: u32 = Token::Prop.into();
         self.struct_data.push(prop_token.to_be());
 
-        // 获取序列化数据
-        let data = prop.to_bytes();
+        // 获取父节点的 address_cells 和 size_cells
+        let (parent_address_cells, parent_size_cells) = self.get_parent_cells();
+
+        // 获取序列化数据（传入父节点的 cells 信息）
+        let data = prop.to_bytes_with_cells(node, parent_address_cells, parent_size_cells);
 
         // 属性长度
         self.struct_data.push((data.len() as u32).to_be());
@@ -932,11 +1008,7 @@ impl Fdt {
             crate::Property::AddressCells(value) => format!("#address-cells = <{}>", value),
             crate::Property::SizeCells(value) => format!("#size-cells = <{}>", value),
             crate::Property::InterruptCells(value) => format!("#interrupt-cells = <{}>", value),
-            crate::Property::Reg {
-                entries,
-                address_cells: _,
-                size_cells: _,
-            } => {
+            crate::Property::Reg(entries) => {
                 let values: Vec<String> = entries
                     .iter()
                     .map(|entry| {

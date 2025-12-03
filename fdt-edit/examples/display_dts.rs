@@ -1,5 +1,5 @@
 use core::fmt::Write;
-use fdt_edit::{Fdt, Node, Property, RegEntry};
+use fdt_edit::{Fdt, Node, Property, RegInfo};
 
 fn main() {
     let mut fdt = Fdt::new();
@@ -22,33 +22,21 @@ fn main() {
     let mut cpu0 = Node::new("cpu@0");
     cpu0.add_property(Property::DeviceType("cpu".to_string()));
     cpu0.add_property(Property::Compatible(vec!["arm,cortex-a53".to_string()]));
-    cpu0.add_property(Property::Reg {
-        entries: vec![RegEntry::new(0x0, Some(0x1000))],
-        address_cells: 1,
-        size_cells: 1,
-    });
+    cpu0.add_property(Property::reg(vec![RegInfo::new(0x0, Some(0x1000))]));
     cpu0.add_property(Property::Status(fdt_raw::Status::Okay));
     fdt.root.add_child(cpu0);
 
     let mut cpu1 = Node::new("cpu@1");
     cpu1.add_property(Property::DeviceType("cpu".to_string()));
     cpu1.add_property(Property::Compatible(vec!["arm,cortex-a53".to_string()]));
-    cpu1.add_property(Property::Reg {
-        entries: vec![RegEntry::new(0x1, Some(0x1000))],
-        address_cells: 1,
-        size_cells: 1,
-    });
+    cpu1.add_property(Property::reg(vec![RegInfo::new(0x1, Some(0x1000))]));
     cpu1.add_property(Property::Status(fdt_raw::Status::Okay));
     fdt.root.add_child(cpu1);
 
     // 添加 SOC 节点
     let mut soc = Node::new("soc");
     soc.add_property(Property::Compatible(vec!["simple-bus".to_string()]));
-    soc.add_property(Property::Reg {
-        entries: vec![RegEntry::new(0x40000000, Some(0x100000))],
-        address_cells: 1,
-        size_cells: 1,
-    });
+    soc.add_property(Property::reg(vec![RegInfo::new(0x40000000, Some(0x100000))]));
     soc.add_property(Property::Ranges {
         entries: vec![],
         child_address_cells: 1,
@@ -62,11 +50,7 @@ fn main() {
         "arm,pl011".to_string(),
         "arm,primecell".to_string(),
     ]));
-    uart.add_property(Property::Reg {
-        entries: vec![RegEntry::new(0x9000000, Some(0x1000))],
-        address_cells: 1,
-        size_cells: 1,
-    });
+    uart.add_property(Property::reg(vec![RegInfo::new(0x9000000, Some(0x1000))]));
     uart.add_property(Property::Raw(fdt_edit::RawProperty::from_u32(
         "interrupts",
         0x12345678,

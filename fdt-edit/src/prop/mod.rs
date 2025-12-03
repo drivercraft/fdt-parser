@@ -1,48 +1,10 @@
 use alloc::{string::String, vec::Vec};
 
 // Re-export from fdt_raw
-pub use fdt_raw::{Phandle, Status};
+pub use fdt_raw::{Phandle, RegInfo, Status};
 
-/// Reg 条目信息
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RegEntry {
-    /// 地址
-    pub address: u64,
-    /// 区域大小
-    pub size: Option<u64>,
-}
+use crate::Node;
 
-impl RegEntry {
-    /// 创建新的 RegEntry
-    pub fn new(address: u64, size: Option<u64>) -> Self {
-        Self { address, size }
-    }
-
-    /// 从地址和大小创建（常用于有 size-cells > 0 的情况）
-    pub fn with_size(address: u64, size: u64) -> Self {
-        Self {
-            address,
-            size: Some(size),
-        }
-    }
-
-    /// 仅地址（size-cells = 0 的情况）
-    pub fn address_only(address: u64) -> Self {
-        Self {
-            address,
-            size: None,
-        }
-    }
-}
-
-impl From<fdt_raw::RegInfo> for RegEntry {
-    fn from(info: fdt_raw::RegInfo) -> Self {
-        Self {
-            address: info.address,
-            size: info.size,
-        }
-    }
-}
 
 /// Ranges 条目信息
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,11 +112,7 @@ pub enum Property {
     /// #interrupt-cells 属性
     InterruptCells(u8),
     /// reg 属性（已解析）
-    Reg {
-        entries: Vec<RegEntry>,
-        address_cells: u8,
-        size_cells: u8,
-    },
+    Reg(Vec<RegInfo>),
     /// ranges 属性（空表示 1:1 映射）
     Ranges {
         entries: Vec<RangesEntry>,
@@ -207,21 +165,24 @@ impl Property {
     }
 
     /// 将属性序列化为二进制数据
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self, node: &Node) -> Vec<u8> {
+        let address_cells = node.address_cells().unwrap_or(2);
+        let size_cells = node.size_cells().unwrap_or(1);
+        self.to_bytes_with_cells(node, address_cells, size_cells)
+    }
+
+    /// 将属性序列化为二进制数据，使用指定的父节点 address_cells 和 size_cells
+    pub fn to_bytes_with_cells(&self, _node: &Node, parent_address_cells: u8, parent_size_cells: u8) -> Vec<u8> {
         match self {
             Property::AddressCells(v) => (*v as u32).to_be_bytes().to_vec(),
             Property::SizeCells(v) => (*v as u32).to_be_bytes().to_vec(),
             Property::InterruptCells(v) => (*v as u32).to_be_bytes().to_vec(),
-            Property::Reg {
-                entries,
-                address_cells,
-                size_cells,
-            } => {
+            Property::Reg(entries) => {
                 let mut data = Vec::new();
                 for entry in entries {
-                    write_cells(&mut data, entry.address, *address_cells);
+                    write_cells(&mut data, entry.address, parent_address_cells);
                     if let Some(size) = entry.size {
-                        write_cells(&mut data, size, *size_cells);
+                        write_cells(&mut data, size, parent_size_cells);
                     }
                 }
                 data
@@ -311,12 +272,8 @@ impl Property {
     }
 
     /// 创建 reg 属性
-    pub fn reg(entries: Vec<RegEntry>, address_cells: u8, size_cells: u8) -> Self {
-        Property::Reg {
-            entries,
-            address_cells,
-            size_cells,
-        }
+    pub fn reg(entries: Vec<RegInfo>) -> Self {
+        Property::Reg(entries)
     }
 
     /// 创建 ranges 属性（空表示 1:1 映射）
@@ -457,10 +414,7 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
             fdt_raw::Property::AddressCells(v) => Property::AddressCells(v),
             fdt_raw::Property::SizeCells(v) => Property::SizeCells(v),
             fdt_raw::Property::InterruptCells(v) => Property::InterruptCells(v),
-            fdt_raw::Property::Reg(reg) => {
-                // 注意：fdt_raw::Reg 无法获取 cells 信息，直接使用原始数据
-                Property::Raw(RawProperty::new("reg", reg.as_slice().to_vec()))
-            }
+            fdt_raw::Property::Reg(reg) => Property::Reg(reg.iter().collect()),
             fdt_raw::Property::Compatible(iter) => {
                 let strs: Vec<String> = iter.map(String::from).collect();
                 Property::Compatible(strs)

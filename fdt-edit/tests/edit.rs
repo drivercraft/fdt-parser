@@ -54,11 +54,7 @@ fn test_create_fdt() {
     let mut memory = Node::new("memory@80000000");
     memory
         .add_property(Property::device_type("memory"))
-        .add_property(Property::reg(
-            vec![RegEntry::with_size(0x80000000, 0x40000000)], // 1GB at 0x80000000
-            2,
-            2,
-        ));
+        .add_property(Property::reg(vec![RegInfo::new(0x80000000, Some(0x40000000))]));
     fdt.root.add_child(memory);
 
     // 添加 chosen 节点
@@ -96,11 +92,7 @@ fn test_modify_fdt() {
     let mut new_node = Node::new("my-device@1000");
     new_node
         .add_property(Property::compatible_from_strs(&["vendor,my-device"]))
-        .add_property(Property::reg(
-            vec![RegEntry::with_size(0x1000, 0x100)],
-            2,
-            2,
-        ))
+        .add_property(Property::reg(vec![RegInfo::new(0x1000, Some(0x100))]))
         .add_property(Property::status_okay());
     fdt.root.add_child(new_node);
 

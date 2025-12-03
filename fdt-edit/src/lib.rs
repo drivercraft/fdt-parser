@@ -8,4 +8,4 @@ mod prop;
 
 pub use fdt::{Fdt, FdtData, MemoryReservation};
 pub use node::Node;
-pub use prop::{Phandle, Property, RangesEntry, RawProperty, RegEntry, Status};
+pub use prop::{Phandle, Property, RangesEntry, RawProperty, RegInfo, Status};

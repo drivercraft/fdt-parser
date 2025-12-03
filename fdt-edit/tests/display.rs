@@ -7,7 +7,7 @@ mod tests {
     use alloc::{string::String, string::ToString, vec};
     use core::fmt::Write;
 
-    use fdt_edit::{Fdt, Node, Property, RegEntry};
+    use fdt_edit::{Fdt, Node, Property, RegInfo};
 
     #[test]
     fn test_display_simple_fdt() {
@@ -21,11 +21,7 @@ mod tests {
         let mut cpu_node = Node::new("cpu@0");
         cpu_node.add_property(Property::DeviceType("cpu".to_string()));
         cpu_node.add_property(Property::Compatible(vec!["arm,cortex-a53".to_string()]));
-        cpu_node.add_property(Property::Reg {
-            entries: vec![RegEntry::new(0x0, Some(0x1000))],
-            address_cells: 1,
-            size_cells: 1,
-        });
+        cpu_node.add_property(Property::reg(vec![RegInfo::new(0x0, Some(0x1000))]));
         cpu_node.add_property(Property::Status(fdt_raw::Status::Okay));
 
         fdt.root.add_child(cpu_node);
@@ -75,26 +71,14 @@ mod tests {
         fdt.root.add_property(Property::SizeCells(1));
 
         let mut bus_node = Node::new("bus@1000");
-        bus_node.add_property(Property::Reg {
-            entries: vec![RegEntry::new(0x1000, Some(0x100))],
-            address_cells: 1,
-            size_cells: 1,
-        });
+        bus_node.add_property(Property::reg(vec![RegInfo::new(0x1000, Some(0x100))]));
 
         let mut device1_node = Node::new("device1@2000");
-        device1_node.add_property(Property::Reg {
-            entries: vec![RegEntry::new(0x2000, Some(0x50))],
-            address_cells: 1,
-            size_cells: 1,
-        });
+        device1_node.add_property(Property::reg(vec![RegInfo::new(0x2000, Some(0x50))]));
         device1_node.add_property(Property::Status(fdt_raw::Status::Okay));
 
         let mut device2_node = Node::new("device2@3000");
-        device2_node.add_property(Property::Reg {
-            entries: vec![RegEntry::new(0x3000, Some(0x50))],
-            address_cells: 1,
-            size_cells: 1,
-        });
+        device2_node.add_property(Property::reg(vec![RegInfo::new(0x3000, Some(0x50))]));
         device2_node.add_property(Property::Status(fdt_raw::Status::Disabled));
 
         bus_node.add_child(device1_node);
