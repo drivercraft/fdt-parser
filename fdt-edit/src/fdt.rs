@@ -654,11 +654,21 @@ impl Fdt {
     ///
     /// # 示例
     /// ```rust
+    /// # use fdt_edit::Fdt;
+    /// let mut fdt = Fdt::new();
+    ///
+    /// // 先添加节点再删除
+    /// let mut soc = fdt_edit::Node::new("soc");
+    /// let mut gpio = fdt_edit::Node::new("gpio@1000");
+    /// soc.add_child(gpio);
+    /// fdt.root.add_child(soc);
+    ///
     /// // 精确删除节点
     /// let removed = fdt.remove_node("soc/gpio@1000")?;
     ///
-    /// // 通过别名删除节点
-    /// let removed = fdt.remove_node("serial0")?;
+    /// // 删除不存在的节点会返回 NotFound 错误
+    /// // let removed = fdt.remove_node("nonexistent")?; // 这会返回 Err(NotFound)
+    /// # Ok::<(), fdt_raw::FdtError>(())
     /// ```
     pub fn remove_node(&mut self, path: &str) -> Result<Option<Node>, FdtError> {
         let normalized_path = path.trim_start_matches('/');

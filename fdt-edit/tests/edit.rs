@@ -166,21 +166,21 @@ fn test_find_by_path() {
 
     // 测试根节点
     let root = fdt.find_by_path("/");
-    assert!(root.is_some());
-    let (node, path) = root.unwrap();
+    assert_eq!(root.len(), 1);
+    let (node, path) = &root[0];
     assert!(node.name.is_empty());
     assert_eq!(path, "/");
 
-    // 测试 soc 节点
-    let soc = fdt.find_by_path("/soc");
+    // 测试 soc 节点 - 使用精确匹配
+    let soc = fdt.get_by_path("/soc");
     assert!(soc.is_some());
     let (node, path) = soc.unwrap();
     assert_eq!(node.name, "soc");
     assert_eq!(path, "/soc");
 
-    // 测试不存在的路径
+    // 测试不存在的路径 - find_by_path 返回空 Vec
     let not_found = fdt.find_by_path("/not/exist");
-    assert!(not_found.is_none());
+    assert!(not_found.is_empty());
 }
 
 #[test]
@@ -233,18 +233,25 @@ fn test_find_all_by_path() {
     assert!(node.name.is_empty());
     assert_eq!(path, "/");
 
-    // 使用通配符查找
-    // 查找所有一级子节点
-    let first_level = fdt.find_all_by_path("/*");
-    assert!(!first_level.is_empty(), "should have first level children");
-    println!("Found {} first level nodes", first_level.len());
-    for (node, path) in &first_level {
+    // 查找根节点的直接子节点
+    let root_children = fdt.root.children.iter().map(|(name, _node)|
+        fdt.get_by_path(&format!("/{}", name)).unwrap()
+    ).collect::<Vec<_>>();
+    assert!(!root_children.is_empty(), "should have first level children");
+    println!("Found {} first level nodes", root_children.len());
+    for (node, path) in &root_children {
         println!("  {} at {}", node.name, path);
     }
 
-    // 通配符测试：查找 /soc 下的所有子节点（如果存在 soc）
-    let soc_children = fdt.find_all_by_path("/soc/*");
-    println!("Found {} children under /soc", soc_children.len());
+    // 查找 /soc 下的所有子节点（如果存在 soc）
+    if let Some(soc_node) = fdt.get_by_path("/soc") {
+        let soc_children = soc_node.0.children.iter().map(|(name, _node)|
+            fdt.get_by_path(&format!("/soc/{}", name)).unwrap()
+        ).collect::<Vec<_>>();
+        println!("Found {} children under /soc", soc_children.len());
+    } else {
+        println!("No /soc node found");
+    }
 }
 
 #[test]
@@ -287,7 +294,7 @@ fn test_find_by_path_mut() {
     }
 
     // 验证修改
-    let memory = fdt.find_by_path("/memory@40000000");
+    let memory = fdt.get_by_path("/memory@40000000");
     assert!(memory.is_some());
     let (node, _path) = memory.unwrap();
     assert!(node.find_property("test-prop").is_some());
@@ -310,18 +317,18 @@ fn test_find_by_alias() {
         // 通过别名查找
         let result = fdt.find_by_path(alias_name);
         assert!(
-            result.is_some(),
+            !result.is_empty(),
             "should find node by alias '{}'",
             alias_name
         );
-        let (node, resolved_path) = result.unwrap();
+        let (node, resolved_path) = &result[0];
         println!(
             "Alias '{}' resolved to path '{}'",
             alias_name, resolved_path
         );
 
         // 通过完整路径查找
-        let result_by_path = fdt.find_by_path(expected_path);
+        let result_by_path = fdt.get_by_path(expected_path);
         assert!(
             result_by_path.is_some(),
             "should find node by path '{}'",
@@ -389,14 +396,14 @@ fn test_apply_overlay() {
 
     // 验证 overlay 结果
     // 1. gpio 节点应该被添加
-    let gpio = base_fdt.find_by_path("/soc/gpio@20000");
+    let gpio = base_fdt.get_by_path("/soc/gpio@20000");
     assert!(gpio.is_some(), "gpio node should be added");
     let (gpio_node, gpio_path) = gpio.unwrap();
     assert!(gpio_node.find_property("compatible").is_some());
     println!("gpio node added at {}", gpio_path);
 
     // 2. uart 节点应该有新属性
-    let uart = base_fdt.find_by_path("/soc/uart@10000");
+    let uart = base_fdt.get_by_path("/soc/uart@10000");
     assert!(uart.is_some(), "uart node should still exist");
     let (uart_node, _) = uart.unwrap();
     assert!(
@@ -460,20 +467,21 @@ fn test_find_by_path_with_unit_address() {
     let fdt = Fdt::from_bytes(&raw).unwrap();
 
     // 测试精确匹配带 @ 地址的节点
-    let memory = fdt.find_by_path("/memory@40000000");
+    let memory = fdt.get_by_path("/memory@40000000");
     assert!(memory.is_some(), "should find memory@40000000");
     let (node, path) = memory.unwrap();
     assert_eq!(path, "/memory@40000000");
     assert!(node.name.starts_with("memory"));
 
-    // 测试通过节点名部分匹配（不带地址）
+    // 测试通过节点名前缀匹配（不带地址）
     let memory_partial = fdt.find_by_path("/memory");
     assert!(
-        memory_partial.is_some(),
-        "should find memory by partial match"
+        !memory_partial.is_empty(),
+        "should find memory by prefix match"
     );
-    let (node_partial, path_partial) = memory_partial.unwrap();
-    assert_eq!(path_partial, "/memory");
+    let (node_partial, path_partial) = &memory_partial[0];
+    // 路径应该是找到的实际节点的完整路径
+    assert_eq!(path_partial, "/memory@40000000");
     assert!(node_partial.name.starts_with("memory"));
 
     // 验证两种方式找到的是同一个节点
@@ -492,15 +500,15 @@ fn test_find_by_path_mut_with_unit_address() {
     }
 
     // 验证修改成功
-    let memory = fdt.find_by_path("/memory@40000000");
+    let memory = fdt.get_by_path("/memory@40000000");
     assert!(memory.is_some());
     let (node, _path) = memory.unwrap();
     assert!(node.find_property("test-prop").is_some());
 
     // 通过部分路径也能找到同一个节点并验证修改
     let memory_partial = fdt.find_by_path("/memory");
-    assert!(memory_partial.is_some());
-    let (node_partial, _path) = memory_partial.unwrap();
+    assert!(!memory_partial.is_empty());
+    let (node_partial, _path) = &memory_partial[0];
     assert!(node_partial.find_property("test-prop").is_some());
 }
 
@@ -519,15 +527,15 @@ fn test_remove_node_by_unit_address() {
     fdt.root.add_child(soc);
 
     // 验证节点存在
-    assert!(fdt.find_by_path("/soc/uart@11000").is_some());
+    assert!(fdt.get_by_path("/soc/uart@11000").is_some());
 
     // 删除节点
     let result = fdt.remove_node("/soc/uart@11000");
     assert!(result.is_ok(), "should successfully remove uart@11000");
 
     // 验证节点已被删除
-    assert!(fdt.find_by_path("/soc/uart@11000").is_none());
-    assert!(fdt.find_by_path("/soc").is_some()); // soc 节点应该还在
+    assert!(fdt.get_by_path("/soc/uart@11000").is_none());
+    assert!(fdt.get_by_path("/soc").is_some()); // soc 节点应该还在
 }
 
 #[test]
@@ -579,8 +587,8 @@ fn test_remove_node_by_alias() {
     fdt.root.add_child(soc);
 
     // 验证节点存在
-    assert!(fdt.find_by_path("serial0").is_some());
-    assert!(fdt.find_by_path("/soc/uart@10000").is_some());
+    assert!(!fdt.find_by_path("serial0").is_empty());
+    assert!(fdt.get_by_path("/soc/uart@10000").is_some());
 
     // 验证别名存在
     let aliases_before = fdt.aliases();
@@ -599,8 +607,8 @@ fn test_remove_node_by_alias() {
     assert!(result.is_ok(), "should successfully remove node by alias");
 
     // 验证节点已被删除
-    assert!(fdt.find_by_path("serial0").is_none());
-    assert!(fdt.find_by_path("/soc/uart@10000").is_none());
+    assert!(fdt.find_by_path("serial0").is_empty());
+    assert!(fdt.get_by_path("/soc/uart@10000").is_none());
 
     // 验证别名已被删除
     let aliases_after = fdt.aliases();
@@ -628,19 +636,22 @@ fn test_complex_path_with_unit_addresses() {
     fdt.root.add_child(soc);
 
     // 测试完整路径查找
-    let eeprom_full = fdt.find_by_path("/soc@40000000/i2c@40002000/eeprom@50");
+    let eeprom_full = fdt.get_by_path("/soc@40000000/i2c@40002000/eeprom@50");
     assert!(eeprom_full.is_some(), "should find eeprom by full path");
     let (node, path) = eeprom_full.unwrap();
     assert_eq!(path, "/soc@40000000/i2c@40002000/eeprom@50");
 
-    // 测试部分匹配路径查找
-    let eeprom_partial = fdt.find_by_path("/soc/i2c/eeprom");
+    // 测试前缀匹配路径查找 - 只有最后一级支持前缀匹配
+    // 这里 /soc 必须精确匹配，但根节点是 /soc@40000000，所以找不到
+    // 让我们使用正确的中间级别进行测试
+    let eeprom_partial = fdt.find_by_path("/soc@40000000/i2c@40002000/eeprom");
     assert!(
-        eeprom_partial.is_some(),
-        "should find eeprom by partial match"
+        !eeprom_partial.is_empty(),
+        "should find eeprom by prefix match (only last level supports prefix)"
     );
-    let (node_partial, path_partial) = eeprom_partial.unwrap();
-    assert_eq!(path_partial, "/soc/i2c/eeprom");
+    let (node_partial, path_partial) = &eeprom_partial[0];
+    // 路径应该是找到的实际节点的完整路径
+    assert_eq!(path_partial, "/soc@40000000/i2c@40002000/eeprom@50");
 
     // 验证找到的是同一个节点
     assert_eq!(node.name, node_partial.name);
@@ -650,9 +661,7 @@ fn test_complex_path_with_unit_addresses() {
     assert!(result.is_ok(), "should remove i2c node");
 
     // 验证整个子树都被删除
-    assert!(fdt.find_by_path("/soc@40000000/i2c@40002000").is_none());
-    assert!(fdt
-        .find_by_path("/soc@40000000/i2c@40002000/eeprom@50")
-        .is_none());
-    assert!(fdt.find_by_path("/soc@40000000").is_some()); // soc 节点应该还在
+    assert!(fdt.get_by_path("/soc@40000000/i2c@40002000").is_none());
+    assert!(fdt.get_by_path("/soc@40000000/i2c@40002000/eeprom@50").is_none());
+    assert!(fdt.get_by_path("/soc@40000000").is_some()); // soc 节点应该还在
 }

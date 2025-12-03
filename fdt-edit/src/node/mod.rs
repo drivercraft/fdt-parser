@@ -204,6 +204,8 @@ impl Node {
     ///
     /// # 示例
     /// ```rust
+    /// # use fdt_edit::Node;
+    /// let mut node = Node::root();
     /// let nodes = node.find_all("gpio");      // 查找 gpio 或 gpio@xxx 等节点
     /// let nodes = node.find_all("soc/uart");   // 查找 soc/uart 或 soc/uart@1000 等节点
     /// ```
@@ -295,11 +297,14 @@ impl Node {
     ///
     /// # 示例
     /// ```rust
+    /// # use fdt_edit::Node;
+    /// let mut node = Node::root();
     /// // 精确删除节点
     /// let removed = node.remove_by_path("soc/gpio@1000")?;
     ///
     /// // 精确删除嵌套节点
     /// let removed = node.remove_by_path("soc/i2c@0/eeprom@50")?;
+    /// # Ok::<(), fdt_raw::FdtError>(())
     /// ```
     pub fn remove_by_path(&mut self, path: &str) -> Result<Option<Node>, fdt_raw::FdtError> {
         let normalized_path = path.trim_start_matches('/');
