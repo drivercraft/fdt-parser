@@ -25,7 +25,7 @@ fn test_parse_and_rebuild() {
     let has_memory = fdt
         .root
         .children
-        .iter()
+        .values()
         .any(|c| c.name.starts_with("memory"));
     assert!(has_memory, "should have memory node");
 
@@ -257,7 +257,7 @@ fn test_find_by_phandle() {
         if let Some(phandle) = node.phandle() {
             return Some((phandle, node.name.clone()));
         }
-        for child in &node.children {
+        for (_child_name, child) in &node.children {
             if let Some(result) = find_phandle_node(child) {
                 return Some(result);
             }
@@ -281,7 +281,7 @@ fn test_find_by_path_mut() {
     let mut fdt = Fdt::from_bytes(&raw).unwrap();
 
     // 通过路径修改节点
-    if let Some((memory, path)) = fdt.find_by_path_mut("/memory@40000000") {
+    if let Some((memory, path)) = fdt.get_by_path_mut("/memory@40000000") {
         println!("Modifying node at path: {}", path);
         memory.add_property(Property::raw_string("test-prop", "test-value"));
     }
@@ -468,7 +468,10 @@ fn test_find_by_path_with_unit_address() {
 
     // 测试通过节点名部分匹配（不带地址）
     let memory_partial = fdt.find_by_path("/memory");
-    assert!(memory_partial.is_some(), "should find memory by partial match");
+    assert!(
+        memory_partial.is_some(),
+        "should find memory by partial match"
+    );
     let (node_partial, path_partial) = memory_partial.unwrap();
     assert_eq!(path_partial, "/memory");
     assert!(node_partial.name.starts_with("memory"));
@@ -483,7 +486,7 @@ fn test_find_by_path_mut_with_unit_address() {
     let mut fdt = Fdt::from_bytes(&raw).unwrap();
 
     // 通过完整地址路径修改节点
-    if let Some((memory, path)) = fdt.find_by_path_mut("/memory@40000000") {
+    if let Some((memory, path)) = fdt.get_by_path_mut("/memory@40000000") {
         println!("Modifying node at path: {}", path);
         memory.add_property(Property::raw_string("test-prop", "test-value"));
     }
@@ -581,8 +584,14 @@ fn test_remove_node_by_alias() {
 
     // 验证别名存在
     let aliases_before = fdt.aliases();
-    assert!(!aliases_before.is_empty(), "should have aliases before removal");
-    assert!(aliases_before.iter().any(|(name, _)| *name == "serial0"), "should have serial0 alias");
+    assert!(
+        !aliases_before.is_empty(),
+        "should have aliases before removal"
+    );
+    assert!(
+        aliases_before.iter().any(|(name, _)| *name == "serial0"),
+        "should have serial0 alias"
+    );
     let aliases_before_count = aliases_before.len();
 
     // 通过别名删除节点
@@ -595,8 +604,14 @@ fn test_remove_node_by_alias() {
 
     // 验证别名已被删除
     let aliases_after = fdt.aliases();
-    assert!(aliases_after.iter().all(|(name, _)| *name != "serial0"), "serial0 alias should be removed");
-    assert!(aliases_after.len() < aliases_before_count, "should have fewer aliases after removal");
+    assert!(
+        aliases_after.iter().all(|(name, _)| *name != "serial0"),
+        "serial0 alias should be removed"
+    );
+    assert!(
+        aliases_after.len() < aliases_before_count,
+        "should have fewer aliases after removal"
+    );
 }
 
 #[test]
@@ -620,7 +635,10 @@ fn test_complex_path_with_unit_addresses() {
 
     // 测试部分匹配路径查找
     let eeprom_partial = fdt.find_by_path("/soc/i2c/eeprom");
-    assert!(eeprom_partial.is_some(), "should find eeprom by partial match");
+    assert!(
+        eeprom_partial.is_some(),
+        "should find eeprom by partial match"
+    );
     let (node_partial, path_partial) = eeprom_partial.unwrap();
     assert_eq!(path_partial, "/soc/i2c/eeprom");
 
@@ -633,6 +651,8 @@ fn test_complex_path_with_unit_addresses() {
 
     // 验证整个子树都被删除
     assert!(fdt.find_by_path("/soc@40000000/i2c@40002000").is_none());
-    assert!(fdt.find_by_path("/soc@40000000/i2c@40002000/eeprom@50").is_none());
+    assert!(fdt
+        .find_by_path("/soc@40000000/i2c@40002000/eeprom@50")
+        .is_none());
     assert!(fdt.find_by_path("/soc@40000000").is_some()); // soc 节点应该还在
 }
