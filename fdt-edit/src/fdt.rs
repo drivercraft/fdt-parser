@@ -915,7 +915,12 @@ impl Fdt {
     }
 
     /// 格式化属性为 DTS 格式
-    fn fmt_property(&self, f: &mut fmt::Formatter<'_>, prop: &crate::Property, indent: usize) -> fmt::Result {
+    fn fmt_property(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        prop: &crate::Property,
+        indent: usize,
+    ) -> fmt::Result {
         let indent_str = "    ".repeat(indent);
         write!(f, "{}{};", indent_str, self.format_property_value(prop))?;
         writeln!(f, "")
@@ -927,43 +932,68 @@ impl Fdt {
             crate::Property::AddressCells(value) => format!("#address-cells = <{}>", value),
             crate::Property::SizeCells(value) => format!("#size-cells = <{}>", value),
             crate::Property::InterruptCells(value) => format!("#interrupt-cells = <{}>", value),
-            crate::Property::Reg { entries, address_cells: _, size_cells: _ } => {
-                let values: Vec<String> = entries.iter().map(|entry| {
-                    let mut result = format!("{:#x}", entry.address);
-                    if let Some(size) = entry.size {
-                        result.push_str(&format!(" {:#x}", size));
-                    }
-                    result
-                }).collect();
+            crate::Property::Reg {
+                entries,
+                address_cells: _,
+                size_cells: _,
+            } => {
+                let values: Vec<String> = entries
+                    .iter()
+                    .map(|entry| {
+                        let mut result = format!("{:#x}", entry.address);
+                        if let Some(size) = entry.size {
+                            result.push_str(&format!(" {:#x}", size));
+                        }
+                        result
+                    })
+                    .collect();
                 format!("reg = <{}>", values.join(" "))
-            },
-            crate::Property::Ranges { entries, child_address_cells: _, parent_address_cells: _, size_cells: _ } => {
+            }
+            crate::Property::Ranges {
+                entries,
+                child_address_cells: _,
+                parent_address_cells: _,
+                size_cells: _,
+            } => {
                 if entries.is_empty() {
                     "ranges;".to_string()
                 } else {
-                    let values: Vec<String> = entries.iter().map(|entry| {
-                        format!("{:#x} {:#x} {:#x}", entry.child_bus_address, entry.parent_bus_address, entry.length)
-                    }).collect();
+                    let values: Vec<String> = entries
+                        .iter()
+                        .map(|entry| {
+                            format!(
+                                "{:#x} {:#x} {:#x}",
+                                entry.child_bus_address, entry.parent_bus_address, entry.length
+                            )
+                        })
+                        .collect();
                     format!("ranges = <{}>", values.join(" "))
                 }
-            },
+            }
             crate::Property::Compatible(values) => {
                 let quoted: Vec<String> = values.iter().map(|v| format!("\"{}\"", v)).collect();
                 format!("compatible = {}", quoted.join(", "))
-            },
+            }
             crate::Property::Model(value) => format!("model = \"{}\"", value),
-            crate::Property::Status(status) => format!("status = \"{}\"", match status {
-                crate::Status::Okay => "okay",
-                crate::Status::Disabled => "disabled",
-            }),
+            crate::Property::Status(status) => format!(
+                "status = \"{}\"",
+                match status {
+                    crate::Status::Okay => "okay",
+                    crate::Status::Disabled => "disabled",
+                }
+            ),
             crate::Property::Phandle(phandle) => format!("phandle = <{:#x}>", phandle.as_usize()),
-            crate::Property::LinuxPhandle(phandle) => format!("linux,phandle = <{:#x}>", phandle.as_usize()),
+            crate::Property::LinuxPhandle(phandle) => {
+                format!("linux,phandle = <{:#x}>", phandle.as_usize())
+            }
             crate::Property::DeviceType(value) => format!("device_type = \"{}\"", value),
-            crate::Property::InterruptParent(phandle) => format!("interrupt-parent = <{:#x}>", phandle.as_usize()),
+            crate::Property::InterruptParent(phandle) => {
+                format!("interrupt-parent = <{:#x}>", phandle.as_usize())
+            }
             crate::Property::ClockNames(values) => {
                 let quoted: Vec<String> = values.iter().map(|v| format!("\"{}\"", v)).collect();
                 format!("clock-names = {}", quoted.join(", "))
-            },
+            }
             crate::Property::DmaCoherent => "dma-coherent;".to_string(),
             crate::Property::Raw(raw) => {
                 if raw.is_empty() {
@@ -972,7 +1002,7 @@ impl Fdt {
                     // 尝试解析为字符串
                     if let Ok(s) = core::str::from_utf8(raw.data()) {
                         if s.ends_with('\0') {
-                            let s = &s[..s.len()-1];
+                            let s = &s[..s.len() - 1];
                             return format!("{} = \"{}\"", raw.name(), s);
                         } else {
                             return format!("{} = \"{}\"", raw.name(), s);
@@ -982,7 +1012,10 @@ impl Fdt {
                     // 如果数据以 null 结尾且只包含可打印字符，当作字符串
                     if let Some(null_pos) = raw.data().iter().position(|&b| b == 0) {
                         let data_str = &raw.data()[..null_pos];
-                        if data_str.iter().all(|&b| b.is_ascii_graphic() || b.is_ascii_whitespace()) {
+                        if data_str
+                            .iter()
+                            .all(|&b| b.is_ascii_graphic() || b.is_ascii_whitespace())
+                        {
                             if let Ok(s) = core::str::from_utf8(data_str) {
                                 return format!("{} = \"{}\"", raw.name(), s);
                             }
@@ -991,7 +1024,8 @@ impl Fdt {
 
                     // 如果全是 4 字节对齐的数据，当作数字数组
                     if raw.data().len() % 4 == 0 {
-                        let values: Vec<String> = raw.data()
+                        let values: Vec<String> = raw
+                            .data()
                             .chunks(4)
                             .map(|chunk| {
                                 let array: [u8; 4] = chunk.try_into().unwrap();
@@ -1001,10 +1035,8 @@ impl Fdt {
                         format!("{} = <{}>", raw.name(), values.join(" "))
                     } else {
                         // 当作字节数组
-                        let values: Vec<String> = raw.data()
-                            .iter()
-                            .map(|&b| format!("{:02x}", b))
-                            .collect();
+                        let values: Vec<String> =
+                            raw.data().iter().map(|&b| format!("{:02x}", b)).collect();
                         format!("{} = [{}]", raw.name(), values.join(" "))
                     }
                 }
