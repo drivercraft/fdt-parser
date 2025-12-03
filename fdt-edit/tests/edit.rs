@@ -2,40 +2,131 @@
 
 use dtb_file::*;
 use fdt_edit::*;
+use std::fs;
+use std::process::Command;
 
 #[test]
 fn test_parse_and_rebuild() {
     // 解析原始 DTB
-    let raw = fdt_qemu();
-    let fdt = Fdt::from_bytes(&raw).unwrap();
+    let raw_data = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw_data).unwrap();
+    let fdt_data = fdt.to_bytes();
 
-    // 验证根节点
-    assert!(fdt.root.name.is_empty(), "root node should have empty name");
+    // 创建临时文件
+    let temp_dir = std::env::temp_dir();
+    let original_dtb_path = temp_dir.join("original.dtb");
+    let rebuilt_dtb_path = temp_dir.join("rebuilt.dtb");
+    let original_dts_path = temp_dir.join("original.dts");
+    let rebuilt_dts_path = temp_dir.join("rebuilt.dts");
 
-    // 验证有属性
-    assert!(
-        !fdt.root.properties.is_empty(),
-        "root should have properties"
-    );
+    // 清理函数
+    let cleanup = || {
+        let _ = fs::remove_file(&original_dtb_path);
+        let _ = fs::remove_file(&rebuilt_dtb_path);
+        let _ = fs::remove_file(&original_dts_path);
+        let _ = fs::remove_file(&rebuilt_dts_path);
+    };
 
-    // 验证有子节点
-    assert!(!fdt.root.children.is_empty(), "root should have children");
+    // 确保清理临时文件
+    cleanup();
 
-    // 查找 memory 节点
-    let has_memory = fdt
-        .root
-        .children
-        .values()
-        .any(|c| c.name.starts_with("memory"));
-    assert!(has_memory, "should have memory node");
+    // 保存原始数据和重建数据到临时文件
+    fs::write(&original_dtb_path, &*raw_data)
+        .expect("无法写入原始DTB文件");
+    fs::write(&rebuilt_dtb_path, &fdt_data)
+        .expect("无法写入重建DTB文件");
 
-    // 重新序列化
-    let rebuilt = fdt.to_bytes();
+    // 检查dtc命令是否可用
+    let dtc_check = Command::new("dtc")
+        .arg("--version")
+        .output();
 
-    // 验证重建后的数据可以被重新解析
-    let reparsed = Fdt::from_bytes(&rebuilt).unwrap();
+    if dtc_check.is_err() {
+        cleanup();
+        panic!("dtc命令不可用，请安装device-tree-compiler");
+    }
 
-    // 验证基本结构一致
-    assert_eq!(fdt.root.children.len(), reparsed.root.children.len());
-    assert_eq!(fdt.root.properties.len(), reparsed.root.properties.len());
+    // 使用dtc将DTB文件转换为DTS文件
+    let original_output = Command::new("dtc")
+        .args(["-I", "dtb", "-O", "dts", "-o",
+               original_dts_path.to_str().unwrap()])
+        .arg(original_dtb_path.to_str().unwrap())
+        .output()
+        .expect("执行dtc命令失败（原始文件）");
+
+    if !original_output.status.success() {
+        cleanup();
+        panic!("dtc转换原始DTB失败: {}",
+               String::from_utf8_lossy(&original_output.stderr));
+    }
+
+    let rebuilt_output = Command::new("dtc")
+        .args(["-I", "dtb", "-O", "dts", "-o",
+               rebuilt_dts_path.to_str().unwrap()])
+        .arg(rebuilt_dtb_path.to_str().unwrap())
+        .output()
+        .expect("执行dtc命令失败（重建文件）");
+
+    if !rebuilt_output.status.success() {
+        cleanup();
+        panic!("dtc转换重建DTB失败: {}",
+               String::from_utf8_lossy(&rebuilt_output.stderr));
+    }
+
+    // 读取生成的DTS文件并进行逐字对比
+    let original_dts = fs::read_to_string(&original_dts_path)
+        .expect("无法读取原始DTS文件");
+    let rebuilt_dts = fs::read_to_string(&rebuilt_dts_path)
+        .expect("无法读取重建DTS文件");
+
+    // 进行逐字对比
+    if original_dts != rebuilt_dts {
+        println!("原始DTS文件内容:\n{}", original_dts);
+        println!("\n重建DTS文件内容:\n{}", rebuilt_dts);
+
+        // 找到第一个不同的位置
+        let original_chars: Vec<char> = original_dts.chars().collect();
+        let rebuilt_chars: Vec<char> = rebuilt_dts.chars().collect();
+
+        let min_len = original_chars.len().min(rebuilt_chars.len());
+        let mut diff_pos = None;
+
+        for i in 0..min_len {
+            if original_chars[i] != rebuilt_chars[i] {
+                diff_pos = Some(i);
+                break;
+            }
+        }
+
+        match diff_pos {
+            Some(pos) => {
+                let context_start = if pos >= 50 { pos - 50 } else { 0 };
+                let context_end = (pos + 50).min(min_len);
+
+                println!("\n发现差异，位置: {}", pos);
+                println!("原始文件片段: {}{}{}",
+                         &original_dts[context_start..pos],
+                         ">>>DIFF<<<",
+                         &original_dts[pos..context_end]);
+                println!("重建文件片段: {}{}{}",
+                         &rebuilt_dts[context_start..pos],
+                         ">>>DIFF<<<",
+                         &rebuilt_dts[pos..context_end]);
+            }
+            None => {
+                if original_chars.len() != rebuilt_chars.len() {
+                    println!("文件长度不同: 原始={}, 重建={}",
+                           original_chars.len(), rebuilt_chars.len());
+                }
+            }
+        }
+
+        cleanup();
+        panic!("原始DTS和重建DTS不完全匹配");
+    }
+
+    // 清理临时文件
+    cleanup();
+
+    println!("✅ 测试通过：原始DTB和重建DTB的DTS表示完全一致");
 }
