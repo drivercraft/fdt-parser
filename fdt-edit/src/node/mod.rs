@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use crate::{Phandle, Property};
+use crate::{Phandle, Property, Status};
 
 /// 可编辑的节点
 #[derive(Clone, Debug)]
@@ -116,6 +116,15 @@ impl Node {
                     _ => None,
                 })
             })
+    }
+
+    pub fn status(&self) -> Option<Status> {
+        for prop in &self.properties {
+            if let Property::Status(s) = prop {
+                return Some(*s);
+            }
+        }
+        None
     }
 }
 
