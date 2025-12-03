@@ -78,6 +78,8 @@ pub enum FdtError {
     InvalidMagic(u32),
     #[error("invalid pointer")]
     InvalidPtr,
+    #[error("invalid input")]
+    InvalidInput,
     #[error("data provided does not contain a nul")]
     FromBytesUntilNull,
     #[error("failed to parse UTF-8 string")]
