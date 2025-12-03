@@ -234,10 +234,16 @@ fn test_find_all_by_path() {
     assert_eq!(path, "/");
 
     // 查找根节点的直接子节点
-    let root_children = fdt.root.children.iter().map(|(name, _node)|
-        fdt.get_by_path(&format!("/{}", name)).unwrap()
-    ).collect::<Vec<_>>();
-    assert!(!root_children.is_empty(), "should have first level children");
+    let root_children = fdt
+        .root
+        .children
+        .keys()
+        .map(|name| fdt.get_by_path(&format!("/{}", name)).unwrap())
+        .collect::<Vec<_>>();
+    assert!(
+        !root_children.is_empty(),
+        "should have first level children"
+    );
     println!("Found {} first level nodes", root_children.len());
     for (node, path) in &root_children {
         println!("  {} at {}", node.name, path);
@@ -245,9 +251,12 @@ fn test_find_all_by_path() {
 
     // 查找 /soc 下的所有子节点（如果存在 soc）
     if let Some(soc_node) = fdt.get_by_path("/soc") {
-        let soc_children = soc_node.0.children.iter().map(|(name, _node)|
-            fdt.get_by_path(&format!("/soc/{}", name)).unwrap()
-        ).collect::<Vec<_>>();
+        let soc_children = soc_node
+            .0
+            .children
+            .keys()
+            .map(|name| fdt.get_by_path(&format!("/soc/{}", name)).unwrap())
+            .collect::<Vec<_>>();
         println!("Found {} children under /soc", soc_children.len());
     } else {
         println!("No /soc node found");
@@ -264,7 +273,7 @@ fn test_find_by_phandle() {
         if let Some(phandle) = node.phandle() {
             return Some((phandle, node.name.clone()));
         }
-        for (_child_name, child) in &node.children {
+        for child in node.children.values() {
             if let Some(result) = find_phandle_node(child) {
                 return Some(result);
             }
@@ -662,6 +671,8 @@ fn test_complex_path_with_unit_addresses() {
 
     // 验证整个子树都被删除
     assert!(fdt.get_by_path("/soc@40000000/i2c@40002000").is_none());
-    assert!(fdt.get_by_path("/soc@40000000/i2c@40002000/eeprom@50").is_none());
+    assert!(fdt
+        .get_by_path("/soc@40000000/i2c@40002000/eeprom@50")
+        .is_none());
     assert!(fdt.get_by_path("/soc@40000000").is_some()); // soc 节点应该还在
 }
