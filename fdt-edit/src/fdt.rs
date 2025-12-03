@@ -11,6 +11,68 @@ use fdt_raw::{FdtError, Phandle, Token, FDT_MAGIC};
 
 use crate::Node;
 
+/// === 辅助函数 ===
+
+/// 节点匹配结果枚举
+enum ChildMatchResult<'a> {
+    Exact(&'a Node),
+    Partial(&'a Node),
+    None,
+}
+
+/// 通用节点匹配逻辑
+fn find_child_match_result<'a>(parent: &'a Node, path_part: &str) -> ChildMatchResult<'a> {
+    // 1. 精确匹配完整名称（包含 @address）
+    if let Some(child) = parent.children.iter().find(|c| c.name == path_part) {
+        return ChildMatchResult::Exact(child);
+    }
+
+    // 2. 提取 node-name 进行部分匹配
+    let node_name_base = extract_node_name_base(path_part);
+    for child in &parent.children {
+        let child_base = extract_node_name_base(&child.name);
+        if child_base == node_name_base {
+            return ChildMatchResult::Partial(child);
+        }
+    }
+
+    ChildMatchResult::None
+}
+
+/// 从节点名称中提取基础名称（去除 @unit-address 部分）
+///
+/// # Examples
+/// - "uart@1000" -> "uart"
+/// - "memory" -> "memory"
+/// - "gpio@20000" -> "gpio"
+fn extract_node_name_base(node_name: &str) -> &str {
+    node_name.split('@').next().unwrap_or(node_name)
+}
+
+/// 构建子节点路径
+///
+/// # Examples
+/// - build_child_path("/", "soc") -> "/soc"
+/// - build_child_path("/soc", "uart@10000") -> "/soc/uart@10000"
+fn build_child_path(parent_path: &str, child_name: &str) -> String {
+    if parent_path == "/" {
+        format!("/{}", child_name)
+    } else {
+        format!("{}/{}", parent_path, child_name)
+    }
+}
+
+/// 确保路径是绝对路径
+///
+/// 如果路径不以 '/' 开头，则添加 '/' 前缀
+fn ensure_absolute_path(path: &str) -> String {
+    if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{}", path)
+    }
+}
+
 /// Memory reservation block entry
 #[derive(Clone, Debug, Default)]
 pub struct MemoryReservation {
@@ -157,66 +219,30 @@ impl Fdt {
 
     /// 查找匹配的子节点，支持 node-name@unit-address 格式
     fn find_child_matching<'a>(parent: &'a Node, path_part: &str) -> Option<&'a Node> {
-        // 如果包含 @，先尝试精确匹配
-        if path_part.contains('@') {
-            // 1. 精确匹配完整名称（包含 @address）
-            if let Some(child) = parent.children.iter().find(|c| c.name == path_part) {
-                return Some(child);
-            }
-
-            // 2. 提取 node-name 进行部分匹配
-            let node_name = path_part.split('@').next().unwrap();
-            return parent.children.iter().find(|c| {
-                c.name.starts_with(node_name) &&
-                (c.name.len() == node_name.len() || c.name[node_name.len()..].starts_with('@'))
-            });
+        match find_child_match_result(parent, path_part) {
+            ChildMatchResult::Exact(child) | ChildMatchResult::Partial(child) => Some(child),
+            ChildMatchResult::None => None,
         }
-
-        // 3. 传统匹配方式（如果找不到精确匹配，尝试部分匹配 @ 地址）
-        if let Some(child) = parent.find_child(path_part) {
-            return Some(child);
-        }
-
-        // 4. 如果传统方式没找到，尝试部分匹配带 @ 地址的节点
-        parent.children.iter().find(|c| {
-            c.name.starts_with(path_part) &&
-            (c.name.len() == path_part.len() || c.name[path_part.len()..].starts_with('@'))
-        })
     }
 
     /// 查找匹配的子节点（可变），支持 node-name@unit-address 格式
     fn find_child_matching_mut<'a>(parent: &'a mut Node, path_part: &str) -> Option<&'a mut Node> {
-        // 如果包含 @，先尝试精确匹配
-        if path_part.contains('@') {
-            // 1. 精确匹配完整名称（包含 @address）
-            if let Some(pos) = parent.children.iter().position(|c| c.name == path_part) {
-                return Some(&mut parent.children[pos]);
+        // 先查找索引，然后返回可变引用
+        if let Some(index) = Self::find_child_index_helper(parent, path_part) {
+            Some(&mut parent.children[index])
+        } else {
+            None
+        }
+    }
+
+    /// 查找子节点索引的辅助函数
+    fn find_child_index_helper(parent: &Node, path_part: &str) -> Option<usize> {
+        match find_child_match_result(parent, path_part) {
+            ChildMatchResult::Exact(target_child) | ChildMatchResult::Partial(target_child) => {
+                parent.children.iter().position(|c| core::ptr::eq(c, target_child))
             }
-
-            // 2. 提取 node-name 进行部分匹配
-            let node_name = path_part.split('@').next().unwrap();
-            if let Some(pos) = parent.children.iter().position(|c| {
-                c.name.starts_with(node_name) &&
-                (c.name.len() == node_name.len() || c.name[node_name.len()..].starts_with('@'))
-            }) {
-                return Some(&mut parent.children[pos]);
-            }
+            ChildMatchResult::None => None,
         }
-
-        // 3. 传统匹配方式（如果找不到精确匹配，尝试部分匹配 @ 地址）
-        if let Some(pos) = parent.children.iter().position(|c| c.name == path_part) {
-            return Some(&mut parent.children[pos]);
-        }
-
-        // 4. 如果传统方式没找到，尝试部分匹配带 @ 地址的节点
-        if let Some(pos) = parent.children.iter().position(|c| {
-            c.name.starts_with(path_part) &&
-            (c.name.len() == path_part.len() || c.name[path_part.len()..].starts_with('@'))
-        }) {
-            return Some(&mut parent.children[pos]);
-        }
-
-        None
     }
 
     /// 根据路径查找节点
@@ -357,22 +383,14 @@ impl Fdt {
         if part == "*" {
             // 通配符：遍历所有子节点
             for child in &node.children {
-                let child_path = if current_path == "/" {
-                    format!("/{}", child.name)
-                } else {
-                    format!("{}/{}", current_path, child.name)
-                };
+                let child_path = build_child_path(&current_path, &child.name);
                 Self::find_all_by_path_recursive(child, parts, index + 1, child_path, results);
             }
         } else {
             // 精确匹配：可能有多个同名节点
             for child in &node.children {
                 if child.name == part {
-                    let child_path = if current_path == "/" {
-                        format!("/{}", child.name)
-                    } else {
-                        format!("{}/{}", current_path, child.name)
-                    };
+                    let child_path = build_child_path(&current_path, &child.name);
                     Self::find_all_by_path_recursive(child, parts, index + 1, child_path, results);
                 }
             }
@@ -402,11 +420,7 @@ impl Fdt {
 
         // 递归检查所有子节点
         for child in &node.children {
-            let child_path = if current_path == "/" {
-                format!("/{}", child.name)
-            } else {
-                format!("{}/{}", current_path, child.name)
-            };
+            let child_path = build_child_path(&current_path, &child.name);
             Self::find_by_name_recursive(child, name, child_path, results);
         }
     }
@@ -435,11 +449,7 @@ impl Fdt {
 
         // 递归检查所有子节点
         for child in &node.children {
-            let child_path = if current_path == "/" {
-                format!("/{}", child.name)
-            } else {
-                format!("{}/{}", current_path, child.name)
-            };
+            let child_path = build_child_path(&current_path, &child.name);
             Self::find_by_name_prefix_recursive(child, prefix, child_path, results);
         }
     }
@@ -546,15 +556,11 @@ impl Fdt {
             match self.resolve_alias(&normalized_path) {
                 Some(resolved) => {
                     // 确保解析的路径是绝对路径
-                    if !resolved.starts_with('/') {
-                        format!("/{}", resolved)
-                    } else {
-                        resolved
-                    }
+                    ensure_absolute_path(&resolved)
                 }
                 None => {
                     // 不是别名，转换为绝对路径
-                    format!("/{}", normalized_path)
+                    ensure_absolute_path(&normalized_path)
                 }
             }
         };
@@ -597,28 +603,72 @@ impl Fdt {
             return Self::remove_child_from_node(&mut self.root, segments[0]);
         }
 
-        // 处理两级路径删除（目前测试只需要这个）
-        if segments.len() == 2 {
-            let parent_name = segments[0];
-            let target_name = segments[1];
+        // 使用迭代方式处理任意深度的路径删除，避免借用检查器问题
+        self.remove_node_iterative(&segments)
+    }
 
-            // 找到父节点的索引
-            let parent_index = self.find_child_index(&self.root, parent_name)?;
-
-            // 删除父节点中的目标子节点
-            return Self::remove_child_from_node(&mut self.root.children[parent_index], target_name);
+    /// 迭代方式删除节点，支持任意深度的路径
+    fn remove_node_iterative(&mut self, segments: &[&str]) -> Result<(), FdtError> {
+        if segments.is_empty() {
+            return Err(FdtError::InvalidInput);
         }
 
-        // 对于更深层级的路径，暂时返回 NotFound
+        // 从根节点开始，逐级查找
+        let mut node_indices: Vec<usize> = Vec::new();
+        let mut parent = &self.root;
+
+        // 遍历到倒数第二级节点
+        for i in 0..segments.len() - 1 {
+            let child_name = segments[i];
+            let child_index = Self::find_child_index_static(parent, child_name)?;
+            node_indices.push(child_index);
+
+            // 切换到下一个节点
+            parent = &parent.children[child_index];
+        }
+
+        // 在最后一级节点删除目标子节点
+        let target_name = segments[segments.len() - 1];
+        Self::remove_child_from_node_mut(&mut self.root, &node_indices, target_name)
+    }
+
+    /// 静态方法：根据节点索引向量删除子节点
+    fn remove_child_from_node_mut(
+        root: &mut Node,
+        indices: &[usize],
+        child_name: &str
+    ) -> Result<(), FdtError> {
+        let mut current = root;
+
+        // 根据索引路径导航到目标父节点
+        for &index in indices {
+            current = &mut current.children[index];
+        }
+
+        // 在目标父节点中删除子节点
+        Self::remove_child_from_node(current, child_name)
+    }
+
+    /// 静态方法：查找子节点索引
+    fn find_child_index_static(parent: &Node, child_name: &str) -> Result<usize, FdtError> {
+        let child_name_base = extract_node_name_base(child_name);
+
+        for (i, child) in parent.children.iter().enumerate() {
+            let child_base = extract_node_name_base(&child.name);
+            if child_base == child_name_base {
+                return Ok(i);
+            }
+        }
+
         Err(FdtError::NotFound)
     }
 
     /// 查找子节点索引
     fn find_child_index(&self, parent: &Node, child_name: &str) -> Result<usize, FdtError> {
-        let child_name_base = Self::extract_node_name_base(child_name);
+        let child_name_base = extract_node_name_base(child_name);
 
         for (i, child) in parent.children.iter().enumerate() {
-            let child_base = Self::extract_node_name_base(&child.name);
+            let child_base = extract_node_name_base(&child.name);
             if child_base == child_name_base {
                 return Ok(i);
             }
@@ -652,7 +702,7 @@ impl Fdt {
         }
 
         // 确保返回绝对路径
-        Ok(format!("/{}", segments.join("/")))
+        Ok(ensure_absolute_path(&segments.join("/")))
     }
 
   
@@ -664,14 +714,14 @@ impl Fdt {
     /// 2. 部分匹配：节点名称基础部分（忽略 @unit-address）
     fn remove_child_from_node(parent: &mut Node, child_name: &str) -> Result<(), FdtError> {
         let original_count = parent.children.len();
-        let child_name_base = Self::extract_node_name_base(child_name);
+        let child_name_base = extract_node_name_base(child_name);
 
         // 查找所有匹配的子节点
         let matching_indices: Vec<usize> = parent.children
             .iter()
             .enumerate()
             .filter_map(|(index, child)| {
-                let child_base = Self::extract_node_name_base(&child.name);
+                let child_base = extract_node_name_base(&child.name);
                 if child_base == child_name_base {
                     Some(index)
                 } else {
@@ -697,16 +747,6 @@ impl Fdt {
             // 这种情况理论上不应该发生，但作为安全检查
             Err(FdtError::NotFound)
         }
-    }
-
-    /// 从节点名称中提取基础名称（去除 @unit-address 部分）
-    ///
-    /// # Examples
-    /// - "uart@1000" -> "uart"
-    /// - "memory" -> "memory"
-    /// - "gpio@20000" -> "gpio"
-    fn extract_node_name_base(node_name: &str) -> &str {
-        node_name.split('@').next().unwrap_or(node_name)
     }
 
     /// 应用设备树覆盖 (Device Tree Overlay)
@@ -810,11 +850,7 @@ impl Fdt {
 
         // 递归搜索子节点
         for child in &current.children {
-            let child_path = if path == "/" {
-                format!("/{}", child.name)
-            } else {
-                format!("{}/{}", path, child.name)
-            };
+            let child_path = build_child_path(&path, child.name.as_str());
             if let Some(found) = Self::find_node_path_recursive(child, target, child_path) {
                 return Some(found);
             }
