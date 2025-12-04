@@ -99,6 +99,55 @@ impl RawProperty {
     pub fn len(&self) -> usize {
         self.data.len()
     }
+
+    pub fn as_u32_vec(&self) -> Vec<u32> {
+        if self.data.len() % 4 != 0 {
+            return vec![];
+        }
+        let mut result = Vec::new();
+        for chunk in self.data.chunks(4) {
+            let value = u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            result.push(value);
+        }
+        result
+    }
+
+    pub fn as_u64_vec(&self) -> Vec<u64> {
+        if self.data.len() % 8 != 0 {
+            return vec![];
+        }
+        let mut result = Vec::new();
+        for chunk in self.data.chunks(8) {
+            let value = u64::from_be_bytes([
+                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+            ]);
+            result.push(value);
+        }
+        result
+    }
+
+    pub fn as_string_list(&self) -> Vec<String> {
+        let mut result = Vec::new();
+        let mut start = 0;
+        for (i, &byte) in self.data.iter().enumerate() {
+            if byte == 0 {
+                if i == start {
+                    // 连续的 null 字节，跳过
+                    start += 1;
+                    continue;
+                }
+                let s = core::str::from_utf8(&self.data[start..i]).ok()?;
+                result.push(s.to_string());
+                start = i + 1;
+            }
+        }
+        // 处理最后一个字符串（如果没有以 null 结尾）
+        if start < self.data.len() {
+            let s = core::str::from_utf8(&self.data[start..]).ok()?;
+            result.push(s.to_string());
+        }
+        result
+    }
 }
 
 /// 可编辑的属性（类型化枚举）
