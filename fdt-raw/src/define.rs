@@ -1,6 +1,7 @@
 use core::{
     ffi::FromBytesUntilNulError,
     fmt::{Debug, Display},
+    ops::Deref,
 };
 
 pub const FDT_MAGIC: u32 = 0xd00dfeed;
@@ -47,6 +48,23 @@ pub enum Status {
     Disabled,
 }
 
+impl Deref for Status {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Status::Okay => "okay",
+            Status::Disabled => "disabled",
+        }
+    }
+}
+
+impl core::fmt::Display for Status {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.deref())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Phandle(u32);
@@ -59,6 +77,10 @@ impl From<u32> for Phandle {
 impl Phandle {
     pub fn as_usize(&self) -> usize {
         self.0 as usize
+    }
+
+    pub fn raw(&self) -> u32 {
+        self.0
     }
 }
 

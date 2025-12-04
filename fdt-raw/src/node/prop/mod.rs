@@ -95,14 +95,11 @@ pub enum Property<'a> {
     Reg(Reg<'a>),
     /// compatible 属性（字符串列表）
     Compatible(StrIter<'a>),
-    /// model 属性
-    Model(&'a str),
+
     /// status 属性
     Status(Status),
     /// phandle 属性
     Phandle(Phandle),
-    /// linux,phandle 属性
-    LinuxPhandle(Phandle),
     /// device_type 属性
     DeviceType(&'a str),
     /// interrupt-parent 属性
@@ -125,10 +122,8 @@ impl<'a> Property<'a> {
             Property::SizeCells(_) => "#size-cells",
             Property::Reg(_) => "reg",
             Property::Compatible(_) => "compatible",
-            Property::Model(_) => "model",
             Property::Status(_) => "status",
             Property::Phandle(_) => "phandle",
-            Property::LinuxPhandle(_) => "linux,phandle",
             Property::DeviceType(_) => "device_type",
             Property::InterruptParent(_) => "interrupt-parent",
             Property::InterruptCells(_) => "#interrupt-cells",
@@ -175,13 +170,7 @@ impl<'a> Property<'a> {
                 Property::Reg(reg)
             }
             "compatible" => Property::Compatible(StrIter { data }),
-            "model" => {
-                if let Some(s) = Self::parse_str(data) {
-                    Property::Model(s)
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
+
             "status" => {
                 if let Some(s) = Self::parse_str(data) {
                     match s {
@@ -201,14 +190,7 @@ impl<'a> Property<'a> {
                     Property::Unknown(RawProperty::new(name, data))
                 }
             }
-            "linux,phandle" => {
-                if data.len() == 4 {
-                    let val = u32::from_be_bytes(data.try_into().unwrap());
-                    Property::LinuxPhandle(Phandle::from(val))
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
+
             "device_type" => {
                 if let Some(s) = Self::parse_str(data) {
                     Property::DeviceType(s)
@@ -276,11 +258,9 @@ impl fmt::Display for Property<'_> {
                 }
                 Ok(())
             }
-            Property::Model(s) => write!(f, "model = \"{}\"", s),
             Property::DeviceType(s) => write!(f, "device_type = \"{}\"", s),
             Property::Status(s) => write!(f, "status = \"{:?}\"", s),
             Property::Phandle(p) => write!(f, "phandle = {}", p),
-            Property::LinuxPhandle(p) => write!(f, "linux,phandle = {}", p),
             Property::InterruptParent(p) => write!(f, "interrupt-parent = {}", p),
             Property::ClockNames(iter) => {
                 write!(f, "clock-names = ")?;

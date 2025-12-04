@@ -166,9 +166,7 @@ impl fmt::Debug for Fdt<'_> {
                     crate::Property::InterruptCells(v) => {
                         writeln!(f, "#interrupt-cells: {}", v)?;
                     }
-                    crate::Property::Model(s) => {
-                        writeln!(f, "model: \"{}\"", s)?;
-                    }
+
                     crate::Property::DeviceType(s) => {
                         writeln!(f, "device_type: \"{}\"", s)?;
                     }
@@ -178,9 +176,7 @@ impl fmt::Debug for Fdt<'_> {
                     crate::Property::Phandle(p) => {
                         writeln!(f, "phandle: {}", p)?;
                     }
-                    crate::Property::LinuxPhandle(p) => {
-                        writeln!(f, "linux,phandle: {}", p)?;
-                    }
+
                     crate::Property::InterruptParent(p) => {
                         writeln!(f, "interrupt-parent: {}", p)?;
                     }

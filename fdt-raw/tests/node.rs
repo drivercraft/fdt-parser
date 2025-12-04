@@ -505,14 +505,7 @@ fn test_node_properties() {
                         p.as_usize()
                     );
                 }
-                Property::LinuxPhandle(p) => {
-                    info!("  linux,phandle = {}", p);
-                    assert!(
-                        p.as_usize() > 0,
-                        "Linux phandle value should be positive, got {}",
-                        p.as_usize()
-                    );
-                }
+           
                 Property::InterruptParent(p) => {
                     found_interrupt_parent = true;
                     info!("  interrupt-parent = {}", p);
@@ -522,16 +515,7 @@ fn test_node_properties() {
                         p.as_usize()
                     );
                 }
-                Property::Model(s) => {
-                    found_model = true;
-                    info!("  model = \"{}\"", s);
-                    assert_eq!(
-                        *s, "linux,dummy-virt",
-                        "Model should be 'linux,dummy-virt', got '{}'",
-                        s
-                    );
-                    assert!(!s.is_empty(), "Model string should not be empty");
-                }
+           
                 Property::DeviceType(s) => {
                     found_device_type = true;
                     info!("  device_type = \"{}\"", s);

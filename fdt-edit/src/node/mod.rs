@@ -8,7 +8,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{Phandle, Property, Status};
+use crate::{Phandle, Property, RawProperty, Status, prop::PropertyOp};
 
 mod pci;
 
@@ -44,8 +44,8 @@ impl Node {
     fn new(raw: RawNode) -> Self {
         let mut node = Self::Raw(raw);
         if let Some(t) = node.find_property("device_type")
-            && let Property::DeviceType(dt) = t
-            && dt == "pci"
+            && let Property::Raw(dt) = t
+            && dt.as_str() == Some("pci")
         {
             node = Self::Pci(NodePci(node.to_raw()));
         }
@@ -298,7 +298,7 @@ pub trait NodeOp: NodeTrait {
     /// 获取 #address-cells 值
     fn address_cells(&self) -> Option<u8> {
         self.find_property("#address-cells").and_then(|p| match p {
-            Property::AddressCells(v) => Some(*v),
+            Property::U32(v) => Some(v.value() as _),
             _ => None,
         })
     }
@@ -306,31 +306,24 @@ pub trait NodeOp: NodeTrait {
     /// 获取 #size-cells 值
     fn size_cells(&self) -> Option<u8> {
         self.find_property("#size-cells").and_then(|p| match p {
-            Property::SizeCells(v) => Some(*v),
+            Property::U32(v) => Some(v.value() as _),
             _ => None,
         })
     }
 
     /// 获取 phandle 值
     fn phandle(&self) -> Option<Phandle> {
-        self.find_property("phandle")
-            .and_then(|p| match p {
-                Property::Phandle(v) => Some(*v),
-                _ => None,
-            })
-            .or_else(|| {
-                // 也检查 linux,phandle
-                self.find_property("linux,phandle").and_then(|p| match p {
-                    Property::LinuxPhandle(v) => Some(*v),
-                    _ => None,
-                })
-            })
+        let prop = self.find_property("phandle")?;
+        match prop {
+            Property::Phandle(p) => Some(p.value()),
+            _ => None,
+        }
     }
 
     fn status(&self) -> Option<Status> {
         for prop in self.properties() {
             if let Property::Status(s) = prop {
-                return Some(*s);
+                return Some(s.value());
             }
         }
         None
@@ -584,7 +577,9 @@ impl<'a> From<fdt_raw::Node<'a>> for Node {
 
         // 转换属性
         for prop in raw_node.properties() {
-            node.properties.push(Property::from(prop));
+            let raw = Property::from(prop);
+
+            // node.properties.push(Property::from(prop));
         }
 
         Self::new(node)

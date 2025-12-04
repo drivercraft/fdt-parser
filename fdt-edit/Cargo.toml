@@ -4,6 +4,7 @@ name = "fdt-edit"
 version = "0.1.0"
 
 [dependencies]
+log = "0.4"
 fdt-raw = {path = "../fdt-raw"}
 enum_dispatch = "0.3.13"
 
