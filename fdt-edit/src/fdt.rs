@@ -9,8 +9,8 @@ use alloc::{
 };
 use fdt_raw::{FDT_MAGIC, FdtError, Phandle, Status, Token};
 
-use crate::{FdtContext, NodeMut, NodeRef, ctx, node::NodeOp};
-use crate::{Node, PropertyOp};
+use crate::Node;
+use crate::{FdtContext, NodeMut, NodeRef, node::NodeOp, prop::PropertyKind};
 
 /// Memory reservation block entry
 #[derive(Clone, Debug, Default)]
@@ -258,8 +258,8 @@ impl Fdt {
         let prop = aliases_node.find_property(alias)?;
 
         // 从属性中获取字符串值（路径）
-        match prop {
-            crate::Property::Raw(raw) => raw.as_str().map(|s| s.to_string()),
+        match &prop.kind {
+            PropertyKind::Raw(raw) => raw.as_string_list().into_iter().next(),
             _ => None,
         }
     }
@@ -271,11 +271,10 @@ impl Fdt {
         let mut result = Vec::new();
         if let Some(aliases_node) = self.get_by_path("aliases") {
             for prop in aliases_node.properties() {
-                if let crate::Property::Raw(raw) = prop {
-                    let data = raw.data();
-                    let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
-                    if let Ok(path) = core::str::from_utf8(&data[..len]) {
-                        result.push((raw.name().to_string(), path.to_string()));
+                let name = prop.name().to_string();
+                if let PropertyKind::Raw(raw) = &prop.kind {
+                    if let Some(path) = raw.as_str() {
+                        result.push((name, path.to_string()));
                     }
                 }
             }
@@ -393,24 +392,21 @@ impl Fdt {
     /// 解析 fragment 的目标路径
     fn resolve_fragment_target(&self, fragment: &Node) -> Result<String, FdtError> {
         // 优先使用 target-path（字符串路径）
-        if let Some(crate::Property::Raw(raw)) = fragment.find_property("target-path") {
-            let data = raw.data();
-            let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
-            if let Ok(path) = core::str::from_utf8(&data[..len]) {
-                return Ok(path.to_string());
-            }
+        if let Some(prop) = fragment.find_property("target-path")
+            && let PropertyKind::Raw(raw) = &prop.kind
+        {
+            return Ok(raw.as_str().ok_or(FdtError::Utf8Parse)?.to_string());
         }
 
         // 使用 target（phandle 引用）
-        if let Some(crate::Property::Raw(raw)) = fragment.find_property("target") {
-            let data = raw.data();
-            if data.len() >= 4 {
-                let phandle_val = u32::from_be_bytes(data[..4].try_into().unwrap());
-                let phandle = Phandle::from(phandle_val);
-                // 通过 phandle 找到节点，然后构建路径
-                if let Some(node) = self.find_by_phandle(phandle) {
-                    return Ok(node.context.current_path);
-                }
+        if let Some(prop) = fragment.find_property("target")
+            && let PropertyKind::Raw(raw) = &prop.kind
+        {
+            let ph = Phandle::from(raw.as_u32_vec()[0]);
+
+            // 通过 phandle 找到节点，然后构建路径
+            if let Some(node) = self.find_by_phandle(ph) {
+                return Ok(node.context.current_path);
             }
         }
 

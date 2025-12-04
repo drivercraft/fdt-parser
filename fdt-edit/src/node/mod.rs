@@ -2,13 +2,12 @@ use core::ops::{Deref, DerefMut};
 
 use alloc::{
     collections::BTreeMap,
-    format,
     string::{String, ToString},
     vec,
     vec::Vec,
 };
 
-use crate::{FdtContext, Phandle, Property, Status, prop::PropertyOp};
+use crate::{FdtContext, Phandle, Property, Status, prop::PropertyKind};
 
 mod pci;
 
@@ -92,8 +91,8 @@ impl Node {
     fn new(raw: RawNode) -> Self {
         let mut node = Self::Raw(raw);
         if let Some(t) = node.find_property("device_type")
-            && let Property::Raw(dt) = t
-            && dt.as_str() == Some("pci")
+            && let PropertyKind::Str(dt) = &t.kind
+            && dt.as_str() == "pci"
         {
             node = Self::Pci(NodePci(node.to_raw()));
         }
@@ -348,42 +347,43 @@ pub trait NodeOp: NodeTrait {
 
     /// 获取 #address-cells 值
     fn address_cells(&self) -> Option<u8> {
-        self.find_property("#address-cells").and_then(|p| match p {
-            Property::U32(v) => Some(v.value() as _),
-            _ => None,
-        })
+        let prop = self.find_property("#address-cells")?;
+        let PropertyKind::Num(v) = &prop.kind else {
+            return None;
+        };
+        Some(*v as _)
     }
 
     /// 获取 #size-cells 值
     fn size_cells(&self) -> Option<u8> {
-        self.find_property("#size-cells").and_then(|p| match p {
-            Property::U32(v) => Some(v.value() as _),
-            _ => None,
-        })
+        let prop = self.find_property("#size-cells")?;
+        let PropertyKind::Num(v) = &prop.kind else {
+            return None;
+        };
+        Some(*v as _)
     }
 
     /// 获取 phandle 值
     fn phandle(&self) -> Option<Phandle> {
         let prop = self.find_property("phandle")?;
-        match prop {
-            Property::Phandle(p) => Some(p.value()),
+        match prop.kind {
+            PropertyKind::Phandle(p) => Some(p),
             _ => None,
         }
     }
 
     fn status(&self) -> Option<Status> {
-        for prop in self.properties() {
-            if let Property::Status(s) = prop {
-                return Some(s.value());
-            }
+        let prop = self.find_property("status")?;
+        match &prop.kind {
+            PropertyKind::Status(s) => Some(*s),
+            _ => None,
         }
-        None
     }
 
     fn interrupt_parent(&self) -> Option<Phandle> {
         let prop = self.find_property("interrupt-parent")?;
-        match prop {
-            Property::Phandle(p) => Some(p.value()),
+        match prop.kind {
+            PropertyKind::Phandle(p) => Some(p),
             _ => None,
         }
     }

@@ -8,72 +8,69 @@ pub use fdt_raw::{Phandle, RegInfo, Status};
 
 use crate::{Node, NodeOp};
 
-mod cells;
-mod phandle;
-
-pub use cells::*;
-pub use phandle::*;
-
-#[enum_dispatch::enum_dispatch(Property)]
-pub trait PropertyTrait {
-    fn as_raw(&self) -> &RawProperty;
-    fn as_raw_mut(&mut self) -> &mut RawProperty;
+#[derive(Clone, Debug)]
+pub struct Property {
+    pub name: String,
+    pub kind: PropertyKind,
 }
 
-pub trait PropertyOp: PropertyTrait {
-    /// 获取属性名称
-    fn name(&self) -> &str {
-        &self.as_raw().name
+#[derive(Clone, Debug)]
+pub enum PropertyKind {
+    Num(u64),
+    NumVec(Vec<u64>),
+    Str(String),
+    StringList(Vec<String>),
+    Status(Status),
+    Phandle(Phandle),
+    Bool,
+    Reg(Vec<Reg>),
+    Raw(RawProperty),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reg {
+    pub address: u64,
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RawProperty(pub Vec<u8>);
+
+impl RawProperty {
+    pub fn data(&self) -> &[u8] {
+        &self.0
     }
 
-    /// 获取属性数据
-    fn data(&self) -> &[u8] {
-        &self.as_raw().data
+    pub fn data_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.0
     }
 
-    /// 获取可变属性数据
-    fn data_mut(&mut self) -> &mut Vec<u8> {
-        &mut self.as_raw_mut().data
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
-    /// 属性数据是否为空
-    fn is_empty(&self) -> bool {
-        self.as_raw().data.is_empty()
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
-    /// 属性数据长度
-    fn len(&self) -> usize {
-        self.data().len()
-    }
-
-    fn as_str(&self) -> Option<&str> {
-        let data = self.data();
-        if data.is_empty() {
-            return None;
-        }
-        let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
-
-        core::str::from_utf8(&data[..len]).ok()
-    }
-
-    fn as_u32_vec(&self) -> Vec<u32> {
-        if self.data().len() % 4 != 0 {
+    pub fn as_u32_vec(&self) -> Vec<u32> {
+        if self.0.len() % 4 != 0 {
             return vec![];
         }
         let mut result = Vec::new();
-        for chunk in self.data().chunks(4) {
+        for chunk in self.0.chunks(4) {
             let value = u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
             result.push(value);
         }
         result
     }
 
-    fn as_u64_vec(&self) -> Vec<u64> {
-        if self.len() % 8 != 0 {
+    pub fn as_u64_vec(&self) -> Vec<u64> {
+        if self.0.len() % 8 != 0 {
             return vec![];
         }
         let mut result = Vec::new();
-        for chunk in self.data().chunks(8) {
+        for chunk in self.0.chunks(8) {
             let value = u64::from_be_bytes([
                 chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
             ]);
@@ -82,29 +79,150 @@ pub trait PropertyOp: PropertyTrait {
         result
     }
 
-    fn as_string_list(&self) -> Vec<String> {
+    pub fn as_string_list(&self) -> Vec<String> {
         let mut result = Vec::new();
         let mut start = 0;
-        for (i, &byte) in self.data().iter().enumerate() {
+        for (i, &byte) in self.0.iter().enumerate() {
             if byte == 0 {
                 if i == start {
                     // 连续的 null 字节，跳过
                     start += 1;
                     continue;
                 }
-                let s = core::str::from_utf8(&self.data()[start..i]).ok().unwrap();
+                let s = core::str::from_utf8(&self.0[start..i]).ok().unwrap();
                 result.push(s.to_string());
                 start = i + 1;
             }
         }
         // 处理最后一个字符串（如果没有以 null 结尾）
-        if start < self.len() {
-            let s = core::str::from_utf8(&self.data()[start..]).ok().unwrap();
+        if start < self.0.len() {
+            let s = core::str::from_utf8(&self.0[start..]).ok().unwrap();
             result.push(s.to_string());
         }
         result
     }
+
+    pub fn as_str(&self) -> Option<&str> {
+        if self.0.is_empty() {
+            return None;
+        }
+        let len = self.0.iter().position(|&b| b == 0).unwrap_or(self.0.len());
+
+        core::str::from_utf8(&self.0[..len]).ok()
+    }
+
+    pub fn set_str_list(&mut self, strings: &[&str]) {
+        self.0.clear();
+        for s in strings {
+            self.0.extend_from_slice(s.as_bytes());
+            self.0.push(0);
+        }
+    }
+
+    pub fn set_u32_vec(&mut self, values: &[u32]) {
+        self.0.clear();
+        for &v in values {
+            self.0.extend_from_slice(&v.to_be_bytes());
+        }
+    }
+
+    pub fn set_u64(&mut self, value: u64) {
+        self.0.clear();
+        self.0.extend_from_slice(&value.to_be_bytes());
+    }
 }
+
+// #[enum_dispatch::enum_dispatch(Property)]
+// pub trait PropertyTrait {
+//     fn as_raw(&self) -> &RawProperty;
+//     fn as_raw_mut(&mut self) -> &mut RawProperty;
+// }
+
+// pub trait PropertyOp: PropertyTrait {
+//     /// 获取属性名称
+//     fn name(&self) -> &str {
+//         &self.as_raw().name
+//     }
+
+//     /// 获取属性数据
+//     fn data(&self) -> &[u8] {
+//         &self.as_raw().data
+//     }
+
+//     /// 获取可变属性数据
+//     fn data_mut(&mut self) -> &mut Vec<u8> {
+//         &mut self.as_raw_mut().data
+//     }
+
+//     /// 属性数据是否为空
+//     fn is_empty(&self) -> bool {
+//         self.as_raw().data.is_empty()
+//     }
+
+//     /// 属性数据长度
+//     fn len(&self) -> usize {
+//         self.data().len()
+//     }
+
+//     fn as_str(&self) -> Option<&str> {
+//         let data = self.data();
+//         if data.is_empty() {
+//             return None;
+//         }
+//         let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
+
+//         core::str::from_utf8(&data[..len]).ok()
+//     }
+
+//     fn as_u32_vec(&self) -> Vec<u32> {
+//         if self.data().len() % 4 != 0 {
+//             return vec![];
+//         }
+//         let mut result = Vec::new();
+//         for chunk in self.data().chunks(4) {
+//             let value = u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+//             result.push(value);
+//         }
+//         result
+//     }
+
+//     fn as_u64_vec(&self) -> Vec<u64> {
+//         if self.len() % 8 != 0 {
+//             return vec![];
+//         }
+//         let mut result = Vec::new();
+//         for chunk in self.data().chunks(8) {
+//             let value = u64::from_be_bytes([
+//                 chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+//             ]);
+//             result.push(value);
+//         }
+//         result
+//     }
+
+//     fn as_string_list(&self) -> Vec<String> {
+//         let mut result = Vec::new();
+//         let mut start = 0;
+//         for (i, &byte) in self.data().iter().enumerate() {
+//             if byte == 0 {
+//                 if i == start {
+//                     // 连续的 null 字节，跳过
+//                     start += 1;
+//                     continue;
+//                 }
+//                 let s = core::str::from_utf8(&self.data()[start..i]).ok().unwrap();
+//                 result.push(s.to_string());
+//                 start = i + 1;
+//             }
+//         }
+//         // 处理最后一个字符串（如果没有以 null 结尾）
+//         if start < self.len() {
+//             let s = core::str::from_utf8(&self.data()[start..]).ok().unwrap();
+//             result.push(s.to_string());
+//         }
+//         result
+//     }
+// }
 
 /// Ranges 条目信息
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,109 +246,11 @@ impl RangesEntry {
     }
 }
 
-/// 原始属性（未识别的通用属性）
-#[derive(Clone, Debug)]
-pub struct RawProperty {
-    pub(crate) name: String,
-    pub(crate) data: Vec<u8>,
-}
-
-impl RawProperty {
-    /// 创建新的原始属性
-    pub fn new(name: impl Into<String>, data: Vec<u8>) -> Self {
-        Self {
-            name: name.into(),
-            data,
-        }
-    }
-
-    /// 创建空属性
-    pub fn empty(name: impl Into<String>) -> Self {
-        Self::new(name, Vec::new())
-    }
-
-    /// 创建 u32 属性
-    pub fn from_u32(name: impl Into<String>, value: u32) -> Self {
-        Self::new(name, value.to_be_bytes().to_vec())
-    }
-
-    /// 创建 u64 属性
-    pub fn from_u64(name: impl Into<String>, value: u64) -> Self {
-        Self::new(name, value.to_be_bytes().to_vec())
-    }
-
-    /// 创建字符串属性
-    pub fn from_string(name: impl Into<String>, value: &str) -> Self {
-        let mut data = value.as_bytes().to_vec();
-        data.push(0);
-        Self::new(name, data)
-    }
-
-    /// 创建字符串列表属性
-    pub fn from_string_list(name: impl Into<String>, values: &[&str]) -> Self {
-        let mut data = Vec::new();
-        for s in values {
-            data.extend_from_slice(s.as_bytes());
-            data.push(0);
-        }
-        Self::new(name, data)
-    }
-}
-
-impl PropertyTrait for RawProperty {
-    fn as_raw(&self) -> &RawProperty {
-        self
-    }
-
-    fn as_raw_mut(&mut self) -> &mut RawProperty {
-        self
-    }
-}
-
-impl PropertyOp for RawProperty {}
-
-#[enum_dispatch::enum_dispatch]
-/// 可编辑的属性（类型化枚举）
-#[derive(Clone, Debug)]
-pub enum Property {
-    /// #address-cells 属性
-    U32(U32),
-
-    StringList(StringList),
-    // /// reg 属性（已解析）
-    // Reg(Vec<RegInfo>),
-    // /// ranges 属性（空表示 1:1 映射）
-    // Ranges {
-    //     entries: Vec<RangesEntry>,
-    //     child_address_cells: u8,
-    //     parent_address_cells: u8,
-    //     size_cells: u8,
-    // },
-    // /// compatible 属性（字符串列表）
-    // Compatible(Vec<String>),
-    // /// model 属性
-    // Model(String),
-    /// status 属性
-    Status(PropStatus),
-    /// phandle 属性
-    Phandle(PropPhandle),
-
-    Str(FStr),
-    // /// linux,phandle 属性
-    // LinuxPhandle(Phandle),
-    // /// device_type 属性
-    // DeviceType(String),
-    // /// interrupt-parent 属性
-    // InterruptParent(Phandle),
-    // /// clock-names 属性
-    // ClockNames(Vec<String>),
-    // /// dma-coherent 属性（无数据）
-    // DmaCoherent,
-    /// 原始属性（未识别的通用属性）
-    Raw(RawProperty),
-}
-
 impl Property {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     // /// 获取属性名称
     // pub fn name(&self) -> &str {
     //     match self {
@@ -337,123 +357,6 @@ impl Property {
         //         Property::Raw(raw) => raw.data().to_vec(),
         //     }
     }
-
-    // /// 属性数据是否为空
-    // pub fn is_empty(&self) -> bool {
-    //     match self {
-    //         Property::DmaCoherent => true,
-    //         Property::Ranges { entries, .. } => entries.is_empty(),
-    //         Property::Raw(raw) => raw.is_empty(),
-    //         _ => false,
-    //     }
-    // }
-
-    // ========== 构造器方法 ==========
-
-    // /// 创建 ranges 属性
-    // pub fn ranges(
-    //     entries: Vec<RangesEntry>,
-    //     child_address_cells: u8,
-    //     parent_address_cells: u8,
-    //     size_cells: u8,
-    // ) -> Self {
-    //     Property::Ranges {
-    //         entries,
-    //         child_address_cells,
-    //         parent_address_cells,
-    //         size_cells,
-    //     }
-    // }
-
-    // /// 创建 compatible 属性
-    // pub fn compatible(values: Vec<String>) -> Self {
-    //     Property::Compatible(values)
-    // }
-
-    // /// 从字符串切片创建 compatible 属性
-    // pub fn compatible_from_strs(values: &[&str]) -> Self {
-    //     Property::Compatible(values.iter().map(|s| String::from(*s)).collect())
-    // }
-
-    // /// 创建 model 属性
-    // pub fn model(value: impl Into<String>) -> Self {
-    //     Property::Model(value.into())
-    // }
-
-    // /// 创建 status 属性
-    // pub fn status(status: Status) -> Self {
-    //     Property::Status(status)
-    // }
-
-    // /// 创建 status = "okay" 属性
-    // pub fn status_okay() -> Self {
-    //     Property::Status(Status::Okay)
-    // }
-
-    // /// 创建 status = "disabled" 属性
-    // pub fn status_disabled() -> Self {
-    //     Property::Status(Status::Disabled)
-    // }
-
-    // /// 创建 phandle 属性
-    // pub fn phandle(value: u32) -> Self {
-    //     Property::Phandle(Phandle::from(value))
-    // }
-
-    // /// 创建 linux,phandle 属性
-    // pub fn linux_phandle(value: u32) -> Self {
-    //     Property::LinuxPhandle(Phandle::from(value))
-    // }
-
-    // /// 创建 device_type 属性
-    // pub fn device_type(value: impl Into<String>) -> Self {
-    //     Property::DeviceType(value.into())
-    // }
-
-    // /// 创建 interrupt-parent 属性
-    // pub fn interrupt_parent(phandle: u32) -> Self {
-    //     Property::InterruptParent(Phandle::from(phandle))
-    // }
-
-    // /// 创建 clock-names 属性
-    // pub fn clock_names(values: Vec<String>) -> Self {
-    //     Property::ClockNames(values)
-    // }
-
-    // /// 创建 dma-coherent 属性
-    // pub fn dma_coherent() -> Self {
-    //     Property::DmaCoherent
-    // }
-
-    // /// 创建原始属性（通用属性）
-    // pub fn raw(name: impl Into<String>, data: Vec<u8>) -> Self {
-    //     Property::Raw(RawProperty::new(name, data))
-    // }
-
-    // /// 创建 u32 原始属性
-    // pub fn raw_u32(name: impl Into<String>, value: u32) -> Self {
-    //     Property::Raw(RawProperty::from_u32(name, value))
-    // }
-
-    // /// 创建 u64 原始属性
-    // pub fn raw_u64(name: impl Into<String>, value: u64) -> Self {
-    //     Property::Raw(RawProperty::from_u64(name, value))
-    // }
-
-    // /// 创建字符串原始属性
-    // pub fn raw_string(name: impl Into<String>, value: &str) -> Self {
-    //     Property::Raw(RawProperty::from_string(name, value))
-    // }
-
-    // /// 创建字符串列表原始属性
-    // pub fn raw_string_list(name: impl Into<String>, values: &[&str]) -> Self {
-    //     Property::Raw(RawProperty::from_string_list(name, values))
-    // }
-
-    // /// 创建空原始属性
-    // pub fn raw_empty(name: impl Into<String>) -> Self {
-    //     Property::Raw(RawProperty::empty(name))
-    // }
 }
 
 /// 根据 cells 数量写入值
@@ -476,34 +379,69 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
     fn from(prop: fdt_raw::Property<'a>) -> Self {
         let name = prop.name().to_string();
         match prop {
-            fdt_raw::Property::AddressCells(v) => Property::U32(U32::new(prop.name(), v as _)),
-            fdt_raw::Property::SizeCells(v) => Property::U32(U32::new(prop.name(), v as _)),
+            fdt_raw::Property::AddressCells(v) => Property {
+                name,
+                kind: PropertyKind::Num(v as _),
+            },
+            fdt_raw::Property::SizeCells(v) => Property {
+                name,
+                kind: PropertyKind::Num(v as _),
+            },
             fdt_raw::Property::Reg(reg) => {
-                let data = reg.as_slice().to_vec();
-                Property::Raw(RawProperty::new(&name, data))
+                let entries = reg
+                    .iter()
+                    .map(|e| Reg {
+                        address: e.address,
+                        size: e.size,
+                    })
+                    .collect();
+                Property {
+                    name,
+                    kind: PropertyKind::Reg(entries), // Placeholder
+                }
             }
             fdt_raw::Property::Compatible(str_iter) => {
-                Property::StringList(StringList::new(&name, str_iter))
+                let values = str_iter.map(|s| s.to_string()).collect();
+                Property {
+                    name,
+                    kind: PropertyKind::StringList(values),
+                }
             }
-            fdt_raw::Property::Status(status) => Property::Status(PropStatus::new(status)),
-            fdt_raw::Property::Phandle(phandle) => {
-                Property::Phandle(PropPhandle::new(prop.name(), phandle))
-            }
-            fdt_raw::Property::DeviceType(v) => Property::Str(FStr::new(prop.name(), v)),
-            fdt_raw::Property::InterruptParent(phandle) => {
-                Property::Phandle(PropPhandle::new(prop.name(), phandle))
-            }
-            fdt_raw::Property::InterruptCells(v) => Property::U32(U32::new(prop.name(), v as _)),
+            fdt_raw::Property::Status(status) => Property {
+                name,
+                kind: PropertyKind::Status(status),
+            },
+            fdt_raw::Property::Phandle(phandle) => Property {
+                name,
+                kind: PropertyKind::Phandle(Phandle::from(phandle)),
+            },
+            fdt_raw::Property::DeviceType(v) => Property {
+                name,
+                kind: PropertyKind::Str(v.to_string()),
+            },
+            fdt_raw::Property::InterruptParent(phandle) => Property {
+                name,
+                kind: PropertyKind::Phandle(Phandle::from(phandle)),
+            },
+            fdt_raw::Property::InterruptCells(v) => Property {
+                name,
+                kind: PropertyKind::Num(v as _),
+            },
             fdt_raw::Property::ClockNames(str_iter) => {
-                Property::StringList(StringList::new(&name, str_iter))
+                let values = str_iter.map(|s| s.to_string()).collect();
+                Property {
+                    name,
+                    kind: PropertyKind::StringList(values),
+                }
             }
-            fdt_raw::Property::DmaCoherent => Property::Raw(RawProperty::empty(&name)),
-            fdt_raw::Property::Unknown(raw_property) => {
-                let data = raw_property.data().to_vec();
-                Property::Raw(RawProperty::new(&name, data))
-            }
+            fdt_raw::Property::DmaCoherent => Property {
+                name,
+                kind: PropertyKind::Bool,
+            },
+            fdt_raw::Property::Unknown(raw_property) => Property {
+                name,
+                kind: PropertyKind::Raw(RawProperty(raw_property.data().to_vec())),
+            },
         }
     }
 }
-
-impl PropertyOp for Property {}

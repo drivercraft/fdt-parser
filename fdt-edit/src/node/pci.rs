@@ -4,8 +4,9 @@ use alloc::{collections::vec_deque::VecDeque, vec::Vec};
 use fdt_raw::{FdtError, Phandle};
 
 use crate::{
-    Property, PropertyOp,
+    Property,
     node::{NodeOp, NodeTrait, RawNode},
+    prop::PropertyKind,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -63,8 +64,8 @@ impl NodePci {
 
     pub fn interrupt_cells(&self) -> u32 {
         self.find_property("#interrupt-cells")
-            .and_then(|prop| match prop {
-                Property::U32(v) => Some(v.value()),
+            .and_then(|prop| match prop.kind {
+                PropertyKind::Num(v) => Some(v as _),
                 _ => None,
             })
             .unwrap_or(1) // Default to 1 interrupt cell for PCI
@@ -72,14 +73,18 @@ impl NodePci {
 
     /// Get the interrupt-map-mask property if present
     pub fn interrupt_map_mask(&self) -> Option<Vec<u32>> {
-        self.find_property("interrupt-map-mask")
-            .map(|prop| prop.as_u32_vec())
+        self.find_property("interrupt-map-mask").map(|prop| {
+            let PropertyKind::Raw(v) = &prop.kind else {
+                return Vec::new();
+            };
+            v.as_u32_vec()
+        })
     }
 
     /// Get the bus range property if present
     pub fn bus_range(&self) -> Option<Range<u32>> {
         self.find_property("bus-range").and_then(|prop| {
-            let Property::Raw(raw) = prop else {
+            let PropertyKind::Raw(raw) = &prop.kind else {
                 return None;
             };
             let data = raw.as_u32_vec();
@@ -94,7 +99,11 @@ impl NodePci {
     /// Get the ranges property for address translation
     pub fn ranges(&self) -> Option<Vec<PciRange>> {
         let prop = self.find_property("ranges")?;
-        let mut data = VecDeque::from(prop.as_u32_vec());
+        let PropertyKind::Raw(raw) = &prop.kind else {
+            return None;
+        };
+
+        let mut data = VecDeque::from(raw.as_u32_vec());
 
         let mut ranges = Vec::new();
 
