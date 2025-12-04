@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [dependencies]
 fdt-raw = {path = "../fdt-raw"}
+enum_dispatch = "0.3.13"
 
 [dev-dependencies]
 dtb-file = {path = "../dtb-file"}
