@@ -12,7 +12,7 @@ mod tests {
         let mut pci_nodes_found = 0;
         for node in fdt.all_nodes() {
             {
-                if let Node::Pci(pci) = node {
+                if let Node::Pci(pci) = &*node {
                     pci_nodes_found += 1;
                     println!("Found PCI node: {}", pci.name());
                 }
@@ -30,7 +30,7 @@ mod tests {
 
         for node in fdt.all_nodes() {
             {
-                if let Node::Pci(pci) = node
+                if let Node::Pci(pci) = &*node
                     && let Some(range) = pci.bus_range()
                 {
                     println!("Found bus-range: {range:?}");
@@ -50,7 +50,7 @@ mod tests {
 
         for node in fdt.all_nodes() {
             {
-                if let Node::Pci(pci) = node {
+                if let Node::Pci(pci) = &*node {
                     // Test address cells
                     assert_eq!(
                         pci.address_cells(),
@@ -90,7 +90,7 @@ mod tests {
             .next()
             .unwrap();
 
-        let Node::Pci(pci) = node else {
+        let Node::Pci(pci) = &*node else {
             panic!("Not a PCI node");
         };
 
@@ -120,6 +120,7 @@ mod tests {
 
         for (i, range) in pci.ranges().unwrap().iter().enumerate() {
             assert_eq!(*range, want[i]);
+            println!("{range:#x?}");
         }
     }
 }

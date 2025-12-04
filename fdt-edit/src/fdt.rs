@@ -570,19 +570,41 @@ impl Fdt {
     /// 获取所有节点的递归列表
     ///
     /// 返回包含根节点及其所有子节点的向量，按照深度优先遍历顺序
-    pub fn all_nodes(&self) -> Vec<&Node> {
-        let mut ctx = FdtContext::new();
-
-        let mut node = &self.root;
-
-        let mut sg = VecDeque::from(vec![""]); // 从根节点开始
+    pub fn all_nodes(&self) -> Vec<NodeRef<'_>> {
         let mut results = Vec::new();
-        loop{
-            
 
-        }
+        // 添加根节点
+        let mut root_ctx = FdtContext::new();
+        root_ctx.update_node(&self.root);
+        root_ctx.path_add(&self.root.name());
+        results.push(NodeRef {
+            node: &self.root,
+            context: root_ctx,
+        });
+
+        // 递归遍历所有子节点
+        self.collect_child_nodes(&self.root, &mut results);
 
         results
+    }
+
+    /// 递归收集所有子节点
+    fn collect_child_nodes<'a>(&self, parent: &'a Node, results: &mut Vec<NodeRef<'a>>) {
+        for child in parent.children() {
+            // 为子节点创建上下文
+            let mut child_ctx = FdtContext::new();
+            child_ctx.update_node(child);
+            child_ctx.path_add(child.name());
+
+            // 添加子节点到结果
+            results.push(NodeRef {
+                node: child,
+                context: child_ctx,
+            });
+
+            // 递归处理子节点的子节点
+            self.collect_child_nodes(child, results);
+        }
     }
 
     /// 序列化为 FDT 二进制数据
@@ -601,13 +623,10 @@ impl Fdt {
 
     pub fn find_compatible(&self, compatible: &[&str]) -> Vec<NodeRef<'_>> {
         let mut results = Vec::new();
-        for node in self.all_nodes() {
-            for comp in node.compatibles() {
-                if compatible.contains(&comp.as_str()) {
-                    let mut ctx = FdtContext::new();
-                    ctx.update_node(node);
-                    ctx.path_add(node.name());
-                    results.push(NodeRef { node, context: ctx });
+        for node_ref in self.all_nodes() {
+            for comp in node_ref.compatibles() {
+                if compatible.contains(&comp) {
+                    results.push(node_ref);
                     break;
                 }
             }
