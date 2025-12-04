@@ -8,9 +8,10 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use fdt_raw::{FdtError, Phandle, Token, FDT_MAGIC};
+use fdt_raw::{FDT_MAGIC, FdtError, Phandle, Token};
 
 use crate::Node;
+use crate::node::NodeOp;
 
 /// Memory reservation block entry
 #[derive(Clone, Debug, Default)]

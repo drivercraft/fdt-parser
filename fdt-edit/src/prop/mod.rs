@@ -3,7 +3,7 @@ use alloc::{string::String, vec::Vec};
 // Re-export from fdt_raw
 pub use fdt_raw::{Phandle, RegInfo, Status};
 
-use crate::Node;
+use crate::{Node, NodeOp};
 
 /// Ranges 条目信息
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,20 +1,20 @@
 #[cfg(test)]
 mod tests {
+    use fdt_edit::Property;
     use fdt_edit::*;
-    use fdt_edit::{Property, Status};
 
     #[test]
     fn test_find_all_method() {
         let mut root = Node::root();
 
         // 添加几个子节点
-        let mut gpio0 = Node::new("gpio@1000");
+        let mut gpio0 = Node::new_raw("gpio@1000");
         gpio0.add_property(Property::compatible_from_strs(&["gpio"]));
 
-        let mut gpio1 = Node::new("gpio@2000");
+        let mut gpio1 = Node::new_raw("gpio@2000");
         gpio1.add_property(Property::compatible_from_strs(&["gpio"]));
 
-        let mut uart = Node::new("uart@3000");
+        let mut uart = Node::new_raw("uart@3000");
         uart.add_property(Property::compatible_from_strs(&["uart"]));
 
         root.add_child(gpio0);
@@ -37,14 +37,14 @@ mod tests {
         let mut root = Node::root();
 
         // 创建嵌套结构
-        let mut soc = Node::new("soc");
+        let mut soc = Node::new_raw("soc");
 
-        let mut i2c0 = Node::new("i2c@0");
-        let mut eeprom = Node::new("eeprom@50");
+        let mut i2c0 = Node::new_raw("i2c@0");
+        let mut eeprom = Node::new_raw("eeprom@50");
         eeprom.add_property(Property::compatible_from_strs(&["eeprom"]));
 
-        let mut i2c1 = Node::new("i2c@1");
-        let mut sensor = Node::new("sensor@60");
+        let mut i2c1 = Node::new_raw("i2c@1");
+        let mut sensor = Node::new_raw("sensor@60");
         sensor.add_property(Property::compatible_from_strs(&["sensor"]));
 
         i2c0.add_child(eeprom);
@@ -66,11 +66,11 @@ mod tests {
         let mut root = Node::root();
 
         // 添加多个带地址的节点
-        let mut gpio0 = Node::new("gpio@1000");
-        let mut gpio1 = Node::new("gpio@2000");
-        let mut gpio2 = Node::new("gpio-controller@3000");
-        let mut uart0 = Node::new("uart@4000");
-        let mut uart1 = Node::new("serial@5000");
+        let gpio0 = Node::new_raw("gpio@1000");
+        let gpio1 = Node::new_raw("gpio@2000");
+        let gpio2 = Node::new_raw("gpio-controller@3000");
+        let uart0 = Node::new_raw("uart@4000");
+        let uart1 = Node::new_raw("serial@5000");
 
         root.add_child(gpio0);
         root.add_child(gpio1);
@@ -110,11 +110,11 @@ mod tests {
         let mut root = Node::root();
 
         // 创建嵌套结构，测试中间级别的精确匹配
-        let mut soc = Node::new("soc");
-        let mut bus = Node::new("bus");
+        let mut soc = Node::new_raw("soc");
+        let mut bus = Node::new_raw("bus");
 
-        let device1 = Node::new("device@1000");
-        let device2 = Node::new("device@2000");
+        let device1 = Node::new_raw("device@1000");
+        let device2 = Node::new_raw("device@2000");
 
         bus.add_child(device1);
         bus.add_child(device2);

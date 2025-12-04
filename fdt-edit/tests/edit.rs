@@ -110,20 +110,18 @@ fn test_parse_and_rebuild() {
 
         match diff_pos {
             Some(pos) => {
-                let context_start = if pos >= 50 { pos - 50 } else { 0 };
+                let context_start = pos.saturating_sub(50);
                 let context_end = (pos + 50).min(min_len);
 
                 println!("\n发现差异，位置: {}", pos);
                 println!(
-                    "原始文件片段: {}{}{}",
+                    "原始文件片段: {}>>>DIFF<<<{}",
                     &original_dts[context_start..pos],
-                    ">>>DIFF<<<",
                     &original_dts[pos..context_end]
                 );
                 println!(
-                    "重建文件片段: {}{}{}",
+                    "重建文件片段: {}>>>DIFF<<<{}",
                     &rebuilt_dts[context_start..pos],
-                    ">>>DIFF<<<",
                     &rebuilt_dts[pos..context_end]
                 );
             }
