@@ -497,7 +497,7 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
             fdt_raw::Property::ClockNames(str_iter) => {
                 Property::StringList(StringList::new(&name, str_iter))
             }
-            fdt_raw::Property::DmaCoherent => todo!(),
+            fdt_raw::Property::DmaCoherent => Property::Raw(RawProperty::empty(&name)),
             fdt_raw::Property::Unknown(raw_property) => {
                 let data = raw_property.data().to_vec();
                 Property::Raw(RawProperty::new(&name, data))

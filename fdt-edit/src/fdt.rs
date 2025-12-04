@@ -2,15 +2,14 @@ use core::fmt;
 use core::ops::Deref;
 
 use alloc::{
-    collections::BTreeMap,
+    collections::{BTreeMap, vec_deque::VecDeque},
     format,
     string::{String, ToString},
-    vec,
-    vec::Vec,
+    vec::{self, Vec},
 };
 use fdt_raw::{FDT_MAGIC, FdtError, Phandle, Status, Token};
 
-use crate::node::NodeOp;
+use crate::{FdtContext, NodeMut, NodeRef, ctx, node::NodeOp};
 use crate::{Node, PropertyOp};
 
 /// Memory reservation block entry
@@ -159,133 +158,95 @@ impl Fdt {
         }
     }
 
-    /// 根据路径查找节点（非精确匹配）
-    ///
-    /// 路径格式: "/node1/node2/node3"
-    /// 支持 node-name@unit-address 格式，如 "/soc/i2c@40002000"
-    /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
-    /// 支持智能匹配：中间级别只支持精确匹配，最后一级支持前缀匹配（忽略 @unit-address）
-    /// 返回所有匹配的节点及其完整路径
-    pub fn find_by_path(&self, path: &str) -> Vec<(&Node, String)> {
-        // 如果路径以 '/' 开头，直接按路径查找
-        // 否则解析 alias
-        let resolved_path = if path.starts_with('/') {
-            path.to_string()
-        } else {
-            let Some(path) = self.resolve_alias(path) else {
-                return Vec::new();
+    pub fn find_by_path<'a>(&'a self, path: &str) -> Vec<NodeRef<'a>> {
+        let mut node = &self.root;
+
+        let mut ctx = FdtContext::new();
+        let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
+
+        let mut results = Vec::new();
+
+        while let Some(part) = sg.pop_front() {
+            let is_last = sg.is_empty();
+
+            let matched_node = if part.is_empty() {
+                ctx.depth -= 1;
+                Some(node)
+            } else if is_last {
+                for (_, n) in node.find_children_with_prefix(part) {
+                    let mut ctx_clone = ctx.clone();
+                    ctx_clone.current_path.push('/');
+                    ctx_clone.current_path.push_str(n.name());
+                    results.push(NodeRef {
+                        node: n,
+                        context: ctx_clone,
+                    });
+                }
+                break;
+            } else {
+                node.find_child_exact(part)
             };
-            path
-        };
 
-        // 对于根路径，直接返回根节点
-        let path_str = resolved_path.trim_start_matches('/');
-        if path_str.is_empty() {
-            return vec![(&self.root, String::from("/"))];
-        }
-
-        // 使用 Node 的智能查找功能
-        self.root.find_all(&resolved_path)
-    }
-
-    /// 根据路径精确查找节点
-    ///
-    /// 路径格式: "/node1/node2/node3"
-    /// 支持 node-name@unit-address 格式，如 "/soc/i2c@40002000"
-    /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
-    /// 只支持精确匹配，不支持模糊匹配
-    /// 返回 (节点引用, 完整路径)
-    pub fn get_by_path(&self, path: &str) -> Option<(&Node, String)> {
-        // 如果路径以 '/' 开头，直接按路径查找
-        // 否则解析 alias
-        let resolved_path = if path.starts_with('/') {
-            path.to_string()
-        } else {
-            self.resolve_alias(path)?
-        };
-
-        // 对于根路径，直接返回根节点
-        let path_str = resolved_path.trim_start_matches('/');
-        if path_str.is_empty() {
-            return Some((&self.root, String::from("/")));
-        }
-
-        // 使用 Node 的精确查找功能
-        if let Some(node) = self.root.get_by_path(&resolved_path) {
-            Some((node, resolved_path))
-        } else {
-            None
-        }
-    }
-
-    /// 根据路径精确查找节点（可变）
-    ///
-    /// 支持 node-name@unit-address 格式，如 "/soc/i2c@40002000"
-    /// 支持 alias：如果路径不以 '/' 开头，会从 /aliases 节点解析别名
-    /// 只支持精确匹配，不支持模糊匹配
-    /// 返回 (节点可变引用, 完整路径)
-    pub fn get_by_path_mut(&mut self, path: &str) -> Option<(&mut Node, String)> {
-        // 如果路径以 '/' 开头，直接按路径查找
-        // 否则解析 alias
-        let resolved_path = if path.starts_with('/') {
-            path.to_string()
-        } else {
-            self.resolve_alias(path)?
-        };
-
-        // 对于根路径，直接返回根节点
-        let path_str = resolved_path.trim_start_matches('/');
-        if path_str.is_empty() {
-            return Some((&mut self.root, String::from("/")));
-        }
-
-        // 使用 Node 的精确查找功能
-        if let Some(node) = self.root.get_by_path_mut(&resolved_path) {
-            Some((node, resolved_path))
-        } else {
-            None
-        }
-    }
-
-    /// 根据节点名称查找所有匹配的节点
-    /// 支持智能匹配（精确匹配和前缀匹配）
-    pub fn find_by_name(&self, name: &str) -> Vec<(&Node, String)> {
-        self.root.find_all(name)
-    }
-
-    /// 根据节点名称前缀查找所有匹配的节点
-    pub fn find_by_name_prefix(&self, prefix: &str) -> Vec<(&Node, String)> {
-        self.root.find_all(prefix)
-    }
-
-    /// 根据路径查找所有匹配的节点
-    pub fn find_all_by_path(&self, path: &str) -> Vec<(&Node, String)> {
-        // 如果路径以 '/' 开头，直接按路径查找
-        // 否则解析 alias
-        let resolved_path = if path.starts_with('/') {
-            path.to_string()
-        } else {
-            let Some(path) = self.resolve_alias(path) else {
-                return Vec::new();
+            let Some(matched_node) = matched_node else {
+                return results;
             };
-            path
-        };
+            ctx.update_node(matched_node);
 
-        // 对于根路径，直接返回根节点
-        let path_str = resolved_path.trim_start_matches('/');
-        if path_str.is_empty() {
-            return vec![(&self.root, String::from("/"))];
+            node = matched_node;
         }
 
-        // 使用 Node 的智能查找功能
-        self.root.find_all(&resolved_path)
+        results
+    }
+
+    pub fn get_by_path<'a>(&'a self, path: &str) -> Option<NodeRef<'a>> {
+        let mut ctx = FdtContext::new();
+
+        let mut node = &self.root;
+
+        let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
+
+        while let Some(part) = sg.pop_front() {
+            let matched_node = if part.is_empty() {
+                Some(node)
+            } else {
+                node.find_child_exact(part)
+            }?;
+
+            ctx.update_node(matched_node);
+
+            node = matched_node;
+        }
+
+        Some(NodeRef { node, context: ctx })
+    }
+
+    pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
+        let mut ctx = FdtContext::new();
+
+        let mut node = &mut self.root;
+
+        let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
+
+        while let Some(part) = sg.pop_front() {
+            let matched_node = if part.is_empty() {
+                Some(node)
+            } else {
+                node.find_child_exact_mut(part)
+            }?;
+
+            ctx.update_node(matched_node);
+
+            node = matched_node;
+        }
+
+        Some(NodeMut { node, context: ctx })
     }
 
     /// 解析别名，返回对应的完整路径
     ///
     /// 从 /aliases 节点查找别名对应的路径
     pub fn resolve_alias(&self, alias: &str) -> Option<String> {
-        let aliases_node = self.root.get_by_path("aliases")?;
+        let aliases_node = self.get_by_path("aliases")?;
         let prop = aliases_node.find_property(alias)?;
 
         // 从属性中获取字符串值（路径）

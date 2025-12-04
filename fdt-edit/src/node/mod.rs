@@ -8,11 +8,59 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{Phandle, Property, RawProperty, Status, prop::PropertyOp};
+use crate::{FdtContext, Phandle, Property, Status, prop::PropertyOp};
 
 mod pci;
 
 pub use pci::*;
+
+#[derive(Clone, Debug)]
+pub struct NodeRef<'a> {
+    pub node: &'a Node,
+    pub context: FdtContext,
+}
+
+#[derive(Debug)]
+pub struct NodeMut<'a> {
+    pub node: &'a mut Node,
+    pub context: FdtContext,
+}
+
+impl<'a> NodeRef<'a> {
+    /// 创建新的 NodeRef
+    pub fn new(node: &'a Node, context: FdtContext) -> Self {
+        Self { node, context }
+    }
+}
+
+impl<'a> NodeMut<'a> {
+    /// 创建新的 NodeMut
+    pub fn new(node: &'a mut Node, context: FdtContext) -> Self {
+        Self { node, context }
+    }
+}
+
+impl<'a> Deref for NodeRef<'a> {
+    type Target = Node;
+
+    fn deref(&self) -> &Self::Target {
+        self.node
+    }
+}
+
+impl<'a> Deref for NodeMut<'a> {
+    type Target = Node;
+
+    fn deref(&self) -> &Self::Target {
+        self.node
+    }
+}
+
+impl<'a> DerefMut for NodeMut<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.node
+    }
+}
 
 #[enum_dispatch::enum_dispatch]
 #[derive(Clone, Debug)]
