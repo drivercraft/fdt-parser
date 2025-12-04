@@ -272,10 +272,10 @@ impl Fdt {
         if let Some(aliases_node) = self.get_by_path("aliases") {
             for prop in aliases_node.properties() {
                 let name = prop.name().to_string();
-                if let PropertyKind::Raw(raw) = &prop.kind {
-                    if let Some(path) = raw.as_str() {
-                        result.push((name, path.to_string()));
-                    }
+                if let PropertyKind::Raw(raw) = &prop.kind
+                    && let Some(path) = raw.as_str()
+                {
+                    result.push((name, path.to_string()));
                 }
             }
         }
@@ -571,24 +571,18 @@ impl Fdt {
     ///
     /// 返回包含根节点及其所有子节点的向量，按照深度优先遍历顺序
     pub fn all_nodes(&self) -> Vec<&Node> {
-        let mut nodes = Vec::new();
-        self.collect_all_nodes(&self.root, &mut nodes);
-        nodes
-    }
+        let mut ctx = FdtContext::new();
 
-    /// 递归收集所有节点到结果向量中
-    ///
-    /// # 参数
-    /// - `node`: 当前要处理的节点
-    /// - `nodes`: 用于收集节点的结果向量
-    fn collect_all_nodes<'a>(&'a self, node: &'a Node, nodes: &mut Vec<&'a Node>) {
-        // 添加当前节点
-        nodes.push(node);
+        let mut node = &self.root;
 
-        // 递归处理所有子节点
-        for child in node.children() {
-            self.collect_all_nodes(child, nodes);
+        let mut sg = VecDeque::from(vec![""]); // 从根节点开始
+        let mut results = Vec::new();
+        loop{
+            
+
         }
+
+        results
     }
 
     /// 序列化为 FDT 二进制数据
@@ -603,6 +597,22 @@ impl Fdt {
 
         // 生成最终数据
         builder.finalize(self.boot_cpuid_phys, &self.memory_reservations)
+    }
+
+    pub fn find_compatible(&self, compatible: &[&str]) -> Vec<NodeRef<'_>> {
+        let mut results = Vec::new();
+        for node in self.all_nodes() {
+            for comp in node.compatibles() {
+                if compatible.contains(&comp.as_str()) {
+                    let mut ctx = FdtContext::new();
+                    ctx.update_node(node);
+                    ctx.path_add(node.name());
+                    results.push(NodeRef { node, context: ctx });
+                    break;
+                }
+            }
+        }
+        results
     }
 }
 

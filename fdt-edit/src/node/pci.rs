@@ -174,13 +174,3 @@ impl core::fmt::Debug for NodePci {
             .finish()
     }
 }
-
-#[cfg(all(test, any(windows, unix)))]
-mod tests {
-
-    use log::debug;
-
-    use crate::{Fdt, Node, NodeOp};
-
-  
-}

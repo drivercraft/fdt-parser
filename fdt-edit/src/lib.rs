@@ -10,5 +10,5 @@ mod prop;
 
 pub use ctx::FdtContext;
 pub use fdt::{Fdt, FdtData, MemoryReservation};
-pub use node::{Node, NodeMut, NodeOp, NodeRef};
+pub use node::{Node, NodeMut, NodeOp, NodeRef, PciRange, PciSpace};
 pub use prop::{Phandle, Property, RangesEntry, RawProperty, RegInfo, Status};

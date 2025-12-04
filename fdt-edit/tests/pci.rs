@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use dtb_file::fdt_qemu;
+    use dtb_file::{fdt_phytium, fdt_qemu};
     use fdt_edit::*;
 
     #[test]
@@ -78,5 +78,48 @@ mod tests {
         }
 
         panic!("No PCI nodes found for property testing");
+    }
+
+    #[test]
+    fn test_pci2() {
+        let raw = fdt_phytium();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node = fdt
+            .find_compatible(&["pci-host-ecam-generic"])
+            .into_iter()
+            .next()
+            .unwrap();
+
+        let Node::Pci(pci) = node else {
+            panic!("Not a PCI node");
+        };
+
+        let want = [
+            PciRange {
+                space: PciSpace::IO,
+                bus_address: 0x0,
+                cpu_address: 0x50000000,
+                size: 0xf00000,
+                prefetchable: false,
+            },
+            PciRange {
+                space: PciSpace::Memory32,
+                bus_address: 0x58000000,
+                cpu_address: 0x58000000,
+                size: 0x28000000,
+                prefetchable: false,
+            },
+            PciRange {
+                space: PciSpace::Memory64,
+                bus_address: 0x1000000000,
+                cpu_address: 0x1000000000,
+                size: 0x1000000000,
+                prefetchable: false,
+            },
+        ];
+
+        for (i, range) in pci.ranges().unwrap().iter().enumerate() {
+            assert_eq!(*range, want[i]);
+        }
     }
 }
