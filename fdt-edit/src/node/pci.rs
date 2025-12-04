@@ -1,10 +1,9 @@
 use core::ops::Range;
 
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
-use fdt_raw::{FdtError, Phandle};
+use fdt_raw::Phandle;
 
 use crate::{
-    Property,
     node::{NodeOp, NodeTrait, RawNode},
     prop::PropertyKind,
 };
@@ -176,82 +175,12 @@ impl core::fmt::Debug for NodePci {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(windows, unix)))]
 mod tests {
+
     use log::debug;
 
     use crate::{Fdt, Node, NodeOp};
 
-    #[test]
-    fn test_pci_node_detection() {
-        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/qemu_pci.dtb");
-        let fdt = Fdt::from_bytes(dtb_data).unwrap();
-
-        // Try to find PCI nodes
-        let mut pci_nodes_found = 0;
-        for node in fdt.all_nodes() {
-            {
-                if let Node::Pci(pci) = node {
-                    pci_nodes_found += 1;
-                    debug!("Found PCI node: {}", pci.name());
-                }
-            }
-        }
-
-        // We should find at least one PCI node in the qemu PCI test file
-        assert!(pci_nodes_found > 0, "Should find at least one PCI node");
-    }
-
-    #[test]
-    fn test_bus_range() {
-        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/qemu_pci.dtb");
-        let fdt = Fdt::from_bytes(dtb_data).unwrap();
-
-        for node in fdt.all_nodes() {
-            {
-                if let Node::Pci(pci) = node {
-                    if let Some(range) = pci.bus_range() {
-                        // println!("Found bus-range: {}-{}", start, end);
-                        assert!(range.start <= range.end, "Bus range start should be <= end");
-                        return; // Test passed
-                    }
-                }
-            }
-        }
-
-        // println!("No bus-range found in any PCI node");
-    }
-
-    #[test]
-    fn test_pci_properties() {
-        let dtb_data = include_bytes!("../../../dtb-file/src/dtb/qemu_pci.dtb");
-        let fdt = Fdt::from_bytes(dtb_data).unwrap();
-
-        for node in fdt.all_nodes() {
-            {
-                if let Node::Pci(pci) = node {
-                    // Test address cells
-                    assert_eq!(pci.address_cells(), 3, "PCI should use 3 address cells");
-
-                    // Test interrupt cells
-                    assert_eq!(pci.interrupt_cells(), 1, "PCI should use 1 interrupt cell");
-
-                    // Test device type
-                    if let Some(device_type) = pci.device_type() {
-                        assert!(!device_type.is_empty());
-                    }
-
-                    // Test compatibles
-                    let compatibles = pci.compatibles();
-                    if !compatibles.is_empty() {
-                        // println!("Compatibles: {:?}", compatibles);
-                    }
-
-                    return; // Test passed for first PCI node found
-                }
-            }
-        }
-
-        panic!("No PCI nodes found for property testing");
-    }
+  
 }

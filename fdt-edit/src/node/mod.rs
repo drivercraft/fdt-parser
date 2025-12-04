@@ -10,6 +10,7 @@ use alloc::{
 use crate::{FdtContext, Phandle, Property, Status, prop::PropertyKind};
 
 mod pci;
+pub(crate) mod write;
 
 pub use pci::*;
 
@@ -386,6 +387,34 @@ pub trait NodeOp: NodeTrait {
             PropertyKind::Phandle(p) => Some(p),
             _ => None,
         }
+    }
+
+    fn device_type(&self) -> Option<&str> {
+        let prop = self.find_property("device_type")?;
+        match &prop.kind {
+            PropertyKind::Str(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    fn compatibles(&self) -> Vec<&str> {
+        let mut res = vec![];
+
+        if let Some(prop) = self.find_property("compatible") {
+            match &prop.kind {
+                PropertyKind::StringList(list) => {
+                    for s in list {
+                        res.push(s.as_str());
+                    }
+                }
+                PropertyKind::Str(s) => {
+                    res.push(s.as_str());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        res
     }
 
     /// 通过精确路径删除子节点及其子树
