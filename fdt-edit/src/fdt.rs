@@ -5,7 +5,7 @@ use alloc::{
     collections::{BTreeMap, vec_deque::VecDeque},
     format,
     string::{String, ToString},
-    vec::{self, Vec},
+    vec::Vec,
 };
 use fdt_raw::{FDT_MAGIC, FdtError, Phandle, Status, Token};
 
@@ -168,15 +168,13 @@ impl Fdt {
 
         while let Some(part) = sg.pop_front() {
             let is_last = sg.is_empty();
-
+            ctx.update_node(node);
             let matched_node = if part.is_empty() {
-                ctx.depth -= 1;
                 Some(node)
             } else if is_last {
-                for (_, n) in node.find_children_with_prefix(part) {
+                for n in node.find_child(part) {
                     let mut ctx_clone = ctx.clone();
-                    ctx_clone.current_path.push('/');
-                    ctx_clone.current_path.push_str(n.name());
+                    ctx_clone.path_add(n.name());
                     results.push(NodeRef {
                         node: n,
                         context: ctx_clone,
@@ -190,7 +188,6 @@ impl Fdt {
             let Some(matched_node) = matched_node else {
                 return results;
             };
-            ctx.update_node(matched_node);
 
             node = matched_node;
         }
@@ -203,24 +200,36 @@ impl Fdt {
 
         let mut node = &self.root;
 
+        let path = if path.starts_with("/") {
+            path.to_string()
+        } else {
+            self.resolve_alias(path)?
+        };
+
         let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
 
         while let Some(part) = sg.pop_front() {
+            ctx.update_node(node);
             let matched_node = if part.is_empty() {
                 Some(node)
             } else {
                 node.find_child_exact(part)
             }?;
 
-            ctx.update_node(matched_node);
-
             node = matched_node;
         }
 
+        ctx.path_add(node.name());
         Some(NodeRef { node, context: ctx })
     }
 
     pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
+        let path = if path.starts_with("/") {
+            path.to_string()
+        } else {
+            self.resolve_alias(path)?
+        };
+
         let mut ctx = FdtContext::new();
 
         let mut node = &mut self.root;
@@ -228,17 +237,16 @@ impl Fdt {
         let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
 
         while let Some(part) = sg.pop_front() {
+            ctx.update_node(node);
             let matched_node = if part.is_empty() {
                 Some(node)
             } else {
                 node.find_child_exact_mut(part)
             }?;
 
-            ctx.update_node(matched_node);
-
             node = matched_node;
         }
-
+        ctx.path_add(node.name());
         Some(NodeMut { node, context: ctx })
     }
 
@@ -259,15 +267,15 @@ impl Fdt {
     /// 获取所有别名
     ///
     /// 返回 (别名, 路径) 的列表
-    pub fn aliases(&self) -> Vec<(&str, String)> {
+    pub fn aliases(&self) -> Vec<(String, String)> {
         let mut result = Vec::new();
-        if let Some(aliases_node) = self.root.get_by_path("aliases") {
+        if let Some(aliases_node) = self.get_by_path("aliases") {
             for prop in aliases_node.properties() {
                 if let crate::Property::Raw(raw) = prop {
                     let data = raw.data();
                     let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
                     if let Ok(path) = core::str::from_utf8(&data[..len]) {
-                        result.push((raw.name(), path.to_string()));
+                        result.push((raw.name().to_string(), path.to_string()));
                     }
                 }
             }
@@ -277,18 +285,16 @@ impl Fdt {
 
     /// 根据 phandle 查找节点
     /// 返回 (节点引用, 完整路径)
-    pub fn find_by_phandle(&self, phandle: Phandle) -> Option<(&Node, String)> {
+    pub fn find_by_phandle(&self, phandle: Phandle) -> Option<NodeRef<'_>> {
         let path = self.phandle_cache.get(&phandle)?.clone();
-        let node = self.root.get_by_path(&path)?;
-        Some((node, path))
+        self.get_by_path(&path)
     }
 
     /// 根据 phandle 查找节点（可变）
     /// 返回 (节点可变引用, 完整路径)
-    pub fn find_by_phandle_mut(&mut self, phandle: Phandle) -> Option<(&mut Node, String)> {
+    pub fn find_by_phandle_mut(&mut self, phandle: Phandle) -> Option<NodeMut<'_>> {
         let path = self.phandle_cache.get(&phandle)?.clone();
-        let node = self.root.get_by_path_mut(&path)?;
-        Some((node, path))
+        self.get_by_path_mut(&path)
     }
 
     /// 获取根节点
@@ -305,20 +311,20 @@ impl Fdt {
     ///
     /// 从 /aliases 节点中删除指定的别名属性
     fn remove_alias_entry(&mut self, alias_name: &str) -> Result<(), FdtError> {
-        if let Some(aliases_node) = self.root.get_by_path_mut("aliases") {
-            // 查找并删除别名属性
-            // aliases_node.as_raw_mut().properties.retain(|prop| {
-            //     if let crate::Property::Raw(raw) = prop {
-            //         // 检查属性名是否匹配
-            //         raw.name() != alias_name
-            //     } else {
-            //         true
-            //     }
-            // });
+        // if let Some(aliases_node) = self.get_by_path_mut("aliases") {
+        // 查找并删除别名属性
+        // aliases_node.as_raw_mut().properties.retain(|prop| {
+        //     if let crate::Property::Raw(raw) = prop {
+        //         // 检查属性名是否匹配
+        //         raw.name() != alias_name
+        //     } else {
+        //         true
+        //     }
+        // });
 
-            // 如果 aliases 节点没有其他属性了，可以考虑删除整个节点
-            // 但这里我们保留空节点以符合设备树规范
-        }
+        // 如果 aliases 节点没有其他属性了，可以考虑删除整个节点
+        // 但这里我们保留空节点以符合设备树规范
+        // }
 
         // 不论如何都返回成功，因为别名条目删除是可选的优化
         Ok(())
@@ -371,7 +377,7 @@ impl Fdt {
 
         // 找到 __overlay__ 子节点
         let overlay_node = fragment
-            .get_by_path("__overlay__")
+            .find_child_exact("__overlay__")
             .ok_or(FdtError::NotFound)?;
 
         // 找到目标节点并应用覆盖
@@ -402,8 +408,8 @@ impl Fdt {
                 let phandle_val = u32::from_be_bytes(data[..4].try_into().unwrap());
                 let phandle = Phandle::from(phandle_val);
                 // 通过 phandle 找到节点，然后构建路径
-                if let Some((_node, path)) = self.find_by_phandle(phandle) {
-                    return Ok(path);
+                if let Some(node) = self.find_by_phandle(phandle) {
+                    return Ok(node.context.current_path);
                 }
             }
         }
@@ -418,12 +424,12 @@ impl Fdt {
         overlay_node: &Node,
     ) -> Result<(), FdtError> {
         // 找到目标节点
-        let (target, _path) = self
+        let mut target = self
             .get_by_path_mut(target_path)
             .ok_or(FdtError::NotFound)?;
 
         // 合并 overlay 的属性和子节点
-        Self::merge_nodes(target, overlay_node);
+        Self::merge_nodes(&mut target, overlay_node);
 
         Ok(())
     }

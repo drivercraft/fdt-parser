@@ -259,10 +259,13 @@ pub trait NodeOp: NodeTrait {
     }
 
     /// 查找子节点（支持智能匹配，等同于 remove_child 的查找逻辑）
-    fn find_child(&self, name: &str) -> Option<&Node> {
+    fn find_child(&self, name: &str) -> Vec<&Node> {
+        let mut results = Vec::new();
         // 首先尝试精确匹配（使用缓存）
         if let Some(&index) = self.as_raw().children_cache.get(name) {
-            return self.as_raw().children.get(index);
+            results.push(self.as_raw().children.get(index).unwrap());
+
+            return results;
         }
 
         // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
@@ -272,11 +275,11 @@ pub trait NodeOp: NodeTrait {
         for child in self.children() {
             let child_base = child.name().split('@').next().unwrap_or(child.name());
             if child_base == name_base {
-                return Some(child);
+                results.push(child);
             }
         }
 
-        None
+        results
     }
 
     /// 精确匹配子节点（可变），不支持部分匹配
@@ -377,155 +380,12 @@ pub trait NodeOp: NodeTrait {
         None
     }
 
-    /// 根据路径查找节点
-    /// 路径格式: "/node1@addr1/node2@addr2" 或 "node1@addr1/node2"
-    fn get_by_path(&self, path: &str) -> Option<&Node> {
-        // 标准化路径：去掉开头的斜杠，按斜杠分割
-        let normalized_path = path.trim_start_matches('/');
-        // if normalized_path.is_empty() {
-        //     return Some(self); // 空路径或根路径返回当前节点
-        // }
-
-        let parts: Vec<&str> = normalized_path.split('/').collect();
-        self.get_by_parts(&parts, 0)
-    }
-
-    /// 递归查找实现（不可变引用）
-    fn get_by_parts(&self, parts: &[&str], index: usize) -> Option<&Node> {
-        // if index >= parts.len() {
-        //     return Some(self);
-        // }
-
-        let part = parts[index];
-
-        // 查找子节点（使用缓存）
-        let child = if let Some(&child_index) = self.as_raw().children_cache.get(part) {
-            self.as_raw().children.get(child_index)?
-        } else {
-            return None;
-        };
-
-        // 在子节点中查找匹配的节点
-        child.get_by_parts(parts, index + 1)
-    }
-
-    /// 根据路径查找节点（可变版本）
-    /// 路径格式: "/node1@addr1/node2@addr2" 或 "node1@addr1/node2"
-    fn get_by_path_mut(&mut self, path: &str) -> Option<&mut Node> {
-        // 标准化路径：去掉开头的斜杠，按斜杠分割
-        let normalized_path = path.trim_start_matches('/');
-        if normalized_path.is_empty() {
-            return None;
+    fn interrupt_parent(&self) -> Option<Phandle> {
+        let prop = self.find_property("interrupt-parent")?;
+        match prop {
+            Property::Phandle(p) => Some(p.value()),
+            _ => None,
         }
-
-        let parts: Vec<&str> = normalized_path.split('/').collect();
-        self.get_by_parts_mut(&parts, 0)
-    }
-
-    /// 递归查找实现（可变引用）
-    fn get_by_parts_mut(&mut self, parts: &[&str], index: usize) -> Option<&mut Node> {
-        if index >= parts.len() {
-            return None;
-        }
-
-        let part = parts[index];
-        // 获取可变引用并继续递归（使用缓存）
-        let child = if let Some(&child_index) = self.as_raw().children_cache.get(part) {
-            // 安全地获取两个可变引用：一个指向当前向量元素，一个递归调用
-            // 由于我们只访问一个子节点，所以是安全的
-            self.as_raw_mut().children.get_mut(child_index)?
-        } else {
-            return None;
-        };
-        child.get_by_parts_mut(parts, index + 1)
-    }
-
-    /// 根据路径查找所有匹配的节点
-    /// 支持智能匹配，返回所有找到的节点及其完整路径
-    ///
-    /// # 匹配规则
-    /// - **中间级别**：只支持精确匹配
-    /// - **最后级别**：支持精确匹配和前缀匹配
-    /// - **前缀匹配**：在最后一级，节点名以指定前缀开头（忽略 @unit-address）
-    ///
-    /// # 参数
-    /// - `path`: 查找路径，支持前缀匹配
-    ///
-    /// # 返回值
-    /// 返回 Vec<(&Node, String)>，包含所有匹配的节点及其完整路径
-    ///
-    /// # 示例
-    /// ```rust
-    /// # use fdt_edit::Node;
-    /// let mut node = Node::root();
-    /// let nodes = node.find_all("gpio");      // 查找 gpio 或 gpio@xxx 等节点
-    /// let nodes = node.find_all("soc/uart");   // 查找 soc/uart 或 soc/uart@1000 等节点
-    /// ```
-    fn find_all(&self, path: &str) -> Vec<(&Node, String)> {
-        let normalized_path = path.trim_start_matches('/');
-        if normalized_path.is_empty() {
-            vec![]
-        } else {
-            let parts: Vec<&str> = normalized_path.split('/').collect();
-            self.find_all_by_parts(&parts, 0, "/")
-        }
-    }
-
-    /// 递归查找所有匹配节点的实现
-    fn find_all_by_parts(
-        &self,
-        parts: &[&str],
-        index: usize,
-        current_path: &str,
-    ) -> Vec<(&Node, String)> {
-        if index >= parts.len() {
-            return vec![];
-        }
-
-        let part = parts[index];
-        let is_last_level = index == parts.len() - 1;
-        let mut results = Vec::new();
-
-        // 普通匹配：支持精确匹配和最后一级的前缀匹配
-        let matching_children = if is_last_level {
-            // 最后一级：支持精确匹配和前缀匹配
-            self.find_children_with_prefix(part)
-        } else {
-            let mut matches = Vec::new();
-            // 中间级别：只支持精确匹配（使用缓存）
-            if let Some(&child_index) = self.as_raw().children_cache.get(part) {
-                matches.push((part.to_string(), &self.as_raw().children[child_index]));
-            }
-            matches
-        };
-
-        for (child_name, child) in matching_children {
-            let child_path = format!("{}{}/", current_path, child_name);
-
-            if is_last_level {
-                // 最后一级：添加匹配的子节点
-                results.push((child, format!("{}{}", current_path, child_name)));
-            } else {
-                // 继续递归
-                results.extend(child.find_all_by_parts(parts, index + 1, &child_path));
-            }
-        }
-
-        results
-    }
-
-    /// 支持前缀匹配的子节点查找（最后一级使用）
-    fn find_children_with_prefix(&self, prefix: &str) -> Vec<(String, &Node)> {
-        let mut matches = Vec::new();
-
-        // 找到所有匹配的节点并返回
-        for child in self.children() {
-            if child.name().starts_with(prefix) {
-                matches.push((child.name().into(), child));
-            }
-        }
-
-        matches
     }
 
     /// 通过精确路径删除子节点及其子树
@@ -622,14 +482,11 @@ impl RawNode {
 impl<'a> From<fdt_raw::Node<'a>> for Node {
     fn from(raw_node: fdt_raw::Node<'a>) -> Self {
         let mut node = RawNode::new(raw_node.name());
-
         // 转换属性
         for prop in raw_node.properties() {
             let raw = Property::from(prop);
-
-            // node.properties.push(Property::from(prop));
+            node.properties.push(raw);
         }
-
         Self::new(node)
     }
 }

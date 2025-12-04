@@ -50,6 +50,13 @@ impl FdtContext {
         Self::default()
     }
 
+    pub fn path_add(&mut self, segment: &str) {
+        if !self.current_path.ends_with("/") {
+            self.current_path.push('/');
+        }
+        self.current_path.push_str(segment);
+    }
+
     pub fn update_node(&mut self, node: &Node) {
         self.parent_address_cells = 2;
         self.parent_size_cells = 1;
@@ -62,6 +69,10 @@ impl FdtContext {
             self.parent_size_cells = v;
         }
 
+        if let Some(v) = node.interrupt_parent() {
+            self.interrupt_parent = Some(v);
+        }
+
         if matches!(node.status(), Some(Status::Disabled)) {
             self.disabled = true;
         }
@@ -69,8 +80,7 @@ impl FdtContext {
         if !self.current_path.is_empty() {
             self.parents.push(self.current_path.clone());
         }
-        self.current_path.push('/');
-        self.current_path.push_str(node.name());
+        self.path_add(node.name());
         self.depth += 1;
     }
 }

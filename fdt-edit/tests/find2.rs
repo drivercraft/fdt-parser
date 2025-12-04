@@ -9,7 +9,7 @@ mod tests {
         let raw_data = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        let node = fdt.get_by_path2("/virtio_mmio@a002600");
+        let node = fdt.get_by_path("/virtio_mmio@a002600");
 
         println!("Found node: {:#?}", node.unwrap());
     }
@@ -20,7 +20,7 @@ mod tests {
         let raw_data = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        let node = fdt.find_by_path2("/virtio_mmio");
+        let node = fdt.find_by_path("/virtio_mmio");
 
         for n in node {
             println!("Found node {n:#?}");
