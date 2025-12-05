@@ -31,6 +31,13 @@ pub enum PropertyKind {
 pub struct Reg {
     /// cpu side address
     pub address: u64,
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegFixed {
+    /// cpu side address
+    pub address: u64,
     pub child_bus_address: Option<u64>,
     pub size: Option<u64>,
 }
@@ -394,7 +401,6 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
                     .iter()
                     .map(|e| Reg {
                         address: e.address,
-                        child_bus_address: None,
                         size: e.size,
                     })
                     .collect();

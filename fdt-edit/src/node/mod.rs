@@ -7,38 +7,14 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{FdtContext, Phandle, Property, Status, prop::PropertyKind};
+use crate::{Phandle, Property, Status, prop::PropertyKind};
 
 mod pci;
+mod r#ref;
 pub(crate) mod write;
 
 pub use pci::*;
-
-#[derive(Clone, Debug)]
-pub struct NodeRef<'a> {
-    pub node: &'a Node,
-    pub context: FdtContext,
-}
-
-#[derive(Debug)]
-pub struct NodeMut<'a> {
-    pub node: &'a mut Node,
-    pub context: FdtContext,
-}
-
-impl<'a> NodeRef<'a> {
-    /// 创建新的 NodeRef
-    pub fn new(node: &'a Node, context: FdtContext) -> Self {
-        Self { node, context }
-    }
-}
-
-impl<'a> NodeMut<'a> {
-    /// 创建新的 NodeMut
-    pub fn new(node: &'a mut Node, context: FdtContext) -> Self {
-        Self { node, context }
-    }
-}
+pub use r#ref::{NodeMut, NodeRef};
 
 impl<'a> Deref for NodeRef<'a> {
     type Target = Node;
