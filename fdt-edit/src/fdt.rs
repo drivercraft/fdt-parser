@@ -12,7 +12,7 @@ use fdt_raw::{FDT_MAGIC, FdtError, Phandle, Status, Token};
 pub use fdt_raw::MemoryReservation;
 
 use crate::Node;
-use crate::{FdtContext, NodeMut, NodeRef, node::NodeOp, prop::PropertyKind};
+use crate::{FdtContext, NodeMut, NodeRef, RangesEntry, node::NodeOp, prop::PropertyKind};
 
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]
@@ -25,6 +25,67 @@ pub struct Fdt {
     pub root: Node,
     /// phandle 到节点完整路径的缓存
     phandle_cache: BTreeMap<Phandle, String>,
+}
+
+/// 解析节点的 ranges 属性，用于子节点地址转换
+fn parse_ranges(node: &Node, ctx: &FdtContext) -> Option<Vec<RangesEntry>> {
+    let prop = node.find_property("ranges")?;
+    let PropertyKind::Raw(raw) = &prop.kind else {
+        return None;
+    };
+
+    // 空 ranges 表示 1:1 映射，不需要转换
+    if raw.is_empty() {
+        return None;
+    }
+
+    // 当前节点的 #address-cells 用于子节点地址
+    let child_address_cells = node.address_cells().unwrap_or(2) as usize;
+    // 父节点的 #address-cells 用于父总线地址
+    let parent_address_cells = ctx.parent_address_cells as usize;
+    // 当前节点的 #size-cells
+    let size_cells = node.size_cells().unwrap_or(1) as usize;
+
+    let tuple_cells = child_address_cells + parent_address_cells + size_cells;
+    if tuple_cells == 0 {
+        return None;
+    }
+
+    let words = raw.as_u32_vec();
+    if words.len() % tuple_cells != 0 {
+        return None;
+    }
+
+    let mut entries = Vec::with_capacity(words.len() / tuple_cells);
+
+    for chunk in words.chunks_exact(tuple_cells) {
+        let mut idx = 0;
+
+        // 读取 child bus address
+        let mut child_bus = 0u64;
+        for _ in 0..child_address_cells {
+            child_bus = (child_bus << 32) | chunk[idx] as u64;
+            idx += 1;
+        }
+
+        // 读取 parent bus address
+        let mut parent_bus = 0u64;
+        for _ in 0..parent_address_cells {
+            parent_bus = (parent_bus << 32) | chunk[idx] as u64;
+            idx += 1;
+        }
+
+        // 读取 length
+        let mut length = 0u64;
+        for _ in 0..size_cells {
+            length = (length << 32) | chunk[idx] as u64;
+            idx += 1;
+        }
+
+        entries.push(RangesEntry::new(child_bus, parent_bus, length));
+    }
+
+    Some(entries)
 }
 
 impl Default for Fdt {
@@ -204,6 +265,10 @@ impl Fdt {
         let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
 
         while let Some(part) = sg.pop_front() {
+            // 先解析当前节点 (父节点) 的 ranges，供子节点使用
+            if let Some(ranges) = parse_ranges(node, &ctx) {
+                ctx.ranges.push(ranges);
+            }
             ctx.update_node(node);
             let matched_node = if part.is_empty() {
                 Some(node)
