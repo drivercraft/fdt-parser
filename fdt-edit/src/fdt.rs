@@ -562,43 +562,15 @@ impl Fdt {
         Ok(result)
     }
 
-    /// 获取所有节点的递归列表
+    /// 获取所有节点的深度优先迭代器
     ///
-    /// 返回包含根节点及其所有子节点的向量，按照深度优先遍历顺序
-    pub fn all_nodes(&self) -> Vec<NodeRef<'_>> {
-        let mut results = Vec::new();
-
-        // 添加根节点
-        let mut root_ctx = FdtContext::new();
+    /// 返回包含根节点及其所有子节点的迭代器，按照深度优先遍历顺序
+    pub fn all_nodes(&self) -> impl Iterator<Item = NodeRef<'_>> + '_ {
+        let mut root_ctx = FdtContext::for_root();
         root_ctx.update_node(&self.root);
-        root_ctx.path_add(&self.root.name());
-        results.push(NodeRef {
-            node: &self.root,
-            context: root_ctx,
-        });
 
-        // 递归遍历所有子节点
-        Self::collect_child_nodes(&self.root, &mut results);
-
-        results
-    }
-
-    /// 递归收集所有子节点
-    fn collect_child_nodes<'a>(parent: &'a Node, results: &mut Vec<NodeRef<'a>>) {
-        for child in parent.children() {
-            // 为子节点创建上下文
-            let mut child_ctx = FdtContext::new();
-            child_ctx.update_node(child);
-            child_ctx.path_add(child.name());
-
-            // 添加子节点到结果
-            results.push(NodeRef {
-                node: child,
-                context: child_ctx,
-            });
-
-            // 递归处理子节点的子节点
-            Self::collect_child_nodes(child, results);
+        AllNodes {
+            stack: vec![(&self.root, root_ctx)],
         }
     }
 
@@ -627,6 +599,28 @@ impl Fdt {
             }
         }
         results
+    }
+}
+
+/// 深度优先的节点迭代器
+struct AllNodes<'a> {
+    stack: Vec<(&'a Node, FdtContext)>,
+}
+
+impl<'a> Iterator for AllNodes<'a> {
+    type Item = NodeRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (node, ctx) = self.stack.pop()?;
+
+        // 使用栈实现前序深度优先，保持原始子节点顺序
+        for child in node.children().rev() {
+            let mut child_ctx = ctx.clone();
+            child_ctx.update_node(child);
+            self.stack.push((child, child_ctx));
+        }
+
+        Some(NodeRef::new(node, ctx))
     }
 }
 
@@ -1009,114 +1003,5 @@ impl Fdt {
     /// 格式化属性值为 DTS 格式
     fn format_property_value(&self, prop: &crate::Property) -> String {
         todo!()
-        // match prop {
-        //     crate::Property::AddressCells(value) => format!("#address-cells = <{}>", value),
-        //     crate::Property::SizeCells(value) => format!("#size-cells = <{}>", value),
-        //     crate::Property::InterruptCells(value) => format!("#interrupt-cells = <{}>", value),
-        //     crate::Property::Reg(entries) => {
-        //         let values: Vec<String> = entries
-        //             .iter()
-        //             .map(|entry| {
-        //                 let mut result = format!("{:#x}", entry.address);
-        //                 if let Some(size) = entry.size {
-        //                     result.push_str(&format!(" {:#x}", size));
-        //                 }
-        //                 result
-        //             })
-        //             .collect();
-        //         format!("reg = <{}>", values.join(" "))
-        //     }
-        //     crate::Property::Ranges {
-        //         entries,
-        //         child_address_cells: _,
-        //         parent_address_cells: _,
-        //         size_cells: _,
-        //     } => {
-        //         if entries.is_empty() {
-        //             "ranges;".to_string()
-        //         } else {
-        //             let values: Vec<String> = entries
-        //                 .iter()
-        //                 .map(|entry| {
-        //                     format!(
-        //                         "{:#x} {:#x} {:#x}",
-        //                         entry.child_bus_address, entry.parent_bus_address, entry.length
-        //                     )
-        //                 })
-        //                 .collect();
-        //             format!("ranges = <{}>", values.join(" "))
-        //         }
-        //     }
-        //     crate::Property::Compatible(values) => {
-        //         let quoted: Vec<String> = values.iter().map(|v| format!("\"{}\"", v)).collect();
-        //         format!("compatible = {}", quoted.join(", "))
-        //     }
-        //     crate::Property::Model(value) => format!("model = \"{}\"", value),
-        //     crate::Property::Status(status) => format!(
-        //         "status = \"{}\"",
-        //         match status {
-        //             crate::Status::Okay => "okay",
-        //             crate::Status::Disabled => "disabled",
-        //         }
-        //     ),
-        //     crate::Property::Phandle(phandle) => format!("phandle = <{:#x}>", phandle.as_usize()),
-        //     crate::Property::LinuxPhandle(phandle) => {
-        //         format!("linux,phandle = <{:#x}>", phandle.as_usize())
-        //     }
-        //     crate::Property::DeviceType(value) => format!("device_type = \"{}\"", value),
-        //     crate::Property::InterruptParent(phandle) => {
-        //         format!("interrupt-parent = <{:#x}>", phandle.as_usize())
-        //     }
-        //     crate::Property::ClockNames(values) => {
-        //         let quoted: Vec<String> = values.iter().map(|v| format!("\"{}\"", v)).collect();
-        //         format!("clock-names = {}", quoted.join(", "))
-        //     }
-        //     crate::Property::DmaCoherent => "dma-coherent;".to_string(),
-        //     crate::Property::Raw(raw) => {
-        //         if raw.is_empty() {
-        //             format!("{};", raw.name())
-        //         } else {
-        //             // 尝试解析为字符串
-        //             if let Ok(s) = core::str::from_utf8(raw.data()) {
-        //                 if let Some(s) = s.strip_suffix('\0') {
-        //                     return format!("{} = \"{}\"", raw.name(), s);
-        //                 } else {
-        //                     return format!("{} = \"{}\"", raw.name(), s);
-        //                 }
-        //             }
-
-        //             // 如果数据以 null 结尾且只包含可打印字符，当作字符串
-        //             if let Some(null_pos) = raw.data().iter().position(|&b| b == 0) {
-        //                 let data_str = &raw.data()[..null_pos];
-        //                 if data_str
-        //                     .iter()
-        //                     .all(|&b| b.is_ascii_graphic() || b.is_ascii_whitespace())
-        //                 {
-        //                     if let Ok(s) = core::str::from_utf8(data_str) {
-        //                         return format!("{} = \"{}\"", raw.name(), s);
-        //                     }
-        //                 }
-        //             }
-
-        //             // 如果全是 4 字节对齐的数据，当作数字数组
-        //             if raw.data().len() % 4 == 0 {
-        //                 let values: Vec<String> = raw
-        //                     .data()
-        //                     .chunks(4)
-        //                     .map(|chunk| {
-        //                         let array: [u8; 4] = chunk.try_into().unwrap();
-        //                         format!("{:#x}", u32::from_be_bytes(array))
-        //                     })
-        //                     .collect();
-        //                 format!("{} = <{}>", raw.name(), values.join(" "))
-        //             } else {
-        //                 // 当作字节数组
-        //                 let values: Vec<String> =
-        //                     raw.data().iter().map(|&b| format!("{:02x}", b)).collect();
-        //                 format!("{} = [{}]", raw.name(), values.join(" "))
-        //             }
-        //         }
-        //     }
-        // }
     }
 }

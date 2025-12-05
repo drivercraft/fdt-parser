@@ -29,7 +29,9 @@ pub enum PropertyKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Reg {
+    /// cpu side address
     pub address: u64,
+    pub child_bus_address: Option<u64>,
     pub size: Option<u64>,
 }
 
@@ -392,6 +394,7 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
                     .iter()
                     .map(|e| Reg {
                         address: e.address,
+                        child_bus_address: None,
                         size: e.size,
                     })
                     .collect();
@@ -413,7 +416,7 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
             },
             fdt_raw::Property::Phandle(phandle) => Property {
                 name,
-                kind: PropertyKind::Phandle(Phandle::from(phandle)),
+                kind: PropertyKind::Phandle(phandle),
             },
             fdt_raw::Property::DeviceType(v) => Property {
                 name,
@@ -421,7 +424,7 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
             },
             fdt_raw::Property::InterruptParent(phandle) => Property {
                 name,
-                kind: PropertyKind::Phandle(Phandle::from(phandle)),
+                kind: PropertyKind::Phandle(phandle),
             },
             fdt_raw::Property::InterruptCells(v) => Property {
                 name,

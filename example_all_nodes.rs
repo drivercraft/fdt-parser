@@ -1,8 +1,8 @@
 // 示例：使用 all_nodes 函数
 extern crate alloc;
-use alloc::{vec::Vec, string::String};
+use alloc::{string::String, vec::Vec};
 
-use fdt_edit::{Fdt, NodeRef};
+use fdt_edit::{Fdt, Node, NodeRef};
 
 fn main() {
     // 创建一个示例 FDT
@@ -29,15 +29,17 @@ fn main() {
     }
 
     // 使用 all_nodes 获取所有节点
-    let all_nodes: Vec<NodeRef> = fdt.all_nodes();
+    let all_nodes: Vec<NodeRef> = fdt.all_nodes().collect();
 
     println!("FDT 中所有节点 (深度优先遍历):");
     for (i, node_ref) in all_nodes.iter().enumerate() {
-        println!("{}: 节点 '{}', 路径: '{}', 深度: {}",
-                 i + 1,
-                 node_ref.node.name(),
-                 node_ref.context.current_path,
-                 node_ref.context.depth);
+        println!(
+            "{}: 节点 '{}', 路径: '{}', 深度: {}",
+            i + 1,
+            node_ref.node.name(),
+            node_ref.context.current_path,
+            node_ref.context.depth
+        );
 
         // 显示节点的 compatible 属性
         let compatibles: Vec<&str> = node_ref.compatibles();
@@ -50,8 +52,10 @@ fn main() {
     let uart_nodes = fdt.find_compatible(&["vendor,uart"]);
     println!("\n找到 UART 节点:");
     for node_ref in uart_nodes {
-        println!("  节点: {}, 完整路径: '{}'",
-                 node_ref.node.name(),
-                 node_ref.context.current_path);
+        println!(
+            "  节点: {}, 完整路径: '{}'",
+            node_ref.node.name(),
+            node_ref.context.current_path
+        );
     }
 }
