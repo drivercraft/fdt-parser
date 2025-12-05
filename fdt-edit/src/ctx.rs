@@ -4,7 +4,7 @@ use fdt_raw::{Phandle, Status};
 use crate::{Node, NodeOp, RangesEntry, prop::PropertyKind};
 
 /// 遍历上下文，存储从根到当前节点的父节点引用栈
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FdtContext<'a> {
     /// 父节点引用栈（从根节点到当前节点的父节点）
     /// 栈底是根节点，栈顶是当前节点的直接父节点
@@ -14,16 +14,6 @@ pub struct FdtContext<'a> {
     /// phandle 到节点引用的映射
     /// 用于通过 phandle 快速查找节点（如中断父节点）
     pub phandle_map: BTreeMap<Phandle, &'a Node>,
-}
-
-impl<'a> Default for FdtContext<'a> {
-    fn default() -> Self {
-        Self {
-            parents: Vec::new(),
-            current_path: String::new(),
-            phandle_map: BTreeMap::new(),
-        }
-    }
 }
 
 impl<'a> FdtContext<'a> {

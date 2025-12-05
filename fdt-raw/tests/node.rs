@@ -504,7 +504,7 @@ fn test_node_properties() {
                         p.as_usize()
                     );
                 }
-           
+
                 Property::InterruptParent(p) => {
                     found_interrupt_parent = true;
                     info!("  interrupt-parent = {}", p);
@@ -514,7 +514,7 @@ fn test_node_properties() {
                         p.as_usize()
                     );
                 }
-           
+
                 Property::DeviceType(s) => {
                     found_device_type = true;
                     info!("  device_type = \"{}\"", s);

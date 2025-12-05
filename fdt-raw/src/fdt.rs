@@ -80,10 +80,7 @@ impl<'a> Fdt<'a> {
         let data_slice = unsafe { core::slice::from_raw_parts(ptr, header.totalsize as _) };
         let data = Bytes::new(data_slice);
 
-        Ok(Fdt {
-            header,
-            data,
-        })
+        Ok(Fdt { header, data })
     }
 
     pub fn header(&self) -> &Header {
