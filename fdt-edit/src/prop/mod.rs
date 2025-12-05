@@ -38,7 +38,7 @@ pub struct Reg {
 pub struct RegFixed {
     /// cpu side address
     pub address: u64,
-    pub child_bus_address: Option<u64>,
+    pub child_bus_address: u64,
     pub size: Option<u64>,
 }
 

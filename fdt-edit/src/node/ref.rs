@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use super::Node;
 use crate::{
-    FdtContext, NodeOp, Property,
+    FdtContext, NodeOp,
     prop::{PropertyKind, RegFixed},
 };
 
@@ -25,6 +25,11 @@ impl<'a> NodeRef<'a> {
     pub(crate) fn new(node: &'a Node, context: FdtContext) -> Self {
         Self { node, context }
     }
+
+    /// 解析 reg，按 ranges 做地址转换，返回 CPU 视角地址
+    pub fn reg(&self) -> Option<Vec<RegFixed>> {
+        reg_impl(self.node, &self.context)
+    }
 }
 
 impl<'a> NodeMut<'a> {
@@ -32,24 +37,41 @@ impl<'a> NodeMut<'a> {
     pub(crate) fn new(node: &'a mut Node, context: FdtContext) -> Self {
         Self { node, context }
     }
-}
 
-impl<'a> NodeRefOp for NodeMut<'a> {
-    fn node(&self) -> &Node {
-        self.node
+    /// 解析 reg，按 ranges 做地址转换，返回 CPU 视角地址
+    pub fn reg(&self) -> Option<Vec<RegFixed>> {
+        reg_impl(self.node, &self.context)
     }
 }
 
-impl<'a> NodeRefOp for NodeRef<'a> {
-    fn node(&self) -> &Node {
-        self.node
-    }
-}
+fn reg_impl(node: &Node, ctx: &FdtContext) -> Option<Vec<RegFixed>> {
+    let prop = node.find_property("reg")?;
+    let PropertyKind::Reg(entries) = &prop.kind else {
+        return None;
+    };
 
-pub trait NodeRefOp {
-    fn node(&self) -> &Node;
+    let ranges_stack = ctx.ranges.last();
+    let mut out = Vec::with_capacity(entries.len());
 
-    fn reg(&self) -> Vec<RegFixed> {
-        Vec::new()
+    for entry in entries {
+        let child_bus = entry.address;
+        let mut cpu_addr = child_bus;
+
+        if let Some(ranges) = ranges_stack {
+            for r in ranges {
+                if child_bus >= r.child_bus_address && child_bus < r.child_bus_address + r.length {
+                    cpu_addr = child_bus - r.child_bus_address + r.parent_bus_address;
+                    break;
+                }
+            }
+        }
+
+        out.push(RegFixed {
+            address: cpu_addr,
+            child_bus_address: child_bus,
+            size: entry.size,
+        });
     }
+
+    Some(out)
 }

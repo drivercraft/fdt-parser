@@ -4,6 +4,7 @@ mod tests {
 
     use dtb_file::fdt_rpi_4b;
     use fdt_edit::*;
+    use log::*;
 
     fn init_logging() {
         static INIT: Once = Once::new();
@@ -23,39 +24,16 @@ mod tests {
 
         let node = fdt.get_by_path("/soc/serial@7e215040").unwrap();
 
-        let reg = node.reg().unwrap()[0].clone();
+        let reg = node.reg().unwrap()[0];
 
-        let parent = node.parent().unwrap();
-        if let Some(addr_cells_prop) = parent.find_property("#address-cells") {
-            debug!("parent #address-cells={}", addr_cells_prop.u32().unwrap());
-        }
-        if let Some(size_cells_prop) = parent.find_property("#size-cells") {
-            debug!("parent #size-cells={}", size_cells_prop.u32().unwrap());
-        }
-        if let Some(ranges) = parent.ranges() {
-            for (idx, range) in ranges.iter().enumerate() {
-                let child_cells = range.child_bus_address().collect::<Vec<_>>();
-                let parent_cells = range.parent_bus_address().collect::<Vec<_>>();
-                let child_addr = child_cells
-                    .iter()
-                    .fold(0u64, |acc, val| (acc << 32) | (*val as u64));
-                let parent_addr = parent_cells
-                    .iter()
-                    .fold(0u64, |acc, val| (acc << 32) | (*val as u64));
-                debug!(
-                    "range[{idx}]: child_cells={:?} parent_cells={:?} child={:#x} parent={:#x} size={:#x}",
-                    child_cells, parent_cells, child_addr, parent_addr, range.size
-                );
-            }
-        }
-
-        info!("reg: {:?}", reg);
+        info!("reg: {:#x?}", reg);
 
         assert_eq!(
             reg.address, 0xfe215040,
             "want 0xfe215040, got {:#x}",
             reg.address
         );
+
         assert_eq!(
             reg.child_bus_address, 0x7e215040,
             "want 0x7e215040, got {:#x}",
