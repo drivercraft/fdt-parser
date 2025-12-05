@@ -138,7 +138,31 @@ mod tests {
             panic!("Not a PCI node");
         };
 
-        let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
+        let irq = pci.child_interrupts(&node_ref.ctx, 0, 0, 0, 4).unwrap();
+
         assert!(!irq.irqs.is_empty());
+    }
+
+    #[test]
+    fn test_pci_irq_map2() {
+        let raw = fdt_qemu();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node_ref = fdt
+            .find_compatible(&["pci-host-ecam-generic"])
+            .into_iter()
+            .next()
+            .unwrap();
+
+        let Node::Pci(pci) = node_ref.node else {
+            panic!("Not a PCI node");
+        };
+
+        let irq = pci.child_interrupts(&node_ref.ctx, 0, 2, 0, 1).unwrap();
+
+        let want = [0, 5, 4];
+
+        for (got, want) in irq.irqs.iter().zip(want.iter()) {
+            assert_eq!(*got, *want);
+        }
     }
 }

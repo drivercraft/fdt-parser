@@ -167,14 +167,14 @@ impl NodePci {
 
     pub fn child_interrupts(
         &self,
-        ctx: &FdtContext,
-        bus: u8,
-        device: u8,
-        function: u8,
-        interrupt_pin: u8,
+        _ctx: &FdtContext,
+        _bus: u8,
+        _device: u8,
+        _function: u8,
+        _interrupt_pin: u8,
     ) -> Result<PciInterruptInfo, FdtError> {
-       
- 
+        // TODO: 实现 PCI 中断映射
+        Err(FdtError::NotFound)
     }
 }
 

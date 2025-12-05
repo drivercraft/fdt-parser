@@ -12,7 +12,7 @@ use fdt_raw::{FDT_MAGIC, FdtError, Phandle, Status, Token};
 pub use fdt_raw::MemoryReservation;
 
 use crate::Node;
-use crate::{FdtContext, NodeMut, NodeRef, RangesEntry, node::NodeOp, prop::PropertyKind};
+use crate::{FdtContext, NodeMut, NodeRef, node::NodeOp, prop::PropertyKind};
 
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]
@@ -25,67 +25,6 @@ pub struct Fdt {
     pub root: Node,
     /// phandle 到节点完整路径的缓存
     phandle_cache: BTreeMap<Phandle, String>,
-}
-
-/// 解析节点的 ranges 属性，用于子节点地址转换
-fn parse_ranges(node: &Node, ctx: &FdtContext) -> Option<Vec<RangesEntry>> {
-    let prop = node.find_property("ranges")?;
-    let PropertyKind::Raw(raw) = &prop.kind else {
-        return None;
-    };
-
-    // 空 ranges 表示 1:1 映射，不需要转换
-    if raw.is_empty() {
-        return None;
-    }
-
-    // 当前节点的 #address-cells 用于子节点地址
-    let child_address_cells = node.address_cells().unwrap_or(2) as usize;
-    // 父节点的 #address-cells 用于父总线地址
-    let parent_address_cells = ctx.parent_address_cells as usize;
-    // 当前节点的 #size-cells
-    let size_cells = node.size_cells().unwrap_or(1) as usize;
-
-    let tuple_cells = child_address_cells + parent_address_cells + size_cells;
-    if tuple_cells == 0 {
-        return None;
-    }
-
-    let words = raw.as_u32_vec();
-    if words.len() % tuple_cells != 0 {
-        return None;
-    }
-
-    let mut entries = Vec::with_capacity(words.len() / tuple_cells);
-
-    for chunk in words.chunks_exact(tuple_cells) {
-        let mut idx = 0;
-
-        // 读取 child bus address
-        let mut child_bus = 0u64;
-        for _ in 0..child_address_cells {
-            child_bus = (child_bus << 32) | chunk[idx] as u64;
-            idx += 1;
-        }
-
-        // 读取 parent bus address
-        let mut parent_bus = 0u64;
-        for _ in 0..parent_address_cells {
-            parent_bus = (parent_bus << 32) | chunk[idx] as u64;
-            idx += 1;
-        }
-
-        // 读取 length
-        let mut length = 0u64;
-        for _ in 0..size_cells {
-            length = (length << 32) | chunk[idx] as u64;
-            idx += 1;
-        }
-
-        entries.push(RangesEntry::new(child_bus, parent_bus, length));
-    }
-
-    Some(entries)
 }
 
 impl Default for Fdt {
@@ -224,7 +163,7 @@ impl Fdt {
 
         while let Some(part) = sg.pop_front() {
             let is_last = sg.is_empty();
-            ctx.update_node(node);
+            ctx.push_parent(node);
             let matched_node = if part.is_empty() {
                 Some(node)
             } else if is_last {
@@ -265,11 +204,8 @@ impl Fdt {
         let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
 
         while let Some(part) = sg.pop_front() {
-            // 先解析当前节点 (父节点) 的 ranges，供子节点使用
-            if let Some(ranges) = parse_ranges(node, &ctx) {
-                ctx.ranges.push(ranges);
-            }
-            ctx.update_node(node);
+            // 压入当前节点作为父节点
+            ctx.push_parent(node);
             let matched_node = if part.is_empty() {
                 Some(node)
             } else {
@@ -290,6 +226,8 @@ impl Fdt {
             self.resolve_alias(path)?
         };
 
+        // 对于可变引用，我们无法存储父节点引用（因为需要可变借用）
+        // 所以只收集路径信息
         let mut ctx = FdtContext::new();
 
         let mut node = &mut self.root;
@@ -297,7 +235,7 @@ impl Fdt {
         let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
 
         while let Some(part) = sg.pop_front() {
-            ctx.update_node(node);
+            ctx.path_add(node.name());
             let matched_node = if part.is_empty() {
                 Some(node)
             } else {
@@ -631,8 +569,7 @@ impl Fdt {
     ///
     /// 返回包含根节点及其所有子节点的迭代器，按照深度优先遍历顺序
     pub fn all_nodes(&self) -> impl Iterator<Item = NodeRef<'_>> + '_ {
-        let mut root_ctx = FdtContext::for_root();
-        root_ctx.update_node(&self.root);
+        let root_ctx = FdtContext::for_root();
 
         AllNodes {
             stack: vec![(&self.root, root_ctx)],
@@ -669,7 +606,7 @@ impl Fdt {
 
 /// 深度优先的节点迭代器
 struct AllNodes<'a> {
-    stack: Vec<(&'a Node, FdtContext)>,
+    stack: Vec<(&'a Node, FdtContext<'a>)>,
 }
 
 impl<'a> Iterator for AllNodes<'a> {
@@ -680,8 +617,8 @@ impl<'a> Iterator for AllNodes<'a> {
 
         // 使用栈实现前序深度优先，保持原始子节点顺序
         for child in node.children().rev() {
-            let mut child_ctx = ctx.clone();
-            child_ctx.update_node(child);
+            // 为子节点创建新的上下文，当前节点成为父节点
+            let child_ctx = ctx.for_child(node);
             self.stack.push((child, child_ctx));
         }
 
