@@ -6,7 +6,7 @@ use alloc::{
 // Re-export from fdt_raw
 pub use fdt_raw::{Phandle, RegInfo, Status};
 
-use crate::{Node, NodeOp};
+use crate::Node;
 
 #[derive(Clone, Debug)]
 pub struct Property {
@@ -63,7 +63,7 @@ impl RawProperty {
     }
 
     pub fn as_u32_vec(&self) -> Vec<u32> {
-        if self.0.len() % 4 != 0 {
+        if !self.0.len().is_multiple_of(4) {
             return vec![];
         }
         let mut result = Vec::new();
@@ -75,7 +75,7 @@ impl RawProperty {
     }
 
     pub fn as_u64_vec(&self) -> Vec<u64> {
-        if self.0.len() % 8 != 0 {
+        if !self.0.len().is_multiple_of(8) {
             return vec![];
         }
         let mut result = Vec::new();
@@ -140,98 +140,6 @@ impl RawProperty {
         self.0.extend_from_slice(&value.to_be_bytes());
     }
 }
-
-// #[enum_dispatch::enum_dispatch(Property)]
-// pub trait PropertyTrait {
-//     fn as_raw(&self) -> &RawProperty;
-//     fn as_raw_mut(&mut self) -> &mut RawProperty;
-// }
-
-// pub trait PropertyOp: PropertyTrait {
-//     /// 获取属性名称
-//     fn name(&self) -> &str {
-//         &self.as_raw().name
-//     }
-
-//     /// 获取属性数据
-//     fn data(&self) -> &[u8] {
-//         &self.as_raw().data
-//     }
-
-//     /// 获取可变属性数据
-//     fn data_mut(&mut self) -> &mut Vec<u8> {
-//         &mut self.as_raw_mut().data
-//     }
-
-//     /// 属性数据是否为空
-//     fn is_empty(&self) -> bool {
-//         self.as_raw().data.is_empty()
-//     }
-
-//     /// 属性数据长度
-//     fn len(&self) -> usize {
-//         self.data().len()
-//     }
-
-//     fn as_str(&self) -> Option<&str> {
-//         let data = self.data();
-//         if data.is_empty() {
-//             return None;
-//         }
-//         let len = data.iter().position(|&b| b == 0).unwrap_or(data.len());
-
-//         core::str::from_utf8(&data[..len]).ok()
-//     }
-
-//     fn as_u32_vec(&self) -> Vec<u32> {
-//         if self.data().len() % 4 != 0 {
-//             return vec![];
-//         }
-//         let mut result = Vec::new();
-//         for chunk in self.data().chunks(4) {
-//             let value = u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-//             result.push(value);
-//         }
-//         result
-//     }
-
-//     fn as_u64_vec(&self) -> Vec<u64> {
-//         if self.len() % 8 != 0 {
-//             return vec![];
-//         }
-//         let mut result = Vec::new();
-//         for chunk in self.data().chunks(8) {
-//             let value = u64::from_be_bytes([
-//                 chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
-//             ]);
-//             result.push(value);
-//         }
-//         result
-//     }
-
-//     fn as_string_list(&self) -> Vec<String> {
-//         let mut result = Vec::new();
-//         let mut start = 0;
-//         for (i, &byte) in self.data().iter().enumerate() {
-//             if byte == 0 {
-//                 if i == start {
-//                     // 连续的 null 字节，跳过
-//                     start += 1;
-//                     continue;
-//                 }
-//                 let s = core::str::from_utf8(&self.data()[start..i]).ok().unwrap();
-//                 result.push(s.to_string());
-//                 start = i + 1;
-//             }
-//         }
-//         // 处理最后一个字符串（如果没有以 null 结尾）
-//         if start < self.len() {
-//             let s = core::str::from_utf8(&self.data()[start..]).ok().unwrap();
-//             result.push(s.to_string());
-//         }
-//         result
-//     }
-// }
 
 /// Ranges 条目信息
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

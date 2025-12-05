@@ -1,3 +1,5 @@
+use core::ops::{Deref, DerefMut};
+
 use alloc::vec::Vec;
 
 use super::Node;
@@ -10,37 +12,54 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct NodeRef<'a> {
     pub node: &'a Node,
-    pub context: FdtContext,
+    pub ctx: FdtContext,
 }
 
 /// 带有遍历上下文的可变节点引用
 #[derive(Debug)]
 pub struct NodeMut<'a> {
     pub node: &'a mut Node,
-    pub context: FdtContext,
+    pub ctx: FdtContext,
+}
+
+impl<'a> Deref for NodeRef<'a> {
+    type Target = Node;
+
+    fn deref(&self) -> &Self::Target {
+        self.node
+    }
+}
+
+impl<'a> Deref for NodeMut<'a> {
+    type Target = Node;
+
+    fn deref(&self) -> &Self::Target {
+        self.node
+    }
+}
+
+impl<'a> DerefMut for NodeMut<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.node
+    }
 }
 
 impl<'a> NodeRef<'a> {
     /// 创建新的带上下文的节点引用
     pub(crate) fn new(node: &'a Node, context: FdtContext) -> Self {
-        Self { node, context }
+        Self { node, ctx: context }
     }
 
     /// 解析 reg，按 ranges 做地址转换，返回 CPU 视角地址
     pub fn reg(&self) -> Option<Vec<RegFixed>> {
-        reg_impl(self.node, &self.context)
+        reg_impl(self.node, &self.ctx)
     }
 }
 
 impl<'a> NodeMut<'a> {
-    /// 创建新的带上下文的可变节点引用
-    pub(crate) fn new(node: &'a mut Node, context: FdtContext) -> Self {
-        Self { node, context }
-    }
-
     /// 解析 reg，按 ranges 做地址转换，返回 CPU 视角地址
     pub fn reg(&self) -> Option<Vec<RegFixed>> {
-        reg_impl(self.node, &self.context)
+        reg_impl(self.node, &self.ctx)
     }
 }
 

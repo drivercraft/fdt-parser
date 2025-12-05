@@ -16,28 +16,6 @@ pub(crate) mod write;
 pub use pci::*;
 pub use r#ref::{NodeMut, NodeRef};
 
-impl<'a> Deref for NodeRef<'a> {
-    type Target = Node;
-
-    fn deref(&self) -> &Self::Target {
-        self.node
-    }
-}
-
-impl<'a> Deref for NodeMut<'a> {
-    type Target = Node;
-
-    fn deref(&self) -> &Self::Target {
-        self.node
-    }
-}
-
-impl<'a> DerefMut for NodeMut<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.node
-    }
-}
-
 #[enum_dispatch::enum_dispatch]
 #[derive(Clone, Debug)]
 pub enum Node {

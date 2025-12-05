@@ -233,7 +233,7 @@ impl Fdt {
                     ctx_clone.path_add(n.name());
                     results.push(NodeRef {
                         node: n,
-                        context: ctx_clone,
+                        ctx: ctx_clone,
                     });
                 }
                 break;
@@ -280,7 +280,7 @@ impl Fdt {
         }
 
         ctx.path_add(node.name());
-        Some(NodeRef { node, context: ctx })
+        Some(NodeRef { node, ctx })
     }
 
     pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
@@ -307,7 +307,7 @@ impl Fdt {
             node = matched_node;
         }
         ctx.path_add(node.name());
-        Some(NodeMut { node, context: ctx })
+        Some(NodeMut { node, ctx })
     }
 
     /// 解析别名，返回对应的完整路径
@@ -466,7 +466,7 @@ impl Fdt {
 
             // 通过 phandle 找到节点，然后构建路径
             if let Some(node) = self.find_by_phandle(ph) {
-                return Ok(node.context.current_path);
+                return Ok(node.ctx.current_path);
             }
         }
 
