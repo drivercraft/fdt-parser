@@ -95,7 +95,6 @@ pub enum Property<'a> {
     Reg(Reg<'a>),
     /// compatible 属性（字符串列表）
     Compatible(StrIter<'a>),
-
     /// status 属性
     Status(Status),
     /// phandle 属性

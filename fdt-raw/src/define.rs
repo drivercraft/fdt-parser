@@ -6,6 +6,13 @@ use core::{
 
 pub const FDT_MAGIC: u32 = 0xd00dfeed;
 
+/// Memory reservation block entry
+#[derive(Clone, Debug, Default)]
+pub struct MemoryReservation {
+    pub address: u64,
+    pub size: u64,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Token {
     BeginNode,

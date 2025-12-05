@@ -1,6 +1,40 @@
 use core::fmt;
 
-use crate::{FdtError, data::Bytes, header::Header, iter::FdtIter};
+use crate::{FdtError, MemoryReservation, data::Bytes, header::Header, iter::FdtIter};
+
+/// Memory reservation block iterator
+pub struct MemoryReservationIter<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> Iterator for MemoryReservationIter<'a> {
+    type Item = MemoryReservation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // 确保我们有足够的数据来读取地址和大小（各8字节）
+        if self.offset + 16 > self.data.len() {
+            return None;
+        }
+
+        // 读取地址（8字节，大端序）
+        let address_bytes = &self.data[self.offset..self.offset + 8];
+        let address = u64::from_be_bytes(address_bytes.try_into().unwrap());
+        self.offset += 8;
+
+        // 读取大小（8字节，大端序）
+        let size_bytes = &self.data[self.offset..self.offset + 8];
+        let size = u64::from_be_bytes(size_bytes.try_into().unwrap());
+        self.offset += 8;
+
+        // 检查是否到达终止符（地址和大小都为0）
+        if address == 0 && size == 0 {
+            return None;
+        }
+
+        Some(MemoryReservation { address, size })
+    }
+}
 
 /// 写入缩进（使用空格）
 fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Result {
@@ -26,6 +60,7 @@ impl<'a> Fdt<'a> {
             });
         }
         let buffer = Bytes::new(data);
+
         Ok(Fdt {
             header,
             data: buffer,
@@ -42,9 +77,13 @@ impl<'a> Fdt<'a> {
     pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Fdt<'a>, FdtError> {
         let header = unsafe { Header::from_ptr(ptr)? };
 
-        let data = Bytes::new(unsafe { core::slice::from_raw_parts(ptr, header.totalsize as _) });
+        let data_slice = unsafe { core::slice::from_raw_parts(ptr, header.totalsize as _) };
+        let data = Bytes::new(data_slice);
 
-        Ok(Fdt { header, data })
+        Ok(Fdt {
+            header,
+            data,
+        })
     }
 
     pub fn header(&self) -> &Header {
@@ -57,6 +96,14 @@ impl<'a> Fdt<'a> {
 
     pub fn all_nodes(&self) -> FdtIter<'a> {
         FdtIter::new(self.clone())
+    }
+
+    /// Get an iterator over memory reservation entries
+    pub fn memory_reservations(&self) -> MemoryReservationIter<'a> {
+        MemoryReservationIter {
+            data: self.data.as_slice(),
+            offset: self.header.off_mem_rsvmap as usize,
+        }
     }
 }
 
@@ -211,5 +258,50 @@ impl fmt::Debug for Fdt<'_> {
         }
 
         writeln!(f, "}}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use heapless::Vec;
+
+    #[test]
+    fn test_memory_reservation_iterator() {
+        // 创建一个简单的测试数据：一个内存保留条目 + 终止符
+        let mut test_data = [0u8; 32];
+
+        // 地址: 0x80000000, 大小: 0x10000000 (256MB)
+        test_data[0..8].copy_from_slice(&0x80000000u64.to_be_bytes());
+        test_data[8..16].copy_from_slice(&0x10000000u64.to_be_bytes());
+        // 终止符: address=0, size=0
+        test_data[16..24].copy_from_slice(&0u64.to_be_bytes());
+        test_data[24..32].copy_from_slice(&0u64.to_be_bytes());
+
+        let iter = MemoryReservationIter {
+            data: &test_data,
+            offset: 0,
+        };
+
+        let reservations: Vec<MemoryReservation, 4> = iter.collect();
+        assert_eq!(reservations.len(), 1);
+        assert_eq!(reservations[0].address, 0x80000000);
+        assert_eq!(reservations[0].size, 0x10000000);
+    }
+
+    #[test]
+    fn test_empty_memory_reservation_iterator() {
+        // 只有终止符
+        let mut test_data = [0u8; 16];
+        test_data[0..8].copy_from_slice(&0u64.to_be_bytes());
+        test_data[8..16].copy_from_slice(&0u64.to_be_bytes());
+
+        let iter = MemoryReservationIter {
+            data: &test_data,
+            offset: 0,
+        };
+
+        let reservations: Vec<MemoryReservation, 4> = iter.collect();
+        assert_eq!(reservations.len(), 0);
     }
 }

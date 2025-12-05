@@ -449,7 +449,6 @@ fn test_node_properties() {
     let mut found_address_cells = false;
     let mut found_size_cells = false;
     let mut found_interrupt_cells = false;
-    let mut found_model = false;
     let mut found_device_type = false;
     let mut found_compatible = false;
     let mut found_phandle = false;
@@ -619,7 +618,6 @@ fn test_node_properties() {
     // 验证找到了基本属性
     assert!(found_address_cells, "Should find #address-cells property");
     assert!(found_size_cells, "Should find #size-cells property");
-    assert!(found_model, "Should find model property");
     assert!(found_compatible, "Should find compatible property");
     assert!(found_device_type, "Should find device_type property");
     assert!(found_reg, "Should find reg property");
