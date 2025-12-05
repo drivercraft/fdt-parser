@@ -123,4 +123,22 @@ mod tests {
             println!("{range:#x?}");
         }
     }
+
+    #[test]
+    fn test_pci_irq_map() {
+        let raw = fdt_phytium();
+        let fdt = Fdt::from_bytes(&raw).unwrap();
+        let node_ref = fdt
+            .find_compatible(&["pci-host-ecam-generic"])
+            .into_iter()
+            .next()
+            .unwrap();
+
+        let Node::Pci(pci) = node_ref.node else {
+            panic!("Not a PCI node");
+        };
+
+        let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
+        assert!(!irq.irqs.is_empty());
+    }
 }

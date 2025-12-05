@@ -1,9 +1,10 @@
 use core::ops::Range;
 
 use alloc::{collections::vec_deque::VecDeque, vec::Vec};
-use fdt_raw::Phandle;
+use fdt_raw::{FdtError, Phandle};
 
 use crate::{
+    FdtContext,
     node::{NodeOp, NodeTrait, RawNode},
     prop::PropertyKind,
 };
@@ -162,6 +163,18 @@ impl NodePci {
         };
 
         (space, prefetchable)
+    }
+
+    pub fn child_interrupts(
+        &self,
+        ctx: &FdtContext,
+        bus: u8,
+        device: u8,
+        function: u8,
+        interrupt_pin: u8,
+    ) -> Result<PciInterruptInfo, FdtError> {
+       
+ 
     }
 }
 
