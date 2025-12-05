@@ -9,15 +9,10 @@ use alloc::{
 };
 use fdt_raw::{FDT_MAGIC, FdtError, Phandle, Status, Token};
 
+pub use fdt_raw::MemoryReservation;
+
 use crate::Node;
 use crate::{FdtContext, NodeMut, NodeRef, node::NodeOp, prop::PropertyKind};
-
-/// Memory reservation block entry
-#[derive(Clone, Debug, Default)]
-pub struct MemoryReservation {
-    pub address: u64,
-    pub size: u64,
-}
 
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]

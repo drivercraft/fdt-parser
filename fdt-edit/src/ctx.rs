@@ -1,4 +1,4 @@
-use alloc::{string::String, string::ToString, vec::Vec};
+use alloc::{string::String, vec::Vec};
 use fdt_raw::{Phandle, Status};
 
 use crate::{Node, NodeOp, RangesEntry};
