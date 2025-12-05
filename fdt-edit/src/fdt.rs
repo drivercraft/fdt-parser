@@ -193,6 +193,11 @@ impl Fdt {
     pub fn get_by_path<'a>(&'a self, path: &str) -> Option<NodeRef<'a>> {
         let mut ctx = FdtContext::new();
 
+        // 构建 phandle 映射
+        let mut phandle_map = alloc::collections::BTreeMap::new();
+        FdtContext::build_phandle_map_from_node(&self.root, &mut phandle_map);
+        ctx.set_phandle_map(phandle_map);
+
         let mut node = &self.root;
 
         let path = if path.starts_with("/") {
@@ -569,7 +574,12 @@ impl Fdt {
     ///
     /// 返回包含根节点及其所有子节点的迭代器，按照深度优先遍历顺序
     pub fn all_nodes(&self) -> impl Iterator<Item = NodeRef<'_>> + '_ {
-        let root_ctx = FdtContext::for_root();
+        let mut root_ctx = FdtContext::for_root();
+
+        // 构建 phandle 映射
+        let mut phandle_map = alloc::collections::BTreeMap::new();
+        FdtContext::build_phandle_map_from_node(&self.root, &mut phandle_map);
+        root_ctx.set_phandle_map(phandle_map);
 
         AllNodes {
             stack: vec![(&self.root, root_ctx)],

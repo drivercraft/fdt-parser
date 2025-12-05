@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use fdt_raw::{Phandle, Status};
 
 use crate::{Node, NodeOp, RangesEntry, prop::PropertyKind};
@@ -11,6 +11,9 @@ pub struct FdtContext<'a> {
     pub parents: Vec<&'a Node>,
     /// 当前节点的完整路径
     pub current_path: String,
+    /// phandle 到节点引用的映射
+    /// 用于通过 phandle 快速查找节点（如中断父节点）
+    pub phandle_map: BTreeMap<Phandle, &'a Node>,
 }
 
 impl<'a> Default for FdtContext<'a> {
@@ -18,6 +21,7 @@ impl<'a> Default for FdtContext<'a> {
         Self {
             parents: Vec::new(),
             current_path: String::new(),
+            phandle_map: BTreeMap::new(),
         }
     }
 }
@@ -158,9 +162,30 @@ impl<'a> FdtContext<'a> {
         let mut child_ctx = Self {
             parents: self.parents.clone(),
             current_path: self.current_path.clone(),
+            phandle_map: self.phandle_map.clone(),
         };
         child_ctx.push_parent(current_node);
         child_ctx
+    }
+
+    /// 通过 phandle 查找节点
+    pub fn find_by_phandle(&self, phandle: Phandle) -> Option<&'a Node> {
+        self.phandle_map.get(&phandle).copied()
+    }
+
+    /// 设置 phandle 到节点的映射
+    pub fn set_phandle_map(&mut self, map: BTreeMap<Phandle, &'a Node>) {
+        self.phandle_map = map;
+    }
+
+    /// 从 Fdt 构建 phandle 映射
+    pub fn build_phandle_map_from_node(node: &'a Node, map: &mut BTreeMap<Phandle, &'a Node>) {
+        if let Some(phandle) = node.phandle() {
+            map.insert(phandle, node);
+        }
+        for child in node.children() {
+            Self::build_phandle_map_from_node(child, map);
+        }
     }
 }
 
