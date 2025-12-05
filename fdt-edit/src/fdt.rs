@@ -583,13 +583,13 @@ impl Fdt {
         });
 
         // 递归遍历所有子节点
-        self.collect_child_nodes(&self.root, &mut results);
+        Self::collect_child_nodes(&self.root, &mut results);
 
         results
     }
 
     /// 递归收集所有子节点
-    fn collect_child_nodes<'a>(&self, parent: &'a Node, results: &mut Vec<NodeRef<'a>>) {
+    fn collect_child_nodes<'a>(parent: &'a Node, results: &mut Vec<NodeRef<'a>>) {
         for child in parent.children() {
             // 为子节点创建上下文
             let mut child_ctx = FdtContext::new();
@@ -603,7 +603,7 @@ impl Fdt {
             });
 
             // 递归处理子节点的子节点
-            self.collect_child_nodes(child, results);
+            Self::collect_child_nodes(child, results);
         }
     }
 
