@@ -731,6 +731,10 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
     for node in fdt.all_nodes() {
         if node.name().starts_with("memory@") || node.name() == "memory" {
             memory_nodes_found += 1;
+
+            let reg = node.reg().expect("Memory node should have reg property");
+            let reg_infos: Vec<_> = reg.collect();
+
             info!(
                 "[{}] Found memory node: {} (level={})",
                 name,
@@ -763,28 +767,14 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                         s
                     );
                     info!("[{}]   device_type = \"{}\"", name, s);
-                } else if let Some(reg) = prop.as_reg(
-                    node.context.parent_address_cells.into(),
-                    node.context.parent_size_cells.into(),
-                ) {
+
                     found_reg = true;
-                    let reg_infos: Vec<_> = reg.iter().collect();
-                    let u32_values: Vec<_> = reg.as_u32_iter().collect();
 
                     info!("[{}]   reg property found:", name);
                     info!(
                         "[{}]     address_cells={}, size_cells={}",
-                        name,
-                        node.context.parent_address_cells,
-                        node.context.parent_size_cells
+                        name, node.context.parent_address_cells, node.context.parent_size_cells
                     );
-                    info!(
-                        "[{}]     raw data ({} bytes): {:02x?}",
-                        name,
-                        reg.as_slice().len(),
-                        reg.as_slice()
-                    );
-                    info!("[{}]     u32 values: {:x?}", name, u32_values);
 
                     // 平台特定验证
                     if name == "QEMU" {
@@ -809,23 +799,6 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                             reg_info.size
                         );
 
-                        // 验证 u32 值格式
-                        assert_eq!(
-                            u32_values.len(),
-                            4,
-                            "QEMU memory reg should have 4 u32 values"
-                        );
-                        assert_eq!(u32_values[0], 0x0, "QEMU memory high address should be 0");
-                        assert_eq!(
-                            u32_values[1], 0x40000000,
-                            "QEMU memory low address should be 0x40000000"
-                        );
-                        assert_eq!(u32_values[2], 0x0, "QEMU memory high size should be 0");
-                        assert_eq!(
-                            u32_values[3], 0x8000000,
-                            "QEMU memory low size should be 0x8000000"
-                        );
-
                         info!(
                             "[{}]   QEMU memory validated: address={:#x}, size={} bytes",
                             name,
@@ -841,35 +814,8 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                                 "[{}]     reg[{}]: address={:#x}, size={:?}",
                                 name, i, reg_info.address, reg_info.size
                             );
-
-                            // RPi 4B 的特殊情况 - 当前测试数据显示地址和大小为0
-                            // 这可能是测试数据的特殊情况，我们只验证基本结构
-                            if node.context.parent_size_cells == 1 {
-                                assert_eq!(
-                                    reg.as_slice().len() % 12,
-                                    0,
-                                    "RPi 4B reg data should be multiple of 12 bytes (2+1 cells)"
-                                );
-                            } else {
-                                assert_eq!(
-                                    reg.as_slice().len() % 16,
-                                    0,
-                                    "RPi 4B reg data should be multiple of 16 bytes (2+2 cells)"
-                                );
-                            }
                         }
                     }
-
-                    // 验证 reg 数据长度的一致性
-                    let expected_entry_size =
-                        (node.context.parent_address_cells + node.context.parent_size_cells) * 4;
-                    assert_eq!(
-                        reg.as_slice().len() % expected_entry_size as usize,
-                        0,
-                        "Reg data length should be multiple of entry size {} for node {}",
-                        expected_entry_size,
-                        node.name()
-                    );
 
                     for (i, reg_info) in reg_infos.iter().enumerate() {
                         info!(

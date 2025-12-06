@@ -68,11 +68,7 @@ impl<'a> NodeBase<'a> {
 
     /// 获取节点属性迭代器
     pub fn properties(&self) -> PropIter<'a> {
-        PropIter::new(
-            self.data.reader(),
-            self.strings.clone(),
-            self.context.clone(),
-        )
+        PropIter::new(self.data.reader(), self.strings.clone())
     }
 
     /// 查找指定名称的属性

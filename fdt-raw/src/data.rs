@@ -26,15 +26,6 @@ impl<'a> Bytes<'a> {
             range: 0..all.len(),
         }
     }
-
-    pub(crate) fn new_at(all: &'a [u8], start: usize, len: usize) -> Self {
-        assert!(start + len <= all.len());
-        Self {
-            all,
-            range: start..start + len,
-        }
-    }
-
     pub fn slice(&self, range: Range<usize>) -> Self {
         assert!(range.end <= self.len());
         Self {

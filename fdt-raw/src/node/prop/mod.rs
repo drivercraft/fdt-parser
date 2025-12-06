@@ -7,9 +7,8 @@ use core::fmt;
 
 use log::error;
 
-pub use reg::{Reg, RegInfo, RegIter};
+pub use reg::{RegInfo, RegIter};
 
-use super::NodeContext;
 use crate::{
     FdtError, Phandle, Status, Token,
     data::{Bytes, Reader, StrIter, U32Iter},
@@ -172,15 +171,6 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 reg 属性（需要 context 信息）
-    pub fn as_reg(&self, address_cells: u32, size_cells: u32) -> Option<Reg<'a>> {
-        if self.name == "reg" {
-            Some(Reg::new(self.data.as_slice(), address_cells as u8, size_cells as u8))
-        } else {
-            None
-        }
-    }
-
     /// 是否为 dma-coherent 属性
     pub fn is_dma_coherent(&self) -> bool {
         self.name == "dma-coherent" && self.data.is_empty()
@@ -294,16 +284,15 @@ fn format_bytes(f: &mut fmt::Formatter<'_>, data: &[u8]) -> fmt::Result {
 pub struct PropIter<'a> {
     reader: Reader<'a>,
     strings: Bytes<'a>,
-    context: NodeContext,
     finished: bool,
 }
 
 impl<'a> PropIter<'a> {
-    pub(crate) fn new(reader: Reader<'a>, strings: Bytes<'a>, context: NodeContext) -> Self {
+    pub(crate) fn new(reader: Reader<'a>, strings: Bytes<'a>) -> Self {
         Self {
             reader,
             strings,
-            context,
+
             finished: false,
         }
     }
