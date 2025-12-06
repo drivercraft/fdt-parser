@@ -10,12 +10,16 @@ use alloc::{
 use crate::{Phandle, Property, Status, prop::PropertyKind};
 
 mod chosen;
+mod clock;
+mod interrupt_controller;
 mod memory;
 mod pci;
 mod r#ref;
 pub(crate) mod write;
 
 pub use chosen::NodeChosen;
+pub use clock::{ClockInfo, ClockRef, ClockType, FixedClock, NodeClock};
+pub use interrupt_controller::{NodeInterruptController, is_interrupt_controller_node};
 pub use memory::{MemoryRegion, NodeMemory};
 pub use pci::*;
 pub use r#ref::{NodeMut, NodeRef};
@@ -27,6 +31,8 @@ pub enum Node {
     Pci(NodePci),
     Chosen(NodeChosen),
     Memory(NodeMemory),
+    Clock(NodeClock),
+    InterruptController(NodeInterruptController),
 }
 
 impl Deref for Node {
@@ -59,6 +65,16 @@ impl Node {
 
         if name.starts_with("memory") {
             return Self::Memory(NodeMemory(raw));
+        }
+
+        // 检查是否是中断控制器
+        if is_interrupt_controller_node(&raw) {
+            return Self::InterruptController(NodeInterruptController::new(raw));
+        }
+
+        // 检查是否是时钟提供者
+        if raw.properties.iter().any(|p| p.name() == "#clock-cells") {
+            return Self::Clock(NodeClock::new(raw));
         }
 
         // 检查 device_type 属性
@@ -98,6 +114,24 @@ impl Node {
     pub fn as_pci(&self) -> Option<&NodePci> {
         if let Node::Pci(p) = self {
             Some(p)
+        } else {
+            None
+        }
+    }
+
+    /// 尝试转换为 Clock 节点
+    pub fn as_clock(&self) -> Option<&NodeClock> {
+        if let Node::Clock(c) = self {
+            Some(c)
+        } else {
+            None
+        }
+    }
+
+    /// 尝试转换为 InterruptController 节点
+    pub fn as_interrupt_controller(&self) -> Option<&NodeInterruptController> {
+        if let Node::InterruptController(ic) = self {
+            Some(ic)
         } else {
             None
         }
