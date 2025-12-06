@@ -40,7 +40,7 @@ impl Iterator for RegIter<'_> {
     type Item = RegInfo;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut address: u64 = 0;
+        let address;
         let mut size: Option<u64> = None;
         if self.address_cells == 1 {
             address = self.reader.read_u32().map(|addr| addr as u64)?;
