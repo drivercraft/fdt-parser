@@ -114,8 +114,9 @@ impl NodePci {
         while !data.is_empty() {
             // Parse child bus address (3 cells for PCI)
             let mut child_addr = [0u32; 3];
-            for i in 0..3 {
-                child_addr[i] = data.pop_front()?;
+
+            for addr in child_addr.iter_mut() {
+                *addr = data.pop_front()?;
             }
 
             // Parse parent bus address (2 cells for 64-bit)

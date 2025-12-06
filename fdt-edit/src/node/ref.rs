@@ -57,11 +57,6 @@ impl<'a> NodeRef<'a> {
 }
 
 impl<'a> NodeMut<'a> {
-    /// 创建新的带上下文的可变节点引用
-    pub(crate) fn new(node: &'a mut Node, context: FdtContext<'a>) -> Self {
-        Self { node, ctx: context }
-    }
-
     /// 解析 reg，按 ranges 做地址转换，返回 CPU 视角地址
     pub fn reg(&self) -> Option<Vec<RegFixed>> {
         reg_impl(self.node, &self.ctx)

@@ -168,27 +168,6 @@ impl Property {
         &self.name
     }
 
-    // /// 获取属性名称
-    // pub fn name(&self) -> &str {
-    //     match self {
-    //         Property::AddressCells(_) => "#address-cells",
-    //         Property::SizeCells(_) => "#size-cells",
-    //         Property::InterruptCells(_) => "#interrupt-cells",
-    //         Property::Reg { .. } => "reg",
-    //         Property::Ranges { .. } => "ranges",
-    //         Property::Compatible(_) => "compatible",
-    //         Property::Model(_) => "model",
-    //         Property::Status(_) => "status",
-    //         Property::Phandle(_) => "phandle",
-    //         Property::LinuxPhandle(_) => "linux,phandle",
-    //         Property::DeviceType(_) => "device_type",
-    //         Property::InterruptParent(_) => "interrupt-parent",
-    //         Property::ClockNames(_) => "clock-names",
-    //         Property::DmaCoherent => "dma-coherent",
-    //         Property::Raw(raw) => raw.name(),
-    //     }
-    // }
-
     /// 将属性序列化为二进制数据
     pub fn encode(&self, ctx: &FdtContext) -> Vec<u8> {
         match &self.kind {
