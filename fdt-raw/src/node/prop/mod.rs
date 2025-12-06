@@ -7,7 +7,7 @@ use core::fmt;
 
 use log::error;
 
-pub use reg::{RegInfo, RegIter};
+pub use reg::{Reg, RegInfo, RegIter};
 
 use super::NodeContext;
 use crate::{
@@ -51,6 +51,11 @@ impl<'a> Property<'a> {
     /// 作为字符串迭代器（用于 compatible 等属性）
     pub fn as_str_iter(&self) -> StrIter<'a> {
         self.data.as_str_iter()
+    }
+
+    /// 获取数据作为字节切片
+    pub fn as_slice(&self) -> &[u8] {
+        self.data.as_slice()
     }
 
     /// 作为单个 u64 值
@@ -130,6 +135,56 @@ impl<'a> Property<'a> {
             None
         }
     }
+
+    /// 获取为 device_type 字符串
+    pub fn as_device_type(&self) -> Option<&'a str> {
+        if self.name == "device_type" {
+            self.as_str()
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 interrupt-parent
+    pub fn as_interrupt_parent(&self) -> Option<Phandle> {
+        if self.name == "interrupt-parent" {
+            self.as_u32().map(Phandle::from)
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 clock-names 字符串列表
+    pub fn as_clock_names(&self) -> Option<StrIter<'a>> {
+        if self.name == "clock-names" {
+            Some(self.as_str_iter())
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 compatible 字符串列表
+    pub fn as_compatible(&self) -> Option<StrIter<'a>> {
+        if self.name == "compatible" {
+            Some(self.as_str_iter())
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 reg 属性（需要 context 信息）
+    pub fn as_reg(&self, address_cells: u32, size_cells: u32) -> Option<Reg<'a>> {
+        if self.name == "reg" {
+            Some(Reg::new(self.data.as_slice(), address_cells as u8, size_cells as u8))
+        } else {
+            None
+        }
+    }
+
+    /// 是否为 dma-coherent 属性
+    pub fn is_dma_coherent(&self) -> bool {
+        self.name == "dma-coherent" && self.data.is_empty()
+    }
 }
 
 impl fmt::Display for Property<'_> {
@@ -151,6 +206,34 @@ impl fmt::Display for Property<'_> {
             write!(f, "status = \"{:?}\"", s)
         } else if let Some(p) = self.as_phandle() {
             write!(f, "phandle = {}", p)
+        } else if let Some(p) = self.as_interrupt_parent() {
+            write!(f, "interrupt-parent = {}", p)
+        } else if let Some(s) = self.as_device_type() {
+            write!(f, "device_type = \"{}\"", s)
+        } else if let Some(iter) = self.as_compatible() {
+            write!(f, "compatible = ")?;
+            let mut first = true;
+            for s in iter.clone() {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "\"{}\"", s)?;
+                first = false;
+            }
+            Ok(())
+        } else if let Some(iter) = self.as_clock_names() {
+            write!(f, "clock-names = ")?;
+            let mut first = true;
+            for s in iter.clone() {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "\"{}\"", s)?;
+                first = false;
+            }
+            Ok(())
+        } else if self.is_dma_coherent() {
+            write!(f, "dma-coherent")
         } else if let Some(s) = self.as_str() {
             // 检查是否有多个字符串
             if self.data().iter().filter(|&&b| b == 0).count() > 1 {

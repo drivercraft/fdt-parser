@@ -1,6 +1,40 @@
 //! Reg 属性相关类型
 
-use crate::data::{Reader, U32Iter};
+use crate::data::{Bytes, Reader, U32Iter};
+
+/// Reg 属性包装器
+#[derive(Clone)]
+pub struct Reg<'a> {
+    data: &'a [u8],
+    address_cells: u8,
+    size_cells: u8,
+}
+
+impl<'a> Reg<'a> {
+    pub(crate) fn new(data: &'a [u8], address_cells: u8, size_cells: u8) -> Self {
+        Self {
+            data,
+            address_cells,
+            size_cells,
+        }
+    }
+
+    /// 获取 reg 数据的原始字节
+    pub fn as_slice(&self) -> &[u8] {
+        self.data
+    }
+
+    /// 获取 u32 迭代器
+    pub fn as_u32_iter(&self) -> U32Iter<'a> {
+        Bytes::new(self.data).as_u32_iter()
+    }
+
+    /// 获取 reg 信息迭代器
+    pub fn iter(&self) -> RegIter<'a> {
+        let bytes = Bytes::new(self.data);
+        RegIter::new(bytes.reader(), self.address_cells, self.size_cells)
+    }
+}
 
 /// Reg 条目信息
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

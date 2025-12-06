@@ -553,7 +553,6 @@ impl<'a> From<fdt_raw::Node<'a>> for Node {
             if prop.name() == "reg" {
                 if let Some(reg_iter) = raw_node.reg() {
                     let entries = reg_iter
-                        .iter()
                         .map(|e| super::prop::Reg {
                             address: e.address,
                             size: e.size,

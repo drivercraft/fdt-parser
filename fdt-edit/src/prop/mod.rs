@@ -265,7 +265,7 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
         if prop.name() == "reg" {
             return Property {
                 name,
-                kind: PropertyKind::Raw(RawProperty(prop.data().to_vec())),
+                kind: PropertyKind::Raw(RawProperty(prop.as_slice().to_vec())),
             };
         }
 
@@ -338,7 +338,7 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
                 } else {
                     Property {
                         name,
-                        kind: PropertyKind::Raw(RawProperty(prop.data().to_vec())),
+                        kind: PropertyKind::Raw(RawProperty(prop.as_slice().to_vec())),
                     }
                 }
             }
@@ -346,7 +346,7 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
                 // 未知属性，使用原始数据
                 Property {
                     name,
-                    kind: PropertyKind::Raw(RawProperty(prop.data().to_vec())),
+                    kind: PropertyKind::Raw(RawProperty(prop.as_slice().to_vec())),
                 }
             }
         }

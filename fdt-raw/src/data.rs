@@ -6,7 +6,7 @@ use core::{
 use crate::define::{FdtError, Token};
 
 #[derive(Clone)]
-pub(crate) struct Bytes<'a> {
+pub struct Bytes<'a> {
     pub(crate) all: &'a [u8],
     range: Range<usize>,
 }
@@ -80,7 +80,7 @@ impl<'a> Bytes<'a> {
 }
 
 #[derive(Clone)]
-pub(crate) struct Reader<'a> {
+pub struct Reader<'a> {
     pub(crate) bytes: Bytes<'a>,
     pub(crate) iter: usize,
 }

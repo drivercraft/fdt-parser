@@ -447,12 +447,12 @@ fn test_node_properties() {
     let mut found_address_cells = false;
     let mut found_size_cells = false;
     let mut found_interrupt_cells = false;
-    let found_device_type = false;
-    let found_compatible = false;
-    let found_phandle = false;
-    let found_interrupt_parent = false;
-    let found_reg = false;
-    let found_dma_coherent = false;
+    let mut found_device_type = false;
+    let mut found_compatible = false;
+    let mut found_phandle = false;
+    let mut found_interrupt_parent = false;
+    let mut found_reg = false;
+    let mut found_dma_coherent = false;
     let mut found_empty_property = false;
 
     for node in fdt.all_nodes() {
@@ -488,6 +488,27 @@ fn test_node_properties() {
                 match s {
                     Status::Okay | Status::Disabled => {}
                 }
+            } else if let Some(iter) = prop.as_compatible() {
+                let strs: Vec<_> = iter.clone().collect();
+                if !strs.is_empty() {
+                    found_compatible = true;
+                    info!("  compatible = {:?}", strs);
+                }
+            } else if let Some(s) = prop.as_device_type() {
+                found_device_type = true;
+                info!("  device_type = \"{}\"", s);
+            } else if prop.as_phandle().is_some() {
+                found_phandle = true;
+                info!("  {} = <{:?}>", prop.name(), prop.as_phandle());
+            } else if prop.as_interrupt_parent().is_some() {
+                found_interrupt_parent = true;
+                info!("  {} = <{:?}>", prop.name(), prop.as_interrupt_parent());
+            } else if prop.name() == "reg" {
+                found_reg = true;
+                info!("  reg ({} bytes)", prop.len());
+            } else if prop.name() == "dma-coherent" {
+                found_dma_coherent = true;
+                info!("  dma-coherent (empty)");
             } else {
                 // 处理未知属性
                 if let Some(s) = prop.as_str() {
@@ -743,8 +764,8 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                     );
                     info!("[{}]   device_type = \"{}\"", name, s);
                 } else if let Some(reg) = prop.as_reg(
-                    node.reg_address_cells() as u32,
-                    node.reg_size_cells() as u32,
+                    node.context.parent_address_cells.into(),
+                    node.context.parent_size_cells.into(),
                 ) {
                     found_reg = true;
                     let reg_infos: Vec<_> = reg.iter().collect();
@@ -754,8 +775,8 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                     info!(
                         "[{}]     address_cells={}, size_cells={}",
                         name,
-                        node.reg_address_cells(),
-                        node.reg_size_cells()
+                        node.context.parent_address_cells,
+                        node.context.parent_size_cells
                     );
                     info!(
                         "[{}]     raw data ({} bytes): {:02x?}",
@@ -823,7 +844,7 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
 
                             // RPi 4B 的特殊情况 - 当前测试数据显示地址和大小为0
                             // 这可能是测试数据的特殊情况，我们只验证基本结构
-                            if node.reg_size_cells() == 1 {
+                            if node.context.parent_size_cells == 1 {
                                 assert_eq!(
                                     reg.as_slice().len() % 12,
                                     0,
@@ -841,7 +862,7 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
 
                     // 验证 reg 数据长度的一致性
                     let expected_entry_size =
-                        (node.reg_address_cells() + node.reg_size_cells()) * 4;
+                        (node.context.parent_address_cells + node.context.parent_size_cells) * 4;
                     assert_eq!(
                         reg.as_slice().len() % expected_entry_size as usize,
                         0,
