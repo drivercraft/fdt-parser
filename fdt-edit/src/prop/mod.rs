@@ -215,9 +215,9 @@ impl Property {
                 data
             }
             PropertyKind::Raw(raw) => raw.data().to_vec(),
-            PropertyKind::Clocks(clock_refs) => {
+            PropertyKind::Clocks(_clock_refs) => {
                 todo!()
-            },
+            }
         }
     }
 }

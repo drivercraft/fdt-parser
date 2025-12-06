@@ -87,6 +87,21 @@ impl Property {
                 format!("{} = <{}>;", self.name, entries_str)
             }
             PropertyKind::Raw(raw) => format_raw_property(&self.name, raw.data()),
+            PropertyKind::Clocks(clock_refs) => {
+                // 格式化 clocks 属性为 <phandle specifier...> 格式
+                let clocks_str: String = clock_refs
+                    .iter()
+                    .map(|cr| {
+                        let mut parts = vec![format!("{:#x}", cr.phandle.as_usize())];
+                        for s in &cr.specifier {
+                            parts.push(format!("{:#x}", s));
+                        }
+                        parts.join(" ")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!("{} = <{}>;", self.name, clocks_str)
+            }
         }
     }
 }

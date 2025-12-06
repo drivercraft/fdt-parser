@@ -18,7 +18,7 @@ mod r#ref;
 
 pub use chosen::NodeChosen;
 pub use clock::{ClockRef, ClockType, FixedClock, NodeClock};
-pub use interrupt_controller::{NodeInterruptController, is_interrupt_controller_node};
+pub use interrupt_controller::NodeInterruptController;
 pub use memory::{MemoryRegion, NodeMemory};
 pub use pci::*;
 pub use r#ref::{NodeMut, NodeRef};
@@ -61,7 +61,7 @@ impl Node {
     pub fn from_raw<'a>(val: fdt_raw::Node<'a>) -> Self {
         match val {
             fdt_raw::Node::General(node_base) => {
-                let mut raw = RawNode::from(node_base);
+                let mut raw = RawNode::from(&node_base);
 
                 raw = match NodePci::try_from_raw(raw) {
                     Ok(v) => return Self::Pci(v),
@@ -81,16 +81,12 @@ impl Node {
                 Self::Raw(raw)
             }
             fdt_raw::Node::Chosen(chosen) => {
-                let mut new_one = NodeChosen::new();
-                new_one.set_bootargs(chosen.bootargs());
-                new_one.set_stdout_path(chosen.stdout_path());
-                new_one.set_stdin_path(chosen.stdin_path());
-                Self::Chosen(new_one)
+                let raw = RawNode::from(chosen.deref());
+                Self::Chosen(NodeChosen(raw))
             }
             fdt_raw::Node::Memory(memory) => {
-                let mut raw_node = NodeMemory::new(memory.name());
-                raw_node.regions = memory.regions().collect();
-                Self::Memory(raw_node)
+                let raw = RawNode::from(memory.deref());
+                Self::Memory(NodeMemory::from_raw(raw))
             }
         }
     }
@@ -502,8 +498,8 @@ impl RawNode {
     }
 }
 
-impl<'a> From<fdt_raw::NodeBase<'a>> for RawNode {
-    fn from(raw_node: fdt_raw::NodeBase<'a>) -> Self {
+impl<'a> From<&fdt_raw::NodeBase<'a>> for RawNode {
+    fn from(raw_node: &fdt_raw::NodeBase<'a>) -> Self {
         let mut node = RawNode::new(raw_node.name());
         // 转换属性
         for prop in raw_node.properties() {

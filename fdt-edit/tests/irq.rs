@@ -16,7 +16,7 @@ mod tests {
         // 遍历查找中断控制器节点
         let mut irq_count = 0;
         for node in fdt.all_nodes() {
-            if let Some(ic) = node.as_interrupt_controller() {
+            if let Node::InterruptController(ic) = node.as_ref() {
                 irq_count += 1;
                 println!(
                     "Interrupt controller: {} (#interrupt-cells={:?})",
@@ -35,7 +35,7 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            if let Some(ic) = node.as_interrupt_controller() {
+            if let Node::InterruptController(ic) = node.as_ref() {
                 // 获取 #interrupt-cells
                 let cells = ic.interrupt_cells();
                 println!("IRQ Controller: {} cells={:?}", ic.name(), cells);
@@ -69,7 +69,7 @@ mod tests {
         // 查找 GIC (ARM Generic Interrupt Controller)
         let mut found_gic = false;
         for node in fdt.all_nodes() {
-            if let Some(ic) = node.as_interrupt_controller() {
+            if let Node::InterruptController(ic) = node.as_ref() {
                 let compat = ic.compatibles();
                 if compat.iter().any(|c| c.contains("gic")) {
                     found_gic = true;
@@ -95,7 +95,7 @@ mod tests {
 
         let mut controllers = Vec::new();
         for node in fdt.all_nodes() {
-            if let Some(ic) = node.as_interrupt_controller() {
+            if let Node::InterruptController(ic) = node.as_ref() {
                 controllers.push((
                     ic.name().to_string(),
                     ic.interrupt_cells(),
@@ -123,7 +123,7 @@ mod tests {
 
         for node in fdt.all_nodes() {
             let name = node.name();
-            let is_ic = node.as_interrupt_controller().is_some();
+            let is_ic = matches!(node.as_ref(), Node::InterruptController(_));
 
             // 如果节点名以 interrupt-controller 开头，应该被识别
             if name.starts_with("interrupt-controller") && !is_ic {
@@ -149,7 +149,7 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            if let Some(ic) = node.as_interrupt_controller() {
+            if let Node::InterruptController(ic) = node.as_ref() {
                 if let Some(cells) = ic.interrupt_cells() {
                     // 常见的 interrupt-cells 值：1, 2, 3
                     assert!(

@@ -23,6 +23,12 @@ impl NodeTrait for NodeChosen {
     }
 }
 
+impl Default for NodeChosen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NodeChosen {
     pub fn new() -> Self {
         NodeChosen(RawNode::new("chosen"))
