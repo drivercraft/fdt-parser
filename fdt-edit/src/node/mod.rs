@@ -550,8 +550,8 @@ impl<'a> From<fdt_raw::Node<'a>> for Node {
         // 转换属性
         for prop in raw_node.properties() {
             // 特殊处理 reg 属性，需要 context 信息
-            if prop.name() == "reg" {
-                if let Some(reg_iter) = raw_node.reg() {
+            if prop.name() == "reg"
+                && let Some(reg_iter) = raw_node.reg() {
                     let entries = reg_iter
                         .map(|e| super::prop::Reg {
                             address: e.address,
@@ -565,7 +565,6 @@ impl<'a> From<fdt_raw::Node<'a>> for Node {
                     node.properties.push(prop);
                     continue;
                 }
-            }
 
             // 其他属性使用标准的 From 转换
             let raw = super::prop::Property::from(prop);
