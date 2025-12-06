@@ -66,20 +66,29 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         // 查找固定时钟
+        let mut found_with_freq = false;
         for node in fdt.all_nodes() {
             if let Some(clock) = node.as_clock() {
                 if let ClockType::Fixed(fixed) = &clock.kind {
-                    // 验证固定时钟属性
-                    assert!(fixed.frequency > 0);
+                    // 打印固定时钟信息
                     println!(
                         "Fixed clock found: {} freq={}Hz accuracy={:?}",
                         clock.name(),
                         fixed.frequency,
                         fixed.accuracy
                     );
+                    // 有些固定时钟（如 cam1_clk, cam0_clk）没有 clock-frequency 属性
+                    if fixed.frequency > 0 {
+                        found_with_freq = true;
+                    }
                 }
             }
         }
+        // 至少应该有一个固定时钟有频率
+        assert!(
+            found_with_freq,
+            "Should find at least one fixed clock with frequency"
+        );
     }
 
     #[test]
@@ -114,9 +123,13 @@ mod tests {
             if let Some(clock) = node.as_clock() {
                 match &clock.kind {
                     ClockType::Fixed(fixed) => {
-                        // 测试 FixedClock 转换
-                        let freq = fixed.frequency;
-                        assert!(freq > 0);
+                        // 打印固定时钟信息
+                        println!(
+                            "Fixed clock: {} freq={} accuracy={:?}",
+                            clock.name(),
+                            fixed.frequency,
+                            fixed.accuracy
+                        );
                     }
                     ClockType::Provider => {
                         // 测试 Provider 类型
