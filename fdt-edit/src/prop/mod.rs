@@ -6,7 +6,7 @@ use alloc::{
 // Re-export from fdt_raw
 pub use fdt_raw::{Phandle, RegInfo, Status};
 
-use crate::encode::EncodeContext;
+use crate::FdtContext;
 
 #[derive(Clone, Debug)]
 pub struct Property {
@@ -190,7 +190,7 @@ impl Property {
     // }
 
     /// 将属性序列化为二进制数据
-    pub fn encode(&self, ctx: &EncodeContext) -> Vec<u8> {
+    pub fn encode(&self, ctx: &FdtContext) -> Vec<u8> {
         match &self.kind {
             PropertyKind::Num(v) => (*v as u32).to_be_bytes().to_vec(),
             PropertyKind::NumVec(values) => {
@@ -227,9 +227,9 @@ impl Property {
             PropertyKind::Reg(entries) => {
                 let mut data = Vec::new();
                 for entry in entries {
-                    write_cells(&mut data, entry.address, ctx.address_cells);
+                    write_cells(&mut data, entry.address, ctx.parent_address_cells());
                     if let Some(size) = entry.size {
-                        write_cells(&mut data, size, ctx.size_cells);
+                        write_cells(&mut data, size, ctx.parent_size_cells());
                     }
                 }
                 data

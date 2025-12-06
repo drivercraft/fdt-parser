@@ -43,38 +43,10 @@ impl AsRef<[u8]> for FdtData {
     }
 }
 
-/// 节点编码上下文
-#[derive(Debug, Clone)]
-pub struct EncodeContext {
-    /// 当前节点的 address cells
-    pub address_cells: u8,
-    /// 当前节点的 size cells
-    pub size_cells: u8,
-}
-
-impl Default for EncodeContext {
-    fn default() -> Self {
-        Self {
-            address_cells: 2, // 默认值
-            size_cells: 1,    // 默认值
-        }
-    }
-}
-
-impl EncodeContext {
-    /// 创建子节点上下文
-    pub fn for_child(&self, node: &Node) -> Self {
-        Self {
-            address_cells: node.address_cells().unwrap_or(self.address_cells),
-            size_cells: node.size_cells().unwrap_or(self.size_cells),
-        }
-    }
-}
-
 /// 节点编码 trait
 pub trait NodeEncode {
     /// 编码节点到 encoder
-    fn encode(&self, encoder: &mut FdtEncoder, ctx: &EncodeContext);
+    fn encode(&self, encoder: &mut FdtEncoder, ctx: &FdtContext);
 }
 
 /// FDT 编码器
@@ -87,8 +59,6 @@ pub struct FdtEncoder<'a> {
     strings_data: Vec<u8>,
     /// 字符串偏移映射
     string_offsets: Vec<(String, u32)>,
-    /// 编码上下文栈
-    context_stack: Vec<EncodeContext>,
 }
 
 impl<'a> FdtEncoder<'a> {
@@ -99,39 +69,11 @@ impl<'a> FdtEncoder<'a> {
             struct_data: Vec::new(),
             strings_data: Vec::new(),
             string_offsets: Vec::new(),
-            context_stack: vec![EncodeContext::default()],
-        }
-    }
-
-    /// 获取当前编码上下文
-    pub fn current_context(&self) -> &EncodeContext {
-        self.context_stack.last().unwrap()
-    }
-
-    /// 推入新的编码上下文
-    pub fn push_context(&mut self, ctx: EncodeContext) {
-        self.context_stack.push(ctx);
-    }
-
-    /// 弹出当前编码上下文
-    pub fn pop_context(&mut self) {
-        if self.context_stack.len() > 1 {
-            self.context_stack.pop();
-        }
-    }
-
-    /// 获取父节点的 address cells 和 size cells
-    pub fn get_parent_cells(&self) -> (u8, u8) {
-        if self.context_stack.len() >= 2 {
-            let parent_context = &self.context_stack[self.context_stack.len() - 2];
-            (parent_context.address_cells, parent_context.size_cells)
-        } else {
-            (2, 1) // 根节点的父节点，使用默认值
         }
     }
 
     /// 获取或添加字符串，返回偏移量
-    pub fn get_or_add_string(&mut self, s: &str) -> u32 {
+    fn get_or_add_string(&mut self, s: &str) -> u32 {
         // 查找已存在的字符串
         for (existing, offset) in &self.string_offsets {
             if existing == s {
@@ -148,7 +90,7 @@ impl<'a> FdtEncoder<'a> {
     }
 
     /// 写入 BEGIN_NODE token
-    pub fn write_begin_node(&mut self, name: &str) {
+    fn write_begin_node(&mut self, name: &str) {
         let begin_token: u32 = Token::BeginNode.into();
         self.struct_data.push(begin_token.to_be());
 
@@ -210,12 +152,11 @@ impl<'a> FdtEncoder<'a> {
         FdtContext::build_phandle_map_from_node(&self.fdt.root, &mut phandle_map);
 
         // 创建遍历上下文
-        let mut fdt_ctx = FdtContext::new();
-        fdt_ctx.set_phandle_map(phandle_map);
+        let mut ctx = FdtContext::new();
+        ctx.set_phandle_map(phandle_map);
 
         // 编码根节点
-        let root_encode_ctx = EncodeContext::default();
-        self.encode_node(&self.fdt.root.clone(), &root_encode_ctx, &fdt_ctx);
+        self.encode_node(&self.fdt.root.clone(), &ctx);
 
         // 添加 END token
         let token: u32 = Token::End.into();
@@ -236,25 +177,18 @@ impl<'a> FdtEncoder<'a> {
     }
 
     /// 编码节点
-    fn encode_node(&mut self, node: &Node, encode_ctx: &EncodeContext, fdt_ctx: &FdtContext) {
-        // 为当前节点创建新的编码上下文
-        let child_encode_ctx = encode_ctx.for_child(node);
-        self.push_context(child_encode_ctx.clone());
-
+    fn encode_node(&mut self, node: &Node, ctx: &FdtContext) {
         // 调用节点的 encode 方法
-        node.encode(self, &child_encode_ctx);
+        node.encode(self, ctx);
 
         // 编码子节点
         for child in node.children() {
-            let child_fdt_ctx = fdt_ctx.for_child(node);
-            self.encode_node(child, &child_encode_ctx, &child_fdt_ctx);
+            let child_ctx = ctx.for_child(node);
+            self.encode_node(child, &child_ctx);
         }
 
         // 写入 END_NODE
         self.write_end_node();
-
-        // 弹出上下文
-        self.pop_context();
     }
 
     /// 生成最终 FDT 数据
@@ -327,7 +261,7 @@ impl<'a> FdtEncoder<'a> {
 
 /// 为 Node 实现编码
 impl NodeEncode for Node {
-    fn encode(&self, encoder: &mut FdtEncoder, ctx: &EncodeContext) {
+    fn encode(&self, encoder: &mut FdtEncoder, ctx: &FdtContext) {
         // 写入 BEGIN_NODE
         encoder.write_begin_node(self.name());
 
