@@ -138,11 +138,20 @@ impl Fdt {
             .unwrap_or_else(|| path.to_string());
 
         NodeIter::new(self.root()).filter_map(move |node_ref| {
-            if node_ref.ctx.current_path == path {
-                Some(node_ref)
-            } else {
-                None
+            let want = path.split("/");
+            let got = node_ref.ctx.current_path.split("/");
+            let last_idx = core::cmp::min(want.clone().count(), got.clone().count());
+            for (w, g) in want.zip(got).take(last_idx - 1) {
+                if w != g {
+                    return None;
+                }
             }
+            let want_name = path.rsplit('/').next().unwrap_or("");
+            let got_name = node_ref.node.name();
+            if !got_name.starts_with(want_name) {
+                return None;
+            }
+            Some(node_ref)
         })
     }
 

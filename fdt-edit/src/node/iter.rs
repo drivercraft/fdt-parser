@@ -1,6 +1,6 @@
 use core::{
     fmt::Debug,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut}, slice::IterMut,
 };
 
 use alloc::vec::Vec;
@@ -63,6 +63,12 @@ pub enum NodeMut<'a> {
     Gerneric(NodeMutGen<'a>),
 }
 
+impl<'a> NodeMut<'a> {
+    pub fn new(node: &'a mut Node, ctx: Context<'a>) -> Self {
+        Self::Gerneric(NodeMutGen { node, ctx })
+    }
+}
+
 impl<'a> Deref for NodeMut<'a> {
     type Target = NodeMutGen<'a>;
 
@@ -111,13 +117,15 @@ impl<'a> Iterator for NodeIter<'a> {
 }
 
 pub struct NodeIterMut<'a> {
-    stack: Vec<(&'a mut Node, Context<'a>)>,
+    ctx: Context<'a>,
+    iter: IterMut<'a, Node>,
 }
 
 impl<'a> NodeIterMut<'a> {
     pub fn new(root: &'a mut Node) -> Self {
         Self {
-            stack: vec![(root, Context::new())],
+            ctx: Context::new(),
+            iter: root.children.iter_mut(),
         }
     }
 }
