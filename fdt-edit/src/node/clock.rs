@@ -112,7 +112,7 @@ impl NodeClock {
     ///
     /// 通过查找每个 phandle 对应的 clock provider 的 #clock-cells，
     /// 正确解析 specifier 的长度。
-    pub fn clocks_with_context<'a>(&self, ctx: &FdtContext<'a>) -> Vec<ClockRef> {
+    pub fn clocks<'a>(&self, ctx: &FdtContext<'a>) -> Vec<ClockRef> {
         let Some(prop) = self.raw.find_property("clocks") else {
             return Vec::new();
         };
@@ -250,50 +250,5 @@ impl ClockRef {
         } else {
             None
         }
-    }
-}
-
-/// 带上下文的 NodeClock 引用
-///
-/// 可以直接调用 `clocks()` 方法解析时钟引用
-pub struct NodeClockRef<'a> {
-    pub clock: &'a NodeClock,
-    pub ctx: &'a FdtContext<'a>,
-}
-
-impl<'a> NodeClockRef<'a> {
-    /// 创建新的带上下文的 NodeClock 引用
-    pub fn new(clock: &'a NodeClock, ctx: &'a FdtContext<'a>) -> Self {
-        Self { clock, ctx }
-    }
-
-    /// 解析 clocks 属性，返回时钟引用列表
-    pub fn clocks(&self) -> Vec<ClockRef> {
-        self.clock.clocks_with_context(self.ctx)
-    }
-
-    /// 获取 #clock-cells
-    pub fn clock_cells(&self) -> u32 {
-        self.clock.clock_cells
-    }
-
-    /// 获取时钟类型
-    pub fn kind(&self) -> &ClockType {
-        &self.clock.kind
-    }
-
-    /// 获取节点名称
-    pub fn name(&self) -> &str {
-        self.clock.name()
-    }
-
-    /// 获取时钟输出名称列表
-    pub fn clock_output_names(&self) -> &[String] {
-        &self.clock.clock_output_names
-    }
-
-    /// 获取时钟名称列表
-    pub fn clock_names(&self) -> &[String] {
-        &self.clock.clock_names
     }
 }

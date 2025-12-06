@@ -1,5 +1,7 @@
+use alloc::string::ToString;
+
 use super::{NodeOp, NodeTrait, RawNode};
-use crate::prop::PropertyKind;
+use crate::{Property, prop::PropertyKind};
 
 /// Chosen 节点，包含启动参数等信息
 #[derive(Clone, Debug)]
@@ -22,8 +24,8 @@ impl NodeTrait for NodeChosen {
 }
 
 impl NodeChosen {
-    pub fn new(name: &str) -> Self {
-        NodeChosen(RawNode::new(name))
+    pub fn new() -> Self {
+        NodeChosen(RawNode::new("chosen"))
     }
 
     /// 获取 bootargs 属性
@@ -39,6 +41,39 @@ impl NodeChosen {
     /// 获取 stdin-path 属性
     pub fn stdin_path(&self) -> Option<&str> {
         self.find_property_str("stdin-path")
+    }
+
+    pub fn set_bootargs(&mut self, args: Option<&str>) {
+        if let Some(args) = args {
+            self.0.set_property(Property {
+                name: "bootargs".to_string(),
+                kind: PropertyKind::Str(args.to_string()),
+            });
+        } else {
+            self.0.remove_property("bootargs");
+        }
+    }
+
+    pub fn set_stdout_path(&mut self, path: Option<&str>) {
+        if let Some(path) = path {
+            self.0.set_property(Property {
+                name: "stdout-path".to_string(),
+                kind: PropertyKind::Str(path.to_string()),
+            });
+        } else {
+            self.0.remove_property("stdout-path");
+        }
+    }
+
+    pub fn set_stdin_path(&mut self, path: Option<&str>) {
+        if let Some(path) = path {
+            self.0.set_property(Property {
+                name: "stdin-path".to_string(),
+                kind: PropertyKind::Str(path.to_string()),
+            });
+        } else {
+            self.0.remove_property("stdin-path");
+        }
     }
 
     /// 查找字符串属性

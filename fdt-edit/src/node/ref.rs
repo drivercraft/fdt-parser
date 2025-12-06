@@ -3,7 +3,6 @@ use core::ops::{Deref, DerefMut};
 use alloc::vec::Vec;
 
 use super::Node;
-use super::clock::NodeClockRef;
 use crate::{
     FdtContext, NodeOp,
     prop::{PropertyKind, RegFixed},
@@ -31,6 +30,12 @@ impl<'a> Deref for NodeRef<'a> {
     }
 }
 
+impl AsRef<Node> for NodeRef<'_> {
+    fn as_ref(&self) -> &Node {
+        self.node
+    }
+}
+
 impl<'a> Deref for NodeMut<'a> {
     type Target = Node;
 
@@ -54,13 +59,6 @@ impl<'a> NodeRef<'a> {
     /// 解析 reg，按 ranges 做地址转换，返回 CPU 视角地址
     pub fn reg(&self) -> Option<Vec<RegFixed>> {
         reg_impl(self.node, &self.ctx)
-    }
-
-    /// 尝试转换为带上下文的 Clock 节点引用
-    pub fn as_clock_ref(&'a self) -> Option<NodeClockRef<'a>> {
-        self.node
-            .as_clock()
-            .map(|clock| NodeClockRef::new(clock, &self.ctx))
     }
 }
 

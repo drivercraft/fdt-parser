@@ -6,7 +6,7 @@ use alloc::{
 // Re-export from fdt_raw
 pub use fdt_raw::{Phandle, RegInfo, Status};
 
-use crate::FdtContext;
+use crate::{ClockRef, FdtContext};
 
 #[derive(Clone, Debug)]
 pub struct Property {
@@ -24,6 +24,7 @@ pub enum PropertyKind {
     Phandle(Phandle),
     Bool,
     Reg(Vec<Reg>),
+    Clocks(Vec<ClockRef>),
     Raw(RawProperty),
 }
 
@@ -214,6 +215,9 @@ impl Property {
                 data
             }
             PropertyKind::Raw(raw) => raw.data().to_vec(),
+            PropertyKind::Clocks(clock_refs) => {
+                todo!()
+            },
         }
     }
 }
@@ -257,15 +261,6 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
             return Property {
                 name,
                 kind: PropertyKind::Num(v as _),
-            };
-        }
-
-        // reg 属性在节点级别处理，不应该在这里处理
-        // 但为了兼容性，如果遇到 reg 属性，使用原始数据
-        if prop.name() == "reg" {
-            return Property {
-                name,
-                kind: PropertyKind::Raw(RawProperty(prop.as_slice().to_vec())),
             };
         }
 

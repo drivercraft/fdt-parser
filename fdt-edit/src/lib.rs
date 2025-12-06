@@ -15,7 +15,7 @@ pub use display::FmtLevel;
 pub use encode::{FdtData, FdtEncoder, NodeEncode};
 pub use fdt::{Fdt, MemoryReservation};
 pub use node::{
-    ClockRef, ClockType, FixedClock, MemoryRegion, Node, NodeChosen, NodeClock, NodeClockRef,
+    ClockRef, ClockType, FixedClock, MemoryRegion, Node, NodeChosen, NodeClock,
     NodeInterruptController, NodeMemory, NodeMut, NodeOp, NodePci, NodeRef, PciRange, PciSpace,
 };
 pub use prop::{Phandle, Property, RangesEntry, RawProperty, RegInfo, Status};

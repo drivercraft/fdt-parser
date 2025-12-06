@@ -17,7 +17,7 @@ mod pci;
 mod r#ref;
 
 pub use chosen::NodeChosen;
-pub use clock::{ClockRef, ClockType, FixedClock, NodeClock, NodeClockRef};
+pub use clock::{ClockRef, ClockType, FixedClock, NodeClock};
 pub use interrupt_controller::{NodeInterruptController, is_interrupt_controller_node};
 pub use memory::{MemoryRegion, NodeMemory};
 pub use pci::*;
@@ -54,85 +54,64 @@ impl Node {
         Self::Raw(RawNode::new(""))
     }
 
-    fn new(raw: RawNode) -> Self {
-        let name = raw.name.as_str();
+    // fn new(raw: RawNode) -> Self {
+    //     let name = raw.name.as_str();
 
-        // 根据节点名称或属性判断类型
-        if name == "chosen" {
-            return Self::Chosen(NodeChosen(raw));
-        }
+    //     // 根据节点名称或属性判断类型
+    //     if name == "chosen" {
+    //         return Self::Chosen(NodeChosen(raw));
+    //     }
 
-        if name.starts_with("memory") {
-            return Self::Memory(NodeMemory(raw));
-        }
+    //     if name.starts_with("memory") {
+    //         return Self::Memory(NodeMemory(raw));
+    //     }
 
-        // 检查是否是中断控制器
-        if is_interrupt_controller_node(&raw) {
-            return Self::InterruptController(NodeInterruptController::new(raw));
-        }
+    //     // 检查是否是中断控制器
+    //     if is_interrupt_controller_node(&raw) {
+    //         return Self::InterruptController(NodeInterruptController::new(raw));
+    //     }
 
-        // 检查是否是时钟提供者
-        if raw.properties.iter().any(|p| p.name() == "#clock-cells") {
-            return Self::Clock(NodeClock::new(raw));
-        }
+    //     // 检查是否是时钟提供者
+    //     if raw.properties.iter().any(|p| p.name() == "#clock-cells") {
+    //         return Self::Clock(NodeClock::new(raw));
+    //     }
 
-        // 检查 device_type 属性
-        let mut node = Self::Raw(raw);
-        if let Some(t) = node.find_property("device_type")
-            && let PropertyKind::Str(dt) = &t.kind
-            && dt.as_str() == "pci"
-        {
-            node = Self::Pci(NodePci(node.to_raw()));
-        }
-        node
-    }
+    //     // 检查 device_type 属性
+    //     let mut node = Self::Raw(raw);
+    //     if let Some(t) = node.find_property("device_type")
+    //         && let PropertyKind::Str(dt) = &t.kind
+    //         && dt.as_str() == "pci"
+    //     {
+    //         node = Self::Pci(NodePci(node.to_raw()));
+    //     }
+    //     node
+    // }
 
     pub fn new_raw(name: &str) -> Self {
-        Self::new(RawNode::new(name))
+        Self::Raw(RawNode::new(name))
     }
 
-    /// 尝试转换为 Chosen 节点
-    pub fn as_chosen(&self) -> Option<&NodeChosen> {
-        if let Node::Chosen(c) = self {
-            Some(c)
-        } else {
-            None
-        }
-    }
+    pub fn from_raw<'a>(val: fdt_raw::Node<'a>) -> Self {
+        match val {
+            fdt_raw::Node::General(node_base) => {
 
-    /// 尝试转换为 Memory 节点
-    pub fn as_memory(&self) -> Option<&NodeMemory> {
-        if let Node::Memory(m) = self {
-            Some(m)
-        } else {
-            None
-        }
-    }
+                
 
-    /// 尝试转换为 Pci 节点
-    pub fn as_pci(&self) -> Option<&NodePci> {
-        if let Node::Pci(p) = self {
-            Some(p)
-        } else {
-            None
-        }
-    }
-
-    /// 尝试转换为 Clock 节点
-    pub fn as_clock(&self) -> Option<&NodeClock> {
-        if let Node::Clock(c) = self {
-            Some(c)
-        } else {
-            None
-        }
-    }
-
-    /// 尝试转换为 InterruptController 节点
-    pub fn as_interrupt_controller(&self) -> Option<&NodeInterruptController> {
-        if let Node::InterruptController(ic) = self {
-            Some(ic)
-        } else {
-            None
+                let raw_node = RawNode::from(node_base);
+                Self::Raw(raw_node)
+            }
+            fdt_raw::Node::Chosen(chosen) => {
+                let mut new_one = NodeChosen::new();
+                new_one.set_bootargs(chosen.bootargs());
+                new_one.set_stdout_path(chosen.stdout_path());
+                new_one.set_stdin_path(chosen.stdin_path());
+                Self::Chosen(new_one)
+            }
+            fdt_raw::Node::Memory(memory) => {
+                let mut raw_node = NodeMemory::new(memory.name());
+                raw_node.regions = memory.regions().collect();
+                Self::Memory(raw_node)
+            }
         }
     }
 }
@@ -543,33 +522,15 @@ impl RawNode {
     }
 }
 
-impl<'a> From<fdt_raw::Node<'a>> for Node {
-    fn from(raw_node: fdt_raw::Node<'a>) -> Self {
+impl<'a> From<fdt_raw::NodeBase<'a>> for RawNode {
+    fn from(raw_node: fdt_raw::NodeBase<'a>) -> Self {
         let mut node = RawNode::new(raw_node.name());
         // 转换属性
         for prop in raw_node.properties() {
-            // 特殊处理 reg 属性，需要 context 信息
-            if prop.name() == "reg"
-                && let Some(reg_iter) = raw_node.reg()
-            {
-                let entries = reg_iter
-                    .map(|e| super::prop::Reg {
-                        address: e.address,
-                        size: e.size,
-                    })
-                    .collect();
-                let prop = super::prop::Property {
-                    name: "reg".to_string(),
-                    kind: super::prop::PropertyKind::Reg(entries),
-                };
-                node.properties.push(prop);
-                continue;
-            }
-
             // 其他属性使用标准的 From 转换
             let raw = super::prop::Property::from(prop);
             node.properties.push(raw);
         }
-        Self::new(node)
+        node
     }
 }

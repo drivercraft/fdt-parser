@@ -75,7 +75,7 @@ impl Fdt {
 
         for raw_node in raw_fdt.all_nodes() {
             let level = raw_node.level();
-            let node = Node::from(raw_node);
+            let node = Node::from_raw(raw_node);
 
             // 弹出栈直到达到正确的父级别
             // level 0 = 根节点，应该直接放入空栈
