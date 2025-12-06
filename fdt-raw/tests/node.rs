@@ -628,6 +628,10 @@ fn test_node_properties() {
         found_interrupt_parent,
         "Should find interrupt-parent property"
     );
+    assert!(
+        found_interrupt_cells,
+        "Should find #interrupt-cells property"
+    );
     assert!(found_dma_coherent, "Should find dma-coherent property");
     assert!(found_empty_property, "Should find empty property");
 
@@ -832,6 +836,7 @@ fn test_reg_parsing() {
         found_virtio_mmio_reg,
         "Should find virtio_mmio nodes with reg property"
     );
+    // 注意：PSCI 通常没有 reg 属性，所以这里不验证 found_psci_reg
     assert!(
         found_fw_cfg_reg,
         "Should find fw-cfg node with reg property"

@@ -1,13 +1,18 @@
 use core::ffi::CStr;
 use core::fmt;
+use core::ops::Deref;
 
 use crate::{
     FdtError, Token,
     data::{Bytes, Reader},
 };
 
+mod chosen;
+mod memory;
 mod prop;
 
+pub use chosen::Chosen;
+pub use memory::{Memory, MemoryRegion};
 pub use prop::{PropIter, Property, Reg, RegInfo, RegIter, StrIter, U32Iter};
 
 /// 节点上下文，保存从父节点继承的信息
@@ -29,8 +34,9 @@ impl Default for NodeContext {
     }
 }
 
+/// 基础节点结构
 #[derive(Clone)]
-pub struct Node<'a> {
+pub struct NodeBase<'a> {
     name: &'a str,
     data: Bytes<'a>,
     strings: Bytes<'a>,
@@ -43,7 +49,7 @@ pub struct Node<'a> {
     pub context: NodeContext,
 }
 
-impl<'a> Node<'a> {
+impl<'a> NodeBase<'a> {
     pub fn name(&self) -> &'a str {
         self.name
     }
@@ -79,6 +85,21 @@ impl<'a> Node<'a> {
         )
     }
 
+    /// 查找指定名称的属性
+    pub fn find_property(&self, name: &str) -> Option<Property<'a>> {
+        self.properties().find(|p| p.name() == name)
+    }
+
+    /// 查找指定名称的字符串属性
+    pub fn find_property_str(&self, name: &str) -> Option<&'a str> {
+        let prop = self.find_property(name)?;
+        match prop {
+            Property::DeviceType(s) => Some(s),
+            Property::Unknown(raw) => raw.as_str(),
+            _ => None,
+        }
+    }
+
     /// 查找并解析 reg 属性，返回 Reg 迭代器
     pub fn reg(&self) -> Option<Reg<'a>> {
         for prop in self.properties() {
@@ -101,6 +122,16 @@ impl<'a> Node<'a> {
         }
         result
     }
+
+    /// 检查是否是 chosen 节点
+    fn is_chosen(&self) -> bool {
+        self.name == "chosen"
+    }
+
+    /// 检查是否是 memory 节点
+    fn is_memory(&self) -> bool {
+        self.name.starts_with("memory")
+    }
 }
 
 /// 写入缩进
@@ -111,7 +142,7 @@ fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Resu
     Ok(())
 }
 
-impl fmt::Display for Node<'_> {
+impl fmt::Display for NodeBase<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_indent(f, self.level, "    ")?;
         let name = if self.name.is_empty() { "/" } else { self.name };
@@ -123,6 +154,86 @@ impl fmt::Display for Node<'_> {
         }
         write_indent(f, self.level, "    ")?;
         write!(f, "}}")
+    }
+}
+
+// ============================================================================
+// Node 枚举：支持特化节点类型
+// ============================================================================
+
+/// 节点枚举，支持 General、Chosen、Memory 等特化类型
+#[derive(Clone)]
+pub enum Node<'a> {
+    /// 通用节点
+    General(NodeBase<'a>),
+    /// Chosen 节点，包含启动参数
+    Chosen(Chosen<'a>),
+    /// Memory 节点，描述物理内存布局
+    Memory(Memory<'a>),
+}
+
+impl<'a> Node<'a> {
+    /// 获取底层的 NodeBase 引用
+    pub fn as_base(&self) -> &NodeBase<'a> {
+        self.deref()
+    }
+
+    /// 尝试转换为 Chosen 节点
+    pub fn as_chosen(&self) -> Option<&Chosen<'a>> {
+        if let Node::Chosen(c) = self {
+            Some(c)
+        } else {
+            None
+        }
+    }
+
+    /// 尝试转换为 Memory 节点
+    pub fn as_memory(&self) -> Option<&Memory<'a>> {
+        if let Node::Memory(m) = self {
+            Some(m)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> From<NodeBase<'a>> for Node<'a> {
+    fn from(node: NodeBase<'a>) -> Self {
+        if node.is_chosen() {
+            Node::Chosen(Chosen::new(node))
+        } else if node.is_memory() {
+            Node::Memory(Memory::new(node))
+        } else {
+            Node::General(node)
+        }
+    }
+}
+
+impl<'a> Deref for Node<'a> {
+    type Target = NodeBase<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Node::General(n) => n,
+            Node::Chosen(c) => c.deref(),
+            Node::Memory(m) => m.deref(),
+        }
+    }
+}
+
+impl fmt::Display for Node<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_base().fmt(f)
+    }
+}
+
+impl fmt::Debug for Node<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Node::General(n) => f.debug_tuple("General").field(&n.name()).finish(),
+            Node::Chosen(c) => c.fmt(f),
+            Node::Memory(m) => m.fmt(f),
+        }
     }
 }
 
@@ -176,7 +287,7 @@ impl<'a> OneNodeIter<'a> {
     }
 
     /// 读取节点名称（在 BeginNode token 之后调用）
-    pub fn read_node_name(&mut self) -> Result<Node<'a>, FdtError> {
+    pub fn read_node_name(&mut self) -> Result<NodeBase<'a>, FdtError> {
         // 读取以 null 结尾的名称字符串
         let name = self.read_cstr()?;
 
@@ -185,7 +296,7 @@ impl<'a> OneNodeIter<'a> {
 
         let data = self.reader.remain();
 
-        Ok(Node {
+        Ok(NodeBase {
             name,
             data,
             strings: self.strings.clone(),
