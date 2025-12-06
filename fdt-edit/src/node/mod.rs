@@ -18,7 +18,7 @@ mod r#ref;
 pub(crate) mod write;
 
 pub use chosen::NodeChosen;
-pub use clock::{ClockInfo, ClockRef, ClockType, FixedClock, NodeClock};
+pub use clock::{ClockRef, ClockType, FixedClock, NodeClock, NodeClockRef};
 pub use interrupt_controller::{NodeInterruptController, is_interrupt_controller_node};
 pub use memory::{MemoryRegion, NodeMemory};
 pub use pci::*;

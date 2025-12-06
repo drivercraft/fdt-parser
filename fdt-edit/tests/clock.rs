@@ -37,12 +37,11 @@ mod tests {
             if let Some(clock) = node.as_clock() {
                 // 获取 #clock-cells
                 let cells = clock.clock_cells;
-                println!("Clock: {} cells={:?}", clock.name(), cells);
+                println!("Clock: {} cells={}", clock.name(), cells);
 
                 // 获取输出名称
-                let names = &clock.output_names;
-                if !names.is_empty() {
-                    println!("  output-names: {:?}", names);
+                if !clock.clock_output_names.is_empty() {
+                    println!("  output-names: {:?}", clock.clock_output_names);
                 }
 
                 match &clock.kind {
@@ -52,7 +51,7 @@ mod tests {
                             fixed.frequency, fixed.accuracy
                         );
                     }
-                    ClockType::Provider => {
+                    ClockType::Normal => {
                         println!("  Clock provider");
                     }
                 }
@@ -98,16 +97,16 @@ mod tests {
 
         for node in fdt.all_nodes() {
             if let Some(clock) = node.as_clock() {
-                let names = &clock.output_names;
+                let names = &clock.clock_output_names;
                 if !names.is_empty() {
                     // 测试 output_name 方法
-                    let first = &clock.output_names[0];
-                    assert_eq!(first, &names[0]);
+                    let first = clock.output_name(0);
+                    assert_eq!(first, Some(names[0].as_str()));
 
                     // 如果有多个输出，测试索引访问
                     if names.len() > 1 && clock.clock_cells > 0 {
-                        let second = &clock.output_names[1];
-                        assert_eq!(second, &names[1]);
+                        let second = clock.output_name(1);
+                        assert_eq!(second, Some(names[1].as_str()));
                     }
                 }
             }
@@ -131,9 +130,67 @@ mod tests {
                             fixed.accuracy
                         );
                     }
-                    ClockType::Provider => {
-                        // 测试 Provider 类型
+                    ClockType::Normal => {
+                        // 测试 Normal 类型
                         println!("Clock {} is a provider", clock.name());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_clocks_with_context() {
+        let raw_data = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+        let mut found_clocks = false;
+        for node in fdt.all_nodes() {
+            // 使用 as_clock_ref 获取带上下文的 clock 引用
+            if let Some(clock_ref) = node.as_clock_ref() {
+                let clocks = clock_ref.clocks();
+                if !clocks.is_empty() {
+                    found_clocks = true;
+                    println!("Node: {} has {} clock references:", clock_ref.name(), clocks.len());
+                    for (i, clk) in clocks.iter().enumerate() {
+                        println!(
+                            "  [{}] phandle={:?} cells={} specifier={:?} name={:?}",
+                            i, clk.phandle, clk.cells, clk.specifier, clk.name
+                        );
+                        // 验证 specifier 长度与 cells 一致
+                        assert_eq!(
+                            clk.specifier.len(),
+                            clk.cells as usize,
+                            "specifier length should match cells"
+                        );
+                    }
+                }
+            }
+        }
+        assert!(found_clocks, "Should find nodes with clock references");
+    }
+
+    #[test]
+    fn test_clock_ref_select() {
+        let raw_data = fdt_rpi_4b();
+        let fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+        for node in fdt.all_nodes() {
+            // 使用 as_clock_ref 获取带上下文的 clock 引用
+            if let Some(clock_ref) = node.as_clock_ref() {
+                let clocks = clock_ref.clocks();
+                for clk in clocks {
+                    // 测试 select() 方法
+                    if clk.cells > 0 {
+                        assert!(
+                            clk.select().is_some(),
+                            "select() should return Some when cells > 0"
+                        );
+                        assert_eq!(
+                            clk.select(),
+                            clk.specifier.first().copied(),
+                            "select() should return first specifier"
+                        );
                     }
                 }
             }

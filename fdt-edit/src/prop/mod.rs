@@ -298,19 +298,9 @@ impl<'a> From<fdt_raw::Property<'a>> for Property {
                 kind: PropertyKind::Bool,
             },
             fdt_raw::Property::Unknown(raw_property) => {
-                if raw_property.name().ends_with("-cells") && raw_property.name().starts_with("#") {
-                    let data = raw_property.data();
-                    if data.len() == 4 {
-                        let value = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
-                        return Property {
-                            name,
-                            kind: PropertyKind::Num(value as _),
-                        };
-                    }
-                }
 
                 match name.as_str() {
-                    "clock-output-names" => {
+                    "clock-output-names" | "clock-names" => {
                         let values = raw_property.as_str_iter().map(|s| s.to_string()).collect();
                         Property {
                             name,
