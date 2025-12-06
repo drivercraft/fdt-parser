@@ -10,7 +10,7 @@ fn test_parse_and_rebuild() {
     // 解析原始 DTB
     let raw_data = fdt_qemu();
     let fdt = Fdt::from_bytes(&raw_data).unwrap();
-    let fdt_data = fdt.to_bytes();
+    let fdt_data = fdt.encode();
 
     // 创建临时文件
     let temp_dir = std::env::temp_dir();

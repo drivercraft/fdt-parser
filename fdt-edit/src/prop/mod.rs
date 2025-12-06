@@ -6,7 +6,7 @@ use alloc::{
 // Re-export from fdt_raw
 pub use fdt_raw::{Phandle, RegInfo, Status};
 
-use crate::Node;
+use crate::encode::EncodeContext;
 
 #[derive(Clone, Debug)]
 pub struct Property {
@@ -189,90 +189,53 @@ impl Property {
     //     }
     // }
 
-    // /// 将属性序列化为二进制数据
-    // pub fn to_bytes(&self, node: &Node) -> Vec<u8> {
-    //     let address_cells = node.address_cells().unwrap_or(2);
-    //     let size_cells = node.size_cells().unwrap_or(1);
-    //     self.to_bytes_with_cells(node, address_cells, size_cells)
-    // }
-
-    /// 将属性序列化为二进制数据，使用指定的父节点 address_cells 和 size_cells
-    pub fn to_bytes_with_cells(
-        &self,
-        _node: &Node,
-        parent_address_cells: u8,
-        parent_size_cells: u8,
-    ) -> Vec<u8> {
-        todo!()
-        //     match self {
-        //         Property::AddressCells(v) => (*v as u32).to_be_bytes().to_vec(),
-        //         Property::SizeCells(v) => (*v as u32).to_be_bytes().to_vec(),
-        //         Property::InterruptCells(v) => (*v as u32).to_be_bytes().to_vec(),
-        //         Property::Reg(entries) => {
-        //             let mut data = Vec::new();
-        //             for entry in entries {
-        //                 write_cells(&mut data, entry.address, parent_address_cells);
-        //                 if let Some(size) = entry.size {
-        //                     write_cells(&mut data, size, parent_size_cells);
-        //                 }
-        //             }
-        //             data
-        //         }
-        //         Property::Ranges {
-        //             entries,
-        //             child_address_cells,
-        //             parent_address_cells,
-        //             size_cells,
-        //         } => {
-        //             let mut data = Vec::new();
-        //             for entry in entries {
-        //                 write_cells(&mut data, entry.child_bus_address, *child_address_cells);
-        //                 write_cells(&mut data, entry.parent_bus_address, *parent_address_cells);
-        //                 write_cells(&mut data, entry.length, *size_cells);
-        //             }
-        //             data
-        //         }
-        //         Property::Compatible(strs) => {
-        //             let mut data = Vec::new();
-        //             for s in strs {
-        //                 data.extend_from_slice(s.as_bytes());
-        //                 data.push(0);
-        //             }
-        //             data
-        //         }
-        //         Property::Model(s) => {
-        //             let mut data = s.as_bytes().to_vec();
-        //             data.push(0);
-        //             data
-        //         }
-        //         Property::Status(status) => {
-        //             let s = match status {
-        //                 Status::Okay => "okay",
-        //                 Status::Disabled => "disabled",
-        //             };
-        //             let mut data = s.as_bytes().to_vec();
-        //             data.push(0);
-        //             data
-        //         }
-        //         Property::Phandle(v) => (v.as_usize() as u32).to_be_bytes().to_vec(),
-        //         Property::LinuxPhandle(v) => (v.as_usize() as u32).to_be_bytes().to_vec(),
-        //         Property::DeviceType(s) => {
-        //             let mut data = s.as_bytes().to_vec();
-        //             data.push(0);
-        //             data
-        //         }
-        //         Property::InterruptParent(v) => (v.as_usize() as u32).to_be_bytes().to_vec(),
-        //         Property::ClockNames(strs) => {
-        //             let mut data = Vec::new();
-        //             for s in strs {
-        //                 data.extend_from_slice(s.as_bytes());
-        //                 data.push(0);
-        //             }
-        //             data
-        //         }
-        //         Property::DmaCoherent => Vec::new(),
-        //         Property::Raw(raw) => raw.data().to_vec(),
-        //     }
+    /// 将属性序列化为二进制数据
+    pub fn encode(&self, ctx: &EncodeContext) -> Vec<u8> {
+        match &self.kind {
+            PropertyKind::Num(v) => (*v as u32).to_be_bytes().to_vec(),
+            PropertyKind::NumVec(values) => {
+                let mut data = Vec::new();
+                for v in values {
+                    data.extend_from_slice(&(*v as u32).to_be_bytes());
+                }
+                data
+            }
+            PropertyKind::Str(s) => {
+                let mut data = s.as_bytes().to_vec();
+                data.push(0);
+                data
+            }
+            PropertyKind::StringList(strs) => {
+                let mut data = Vec::new();
+                for s in strs {
+                    data.extend_from_slice(s.as_bytes());
+                    data.push(0);
+                }
+                data
+            }
+            PropertyKind::Status(status) => {
+                let s = match status {
+                    Status::Okay => "okay",
+                    Status::Disabled => "disabled",
+                };
+                let mut data = s.as_bytes().to_vec();
+                data.push(0);
+                data
+            }
+            PropertyKind::Phandle(v) => (v.as_usize() as u32).to_be_bytes().to_vec(),
+            PropertyKind::Bool => Vec::new(),
+            PropertyKind::Reg(entries) => {
+                let mut data = Vec::new();
+                for entry in entries {
+                    write_cells(&mut data, entry.address, ctx.address_cells);
+                    if let Some(size) = entry.size {
+                        write_cells(&mut data, size, ctx.size_cells);
+                    }
+                }
+                data
+            }
+            PropertyKind::Raw(raw) => raw.data().to_vec(),
+        }
     }
 }
 
