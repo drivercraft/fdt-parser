@@ -1,7 +1,178 @@
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use fdt_raw::{Phandle, Status};
 
-use crate::{Node, NodeOp, RangesEntry, prop::PropertyKind};
+use crate::{Node, NodeMut, NodeOp, NodeRef, RangesEntry, prop::PropertyKind};
+
+// ============================================================================
+// 路径遍历基础设施
+// ============================================================================
+
+/// 路径段迭代器，封装路径解析的公共逻辑
+struct PathSegments<'p> {
+    segments: core::iter::Peekable<core::str::Split<'p, char>>,
+}
+
+impl<'p> PathSegments<'p> {
+    /// 从路径创建段迭代器（自动去除开头的 /）
+    fn new(path: &'p str) -> Self {
+        Self {
+            segments: path.trim_start_matches('/').split('/').peekable(),
+        }
+    }
+
+    /// 获取下一个非空段，返回 (段, 是否为最后一段)
+    fn next_non_empty(&mut self) -> Option<(&'p str, bool)> {
+        loop {
+            let part = self.segments.next()?;
+            if !part.is_empty() {
+                let is_last = self.segments.peek().is_none();
+                return Some((part, is_last));
+            }
+        }
+    }
+
+    /// 消费所有剩余段（用于精确遍历）
+    fn for_each_non_empty<F>(&mut self, mut f: F) -> bool
+    where
+        F: FnMut(&'p str) -> bool,
+    {
+        for part in self.segments.by_ref() {
+            if part.is_empty() {
+                continue;
+            }
+            if !f(part) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// 路径遍历器：统一 find_by_path、get_by_path 等方法的核心迭代逻辑
+///
+/// 通过路径逐级遍历节点树，维护 FdtContext 上下文
+pub(crate) struct PathTraverser<'a, 'p> {
+    /// 当前所在节点
+    current: &'a Node,
+    /// 路径段迭代器
+    segments: PathSegments<'p>,
+    /// 遍历上下文
+    ctx: FdtContext<'a>,
+}
+
+impl<'a, 'p> PathTraverser<'a, 'p> {
+    /// 创建新的路径遍历器
+    ///
+    /// # 参数
+    /// - `root`: 根节点
+    /// - `path`: 已规范化的路径（以 `/` 开头，不含别名）
+    /// - `ctx`: 初始上下文（可包含 phandle_map）
+    pub(crate) fn new(root: &'a Node, path: &'p str, ctx: FdtContext<'a>) -> Self {
+        Self {
+            current: root,
+            segments: PathSegments::new(path),
+            ctx,
+        }
+    }
+
+    /// 精确遍历到目标节点（用于 get_by_path）
+    /// 返回 None 表示路径不存在
+    pub(crate) fn traverse_exact(mut self) -> Option<NodeRef<'a>> {
+        let success = self.segments.for_each_non_empty(|part| {
+            self.ctx.push_parent(self.current);
+            if let Some(child) = self.current.find_child_exact(part) {
+                self.current = child;
+                true
+            } else {
+                false
+            }
+        });
+
+        if success {
+            self.ctx.path_add(self.current.name());
+            Some(NodeRef::new(self.current, self.ctx))
+        } else {
+            None
+        }
+    }
+
+    /// 模糊遍历（用于 find_by_path）
+    /// 中间段精确匹配，最后一段模糊匹配，返回所有匹配的节点
+    pub(crate) fn traverse_fuzzy(mut self) -> Vec<NodeRef<'a>> {
+        let mut results = Vec::new();
+
+        while let Some((part, is_last)) = self.segments.next_non_empty() {
+            self.ctx.push_parent(self.current);
+
+            if is_last {
+                // 最后一段：模糊匹配，收集所有结果
+                for child in self.current.find_child(part) {
+                    let mut child_ctx = self.ctx.clone();
+                    child_ctx.path_add(child.name());
+                    results.push(NodeRef::new(child, child_ctx));
+                }
+                return results;
+            } else {
+                // 中间段：精确匹配
+                let Some(child) = self.current.find_child_exact(part) else {
+                    return results;
+                };
+                self.current = child;
+            }
+        }
+
+        results
+    }
+}
+
+/// 可变路径遍历器
+pub(crate) struct PathTraverserMut<'a, 'p> {
+    /// 当前所在节点
+    current: &'a mut Node,
+    /// 路径段列表
+    segments: Vec<&'p str>,
+    /// 当前段索引
+    index: usize,
+    /// 遍历上下文
+    ctx: FdtContext<'a>,
+}
+
+impl<'a, 'p> PathTraverserMut<'a, 'p> {
+    pub(crate) fn new(root: &'a mut Node, path: &'p str, ctx: FdtContext<'a>) -> Self {
+        // 预处理：过滤空段
+        let segments: Vec<_> = path
+            .trim_start_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+        Self {
+            current: root,
+            segments,
+            index: 0,
+            ctx,
+        }
+    }
+
+    /// 精确遍历到目标节点（可变版本）
+    pub(crate) fn traverse_exact(mut self) -> Option<NodeMut<'a>> {
+        while self.index < self.segments.len() {
+            let part = self.segments[self.index];
+            self.index += 1;
+            self.ctx.path_add(self.current.name());
+            self.current = self.current.find_child_exact_mut(part)?;
+        }
+
+        self.ctx.path_add(self.current.name());
+        Some(NodeMut {
+            node: self.current,
+            ctx: self.ctx,
+        })
+    }
+}
+
+// ============================================================================
+// FDT 上下文
+// ============================================================================
 
 /// 遍历上下文，存储从根到当前节点的父节点引用栈
 #[derive(Clone, Debug, Default)]

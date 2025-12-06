@@ -1,5 +1,5 @@
 use alloc::{
-    collections::{BTreeMap, vec_deque::VecDeque},
+    collections::BTreeMap,
     format,
     string::{String, ToString},
     vec::Vec,
@@ -9,6 +9,7 @@ use fdt_raw::{FdtError, Phandle, Status};
 pub use fdt_raw::MemoryReservation;
 
 use crate::Node;
+use crate::ctx::{PathTraverser, PathTraverserMut};
 use crate::encode::{FdtData, FdtEncoder};
 use crate::{FdtContext, NodeMut, NodeRef, node::NodeOp, prop::PropertyKind};
 
@@ -135,103 +136,43 @@ impl Fdt {
     }
 
     pub fn find_by_path<'a>(&'a self, path: &str) -> Vec<NodeRef<'a>> {
-        let mut node = &self.root;
-
-        let mut ctx = FdtContext::new();
-        let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
-
-        let mut results = Vec::new();
-
-        while let Some(part) = sg.pop_front() {
-            let is_last = sg.is_empty();
-            ctx.push_parent(node);
-            let matched_node = if part.is_empty() {
-                Some(node)
-            } else if is_last {
-                for n in node.find_child(part) {
-                    let mut ctx_clone = ctx.clone();
-                    ctx_clone.path_add(n.name());
-                    results.push(NodeRef {
-                        node: n,
-                        ctx: ctx_clone,
-                    });
-                }
-                break;
-            } else {
-                node.find_child_exact(part)
-            };
-
-            let Some(matched_node) = matched_node else {
-                return results;
-            };
-
-            node = matched_node;
-        }
-
-        results
+        let path = self
+            .normalize_path(path)
+            .unwrap_or_else(|| path.to_string());
+        let ctx = self.create_context();
+        PathTraverser::new(&self.root, &path, ctx).traverse_fuzzy()
     }
 
     pub fn get_by_path<'a>(&'a self, path: &str) -> Option<NodeRef<'a>> {
-        let mut ctx = FdtContext::new();
-
-        // 构建 phandle 映射
-        let mut phandle_map = alloc::collections::BTreeMap::new();
-        FdtContext::build_phandle_map_from_node(&self.root, &mut phandle_map);
-        ctx.set_phandle_map(phandle_map);
-
-        let mut node = &self.root;
-
-        let path = if path.starts_with("/") {
-            path.to_string()
-        } else {
-            self.resolve_alias(path)?
-        };
-
-        let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
-
-        while let Some(part) = sg.pop_front() {
-            // 压入当前节点作为父节点
-            ctx.push_parent(node);
-            let matched_node = if part.is_empty() {
-                Some(node)
-            } else {
-                node.find_child_exact(part)
-            }?;
-
-            node = matched_node;
-        }
-
-        ctx.path_add(node.name());
-        Some(NodeRef { node, ctx })
+        let path = self.normalize_path(path)?;
+        let ctx = self.create_context();
+        PathTraverser::new(&self.root, &path, ctx).traverse_exact()
     }
 
     pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
-        let path = if path.starts_with("/") {
-            path.to_string()
+        let path = self.normalize_path(path)?;
+        let ctx = FdtContext::new();
+        PathTraverserMut::new(&mut self.root, &path, ctx).traverse_exact()
+    }
+
+    /// 规范化路径：如果是别名则解析为完整路径，否则确保以 / 开头
+    fn normalize_path(&self, path: &str) -> Option<String> {
+        if path.starts_with('/') {
+            Some(path.to_string())
         } else {
-            self.resolve_alias(path)?
-        };
-
-        // 对于可变引用，我们无法存储父节点引用（因为需要可变借用）
-        // 所以只收集路径信息
-        let mut ctx = FdtContext::new();
-
-        let mut node = &mut self.root;
-
-        let mut sg = VecDeque::from(path.trim_start_matches('/').split('/').collect::<Vec<_>>());
-
-        while let Some(part) = sg.pop_front() {
-            ctx.path_add(node.name());
-            let matched_node = if part.is_empty() {
-                Some(node)
-            } else {
-                node.find_child_exact_mut(part)
-            }?;
-
-            node = matched_node;
+            // 尝试解析别名
+            self.resolve_alias(path)
+                .or_else(|| Some(format!("/{}", path)))
         }
-        ctx.path_add(node.name());
-        Some(NodeMut { node, ctx })
+    }
+
+    /// 创建包含 phandle_map 的上下文
+    fn create_context(&self) -> FdtContext<'_> {
+        let mut ctx = FdtContext::new();
+        let mut phandle_map = alloc::collections::BTreeMap::new();
+        FdtContext::build_phandle_map_from_node(&self.root, &mut phandle_map);
+        ctx.set_phandle_map(phandle_map);
+        ctx
     }
 
     /// 解析别名，返回对应的完整路径
