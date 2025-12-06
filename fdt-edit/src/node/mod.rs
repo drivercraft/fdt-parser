@@ -549,7 +549,27 @@ impl<'a> From<fdt_raw::Node<'a>> for Node {
         let mut node = RawNode::new(raw_node.name());
         // 转换属性
         for prop in raw_node.properties() {
-            let raw = Property::from(prop);
+            // 特殊处理 reg 属性，需要 context 信息
+            if prop.name() == "reg" {
+                if let Some(reg_iter) = raw_node.reg() {
+                    let entries = reg_iter
+                        .iter()
+                        .map(|e| super::prop::Reg {
+                            address: e.address,
+                            size: e.size,
+                        })
+                        .collect();
+                    let prop = super::prop::Property {
+                        name: "reg".to_string(),
+                        kind: super::prop::PropertyKind::Reg(entries),
+                    };
+                    node.properties.push(prop);
+                    continue;
+                }
+            }
+
+            // 其他属性使用标准的 From 转换
+            let raw = super::prop::Property::from(prop);
             node.properties.push(raw);
         }
         Self::new(node)

@@ -13,7 +13,7 @@ mod prop;
 
 pub use chosen::Chosen;
 pub use memory::{Memory, MemoryRegion};
-pub use prop::{PropIter, Property, Reg, RegInfo, RegIter, StrIter, U32Iter};
+pub use prop::{PropIter, Property, RegInfo, RegIter};
 
 /// 节点上下文，保存从父节点继承的信息
 #[derive(Debug, Clone)]
@@ -58,16 +58,6 @@ impl<'a> NodeBase<'a> {
         self.level
     }
 
-    /// 获取用于解析当前节点 reg 属性的 address cells
-    pub fn reg_address_cells(&self) -> u8 {
-        self.context.parent_address_cells
-    }
-
-    /// 获取用于解析当前节点 reg 属性的 size cells
-    pub fn reg_size_cells(&self) -> u8 {
-        self.context.parent_size_cells
-    }
-
     /// 为子节点创建上下文
     pub(crate) fn create_child_context(&self) -> NodeContext {
         NodeContext {
@@ -93,28 +83,26 @@ impl<'a> NodeBase<'a> {
     /// 查找指定名称的字符串属性
     pub fn find_property_str(&self, name: &str) -> Option<&'a str> {
         let prop = self.find_property(name)?;
-        match prop {
-            Property::DeviceType(s) => Some(s),
-            Property::Unknown(raw) => raw.as_str(),
-            _ => None,
-        }
+
+        // 否则作为普通字符串处理
+        prop.as_str()
     }
 
     /// 查找并解析 reg 属性，返回 Reg 迭代器
-    pub fn reg(&self) -> Option<Reg<'a>> {
-        for prop in self.properties() {
-            if let Property::Reg(reg) = prop {
-                return Some(reg);
-            }
-        }
-        None
+    pub fn reg(&self) -> Option<RegIter<'a>> {
+        let prop = self.find_property("reg")?;
+        Some(RegIter::new(
+            prop.data().reader(),
+            self.context.parent_address_cells,
+            self.context.parent_size_cells,
+        ))
     }
 
     /// 查找并解析 reg 属性，返回所有 RegInfo 条目
     pub fn reg_array<const N: usize>(&self) -> heapless::Vec<RegInfo, N> {
         let mut result = heapless::Vec::new();
         if let Some(reg) = self.reg() {
-            for info in reg.iter() {
+            for info in reg {
                 if result.push(info).is_err() {
                     break; // 数组已满
                 }
@@ -355,16 +343,13 @@ impl<'a> OneNodeIter<'a> {
                 }
                 Token::Prop => {
                     // 读取属性：len 和 nameoff
-                    let len_bytes = self.reader.read_bytes(4).ok_or(FdtError::BufferTooSmall {
+                    let len = self.reader.read_u32().ok_or(FdtError::BufferTooSmall {
+                        pos: self.reader.position(),
+                    })? as usize;
+
+                    let nameoff = self.reader.read_u32().ok_or(FdtError::BufferTooSmall {
                         pos: self.reader.position(),
                     })?;
-                    let len = u32::from_be_bytes(len_bytes.try_into().unwrap()) as usize;
-
-                    let nameoff_bytes =
-                        self.reader.read_bytes(4).ok_or(FdtError::BufferTooSmall {
-                            pos: self.reader.position(),
-                        })?;
-                    let nameoff = u32::from_be_bytes(nameoff_bytes.try_into().unwrap());
 
                     // 读取属性数据
                     let prop_data = if len > 0 {
@@ -374,7 +359,7 @@ impl<'a> OneNodeIter<'a> {
                                 pos: self.reader.position(),
                             })?
                     } else {
-                        &[]
+                        Bytes::new(&[])
                     };
 
                     // 解析关键属性
@@ -382,11 +367,11 @@ impl<'a> OneNodeIter<'a> {
                         match prop_name {
                             "#address-cells" if len == 4 => {
                                 self.parsed_props.address_cells =
-                                    Some(Self::read_u32_be(prop_data, 0) as u8);
+                                    Some(Self::read_u32_be(&prop_data, 0) as u8);
                             }
                             "#size-cells" if len == 4 => {
                                 self.parsed_props.size_cells =
-                                    Some(Self::read_u32_be(prop_data, 0) as u8);
+                                    Some(Self::read_u32_be(&prop_data, 0) as u8);
                             }
                             _ => {}
                         }

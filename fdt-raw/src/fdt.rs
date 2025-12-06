@@ -178,77 +178,27 @@ impl fmt::Debug for Fdt<'_> {
             // 打印属性
             for prop in node.properties() {
                 write_indent(f, level + 3, "\t")?;
-                // 使用 Debug 格式展示解析后的属性
-                match &prop {
-                    crate::Property::Reg(reg) => {
-                        write!(f, "reg: [")?;
-                        for (i, info) in reg.iter().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "{{addr: {:#x}, size: {:?}}}", info.address, info.size)?;
-                        }
-                        writeln!(f, "]")?;
-                    }
-
-                    crate::Property::Compatible(iter) => {
-                        write!(f, "compatible: [")?;
-                        for (i, s) in iter.clone().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "\"{}\"", s)?;
-                        }
-                        writeln!(f, "]")?;
-                    }
-                    crate::Property::AddressCells(v) => {
-                        writeln!(f, "#address-cells: {}", v)?;
-                    }
-                    crate::Property::SizeCells(v) => {
-                        writeln!(f, "#size-cells: {}", v)?;
-                    }
-                    crate::Property::InterruptCells(v) => {
-                        writeln!(f, "#interrupt-cells: {}", v)?;
-                    }
-
-                    crate::Property::DeviceType(s) => {
-                        writeln!(f, "device_type: \"{}\"", s)?;
-                    }
-                    crate::Property::Status(s) => {
-                        writeln!(f, "status: {:?}", s)?;
-                    }
-                    crate::Property::Phandle(p) => {
-                        writeln!(f, "phandle: {}", p)?;
-                    }
-
-                    crate::Property::InterruptParent(p) => {
-                        writeln!(f, "interrupt-parent: {}", p)?;
-                    }
-
-                    crate::Property::ClockNames(iter) => {
-                        write!(f, "clock-names: [")?;
-                        for (i, s) in iter.clone().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "\"{}\"", s)?;
-                        }
-                        writeln!(f, "]")?;
-                    }
-                    crate::Property::DmaCoherent => {
-                        writeln!(f, "dma-coherent")?;
-                    }
-                    crate::Property::Unknown(raw) => {
-                        if raw.is_empty() {
-                            writeln!(f, "{}", raw.name())?;
-                        } else if let Some(s) = raw.as_str() {
-                            writeln!(f, "{}: \"{}\"", raw.name(), s)?;
-                        } else if raw.len() == 4 {
-                            let v = u32::from_be_bytes(raw.data().try_into().unwrap());
-                            writeln!(f, "{}: {:#x}", raw.name(), v)?;
-                        } else {
-                            writeln!(f, "{}: <{} bytes>", raw.name(), raw.len())?;
-                        }
+                if let Some(v) = prop.as_address_cells() {
+                    writeln!(f, "#address-cells: {}", v)?;
+                } else if let Some(v) = prop.as_size_cells() {
+                    writeln!(f, "#size-cells: {}", v)?;
+                } else if let Some(v) = prop.as_interrupt_cells() {
+                    writeln!(f, "#interrupt-cells: {}", v)?;
+                } else if let Some(s) = prop.as_status() {
+                    writeln!(f, "status: {:?}", s)?;
+                } else if let Some(p) = prop.as_phandle() {
+                    writeln!(f, "phandle: {}", p)?;
+                } else {
+                    // 默认处理未知属性
+                    if prop.is_empty() {
+                        writeln!(f, "{}", prop.name())?;
+                    } else if let Some(s) = prop.as_str() {
+                        writeln!(f, "{}: \"{}\"", prop.name(), s)?;
+                    } else if prop.len() == 4 {
+                        let v = u32::from_be_bytes(prop.data().as_slice().try_into().unwrap());
+                        writeln!(f, "{}: {:#x}", prop.name(), v)?;
+                    } else {
+                        writeln!(f, "{}: <{} bytes>", prop.name(), prop.len())?;
                     }
                 }
             }

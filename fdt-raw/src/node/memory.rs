@@ -27,7 +27,7 @@ impl<'a> Memory<'a> {
     /// Memory 节点的 reg 属性描述了物理内存的布局
     pub fn regions(&self) -> impl Iterator<Item = MemoryRegion> + 'a {
         self.node.reg().into_iter().flat_map(|reg| {
-            reg.iter().map(|info| MemoryRegion {
+            reg.map(|info| MemoryRegion {
                 address: info.address,
                 size: info.size.unwrap_or(0),
             })

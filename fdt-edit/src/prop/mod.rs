@@ -237,87 +237,116 @@ fn write_cells(data: &mut Vec<u8>, value: u64, cells: u8) {
 impl<'a> From<fdt_raw::Property<'a>> for Property {
     fn from(prop: fdt_raw::Property<'a>) -> Self {
         let name = prop.name().to_string();
-        match prop {
-            fdt_raw::Property::AddressCells(v) => Property {
+
+        // 首先尝试使用特定的 as_* 方法检查已知属性类型
+        if let Some(v) = prop.as_address_cells() {
+            return Property {
                 name,
                 kind: PropertyKind::Num(v as _),
-            },
-            fdt_raw::Property::SizeCells(v) => Property {
+            };
+        }
+
+        if let Some(v) = prop.as_size_cells() {
+            return Property {
                 name,
                 kind: PropertyKind::Num(v as _),
-            },
-            fdt_raw::Property::Reg(reg) => {
-                let entries = reg
-                    .iter()
-                    .map(|e| Reg {
-                        address: e.address,
-                        size: e.size,
-                    })
-                    .collect();
-                Property {
-                    name,
-                    kind: PropertyKind::Reg(entries), // Placeholder
-                }
-            }
-            fdt_raw::Property::Compatible(str_iter) => {
-                let values = str_iter.map(|s| s.to_string()).collect();
-                Property {
-                    name,
-                    kind: PropertyKind::StringList(values),
-                }
-            }
-            fdt_raw::Property::Status(status) => Property {
+            };
+        }
+
+        if let Some(v) = prop.as_interrupt_cells() {
+            return Property {
+                name,
+                kind: PropertyKind::Num(v as _),
+            };
+        }
+
+        // reg 属性在节点级别处理，不应该在这里处理
+        // 但为了兼容性，如果遇到 reg 属性，使用原始数据
+        if prop.name() == "reg" {
+            return Property {
+                name,
+                kind: PropertyKind::Raw(RawProperty(prop.data().to_vec())),
+            };
+        }
+
+        if let Some(str_iter) = prop.as_compatible() {
+            let values = str_iter.map(|s| s.to_string()).collect();
+            return Property {
+                name,
+                kind: PropertyKind::StringList(values),
+            };
+        }
+
+        if let Some(status) = prop.as_status() {
+            return Property {
                 name,
                 kind: PropertyKind::Status(status),
-            },
-            fdt_raw::Property::Phandle(phandle) => Property {
+            };
+        }
+
+        if let Some(phandle) = prop.as_phandle() {
+            return Property {
                 name,
                 kind: PropertyKind::Phandle(phandle),
-            },
-            fdt_raw::Property::DeviceType(v) => Property {
+            };
+        }
+
+        if let Some(s) = prop.as_device_type() {
+            return Property {
                 name,
-                kind: PropertyKind::Str(v.to_string()),
-            },
-            fdt_raw::Property::InterruptParent(phandle) => Property {
+                kind: PropertyKind::Str(s.to_string()),
+            };
+        }
+
+        if let Some(phandle) = prop.as_interrupt_parent() {
+            return Property {
                 name,
                 kind: PropertyKind::Phandle(phandle),
-            },
-            fdt_raw::Property::InterruptCells(v) => Property {
+            };
+        }
+
+        if let Some(str_iter) = prop.as_clock_names() {
+            let values = str_iter.map(|s| s.to_string()).collect();
+            return Property {
                 name,
-                kind: PropertyKind::Num(v as _),
-            },
-            fdt_raw::Property::ClockNames(str_iter) => {
-                let values = str_iter.map(|s| s.to_string()).collect();
+                kind: PropertyKind::StringList(values),
+            };
+        }
+
+        if prop.is_dma_coherent() {
+            return Property {
+                name,
+                kind: PropertyKind::Bool,
+            };
+        }
+
+        // 处理其他特定的已知属性名称
+        match name.as_str() {
+            "clock-output-names" | "clock-names" => {
+                let values = prop.as_str_iter().map(|s| s.to_string()).collect();
                 Property {
                     name,
                     kind: PropertyKind::StringList(values),
                 }
             }
-            fdt_raw::Property::DmaCoherent => Property {
-                name,
-                kind: PropertyKind::Bool,
-            },
-            fdt_raw::Property::Unknown(raw_property) => {
-
-                match name.as_str() {
-                    "clock-output-names" | "clock-names" => {
-                        let values = raw_property.as_str_iter().map(|s| s.to_string()).collect();
-                        Property {
-                            name,
-                            kind: PropertyKind::StringList(values),
-                        }
-                    }
-                    "clock-frequency" | "clock-accuracy" => {
-                        let val = raw_property.as_u32().unwrap();
-                        Property {
-                            name,
-                            kind: PropertyKind::Num(val as _),
-                        }
-                    }
-                    _ => Property {
+            "clock-frequency" | "clock-accuracy" => {
+                if let Some(val) = prop.as_u32() {
+                    Property {
                         name,
-                        kind: PropertyKind::Raw(RawProperty(raw_property.data().to_vec())),
-                    },
+                        kind: PropertyKind::Num(val as _),
+                    }
+                } else {
+                    Property {
+                        name,
+                        kind: PropertyKind::Raw(RawProperty(prop.data().to_vec())),
+                    }
+                }
+            }
+            _ => {
+                // 未知属性，使用原始数据
+                Property {
+                    name,
+                    kind: PropertyKind::Raw(RawProperty(prop.data().to_vec())),
                 }
             }
         }
