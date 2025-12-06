@@ -309,29 +309,6 @@ impl Fdt {
         &mut self.root
     }
 
-    /// 删除别名条目
-    ///
-    /// 从 /aliases 节点中删除指定的别名属性
-    fn remove_alias_entry(&mut self, alias_name: &str) -> Result<(), FdtError> {
-        // if let Some(aliases_node) = self.get_by_path_mut("aliases") {
-        // 查找并删除别名属性
-        // aliases_node.as_raw_mut().properties.retain(|prop| {
-        //     if let crate::Property::Raw(raw) = prop {
-        //         // 检查属性名是否匹配
-        //         raw.name() != alias_name
-        //     } else {
-        //         true
-        //     }
-        // });
-
-        // 如果 aliases 节点没有其他属性了，可以考虑删除整个节点
-        // 但这里我们保留空节点以符合设备树规范
-        // }
-
-        // 不论如何都返回成功，因为别名条目删除是可选的优化
-        Ok(())
-    }
-
     /// 应用设备树覆盖 (Device Tree Overlay)
     ///
     /// 支持两种 overlay 格式：
@@ -552,8 +529,6 @@ impl Fdt {
         if !path.starts_with('/') {
             // 可能是别名，尝试解析
             if let Some(resolved_path) = self.resolve_alias(path) {
-                // 删除别名条目
-                let _ = self.remove_alias_entry(path);
                 // 删除实际节点
                 return self.root.remove_by_path(&resolved_path);
             }
