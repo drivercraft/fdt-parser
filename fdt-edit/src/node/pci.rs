@@ -198,6 +198,7 @@ impl NodePci {
 
         let encoded_address = [child_addr_high, child_addr_mid, child_addr_low];
         let mut masked_child_address = Vec::with_capacity(child_addr_cells);
+
         for idx in 0..child_addr_cells {
             let value = *encoded_address.get(idx).unwrap_or(&0);
             masked_child_address.push(value & mask[idx]);

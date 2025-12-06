@@ -120,9 +120,7 @@ impl<'a> FdtContext<'a> {
     /// 压入父节点，进入子节点前调用
     pub fn push_parent(&mut self, parent: &'a Node) {
         // 更新路径
-        if self.current_path.is_empty() {
-            self.current_path.push('/');
-        } else if !self.current_path.ends_with('/') {
+        if !self.current_path.ends_with('/') {
             self.current_path.push('/');
         }
         self.current_path.push_str(parent.name());
