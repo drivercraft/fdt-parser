@@ -105,6 +105,15 @@ impl<'a> Reader<'a> {
         Some((high << 32) | low)
     }
 
+    pub fn read_cells(&mut self, cell_count: usize) -> Option<u64> {
+        let mut value: u64 = 0;
+        for _ in 0..cell_count {
+            let cell = self.read_u32()? as u64;
+            value = (value << 32) | cell;
+        }
+        Some(value)
+    }
+
     pub fn read_token(&mut self) -> Result<Token, FdtError> {
         let bytes = self.read_bytes(4).ok_or(FdtError::BufferTooSmall {
             pos: self.position(),
@@ -120,7 +129,7 @@ impl<'a> Reader<'a> {
 
 #[derive(Clone)]
 pub struct U32Iter<'a> {
-    reader: Reader<'a>,
+    pub reader: Reader<'a>,
 }
 
 impl Iterator for U32Iter<'_> {
@@ -134,7 +143,7 @@ impl Iterator for U32Iter<'_> {
 
 #[derive(Clone)]
 pub struct StrIter<'a> {
-    reader: Reader<'a>,
+    pub reader: Reader<'a>,
 }
 
 impl<'a> Iterator for StrIter<'a> {

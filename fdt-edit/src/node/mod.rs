@@ -1,407 +1,161 @@
-use core::ops::{Deref, DerefMut};
+use core::fmt::Debug;
 
 use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
-    vec,
     vec::Vec,
 };
+use fdt_raw::data::StrIter;
 
-use crate::{Phandle, Property, Status, prop::PropertyKind};
+use crate::{Phandle, Property, RangesEntry, Status};
 
-mod chosen;
-mod clock;
-mod interrupt_controller;
-mod memory;
-mod pci;
-mod r#ref;
+mod iter;
 
-pub use chosen::NodeChosen;
-pub use clock::{ClockRef, ClockType, FixedClock, NodeClock};
-pub use interrupt_controller::NodeInterruptController;
-pub use memory::{MemoryRegion, NodeMemory};
-pub use pci::*;
-pub use r#ref::{NodeMut, NodeRef};
+pub use iter::*;
 
-#[enum_dispatch::enum_dispatch]
-#[derive(Clone, Debug)]
-pub enum Node {
-    Raw(RawNode),
-    Pci(NodePci),
-    Chosen(NodeChosen),
-    Memory(NodeMemory),
-    Clock(NodeClock),
-    InterruptController(NodeInterruptController),
-}
-
-impl Deref for Node {
-    type Target = RawNode;
-
-    fn deref(&self) -> &Self::Target {
-        self.as_raw()
-    }
-}
-
-impl DerefMut for Node {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_raw_mut()
-    }
+#[derive(Clone)]
+pub struct Node {
+    pub name: String,
+    pub(crate) properties: BTreeMap<String, Property>,
+    pub(crate) children: Vec<Node>,
+    pub(crate) name_cache: BTreeMap<String, usize>,
 }
 
 impl Node {
-    /// 创建根节点
-    pub fn root() -> Self {
-        Self::Raw(RawNode::new(""))
-    }
-
-    pub fn new_raw(name: &str) -> Self {
-        Self::Raw(RawNode::new(name))
-    }
-
-    pub fn from_raw<'a>(val: fdt_raw::Node<'a>) -> Self {
-        match val {
-            fdt_raw::Node::General(node_base) => {
-                let mut raw = RawNode::from(&node_base);
-
-                raw = match NodePci::try_from_raw(raw) {
-                    Ok(v) => return Self::Pci(v),
-                    Err(r) => r,
-                };
-
-                raw = match NodeClock::try_from_raw(raw) {
-                    Ok(v) => return Self::Clock(v),
-                    Err(r) => r,
-                };
-
-                raw = match NodeInterruptController::try_from_raw(raw) {
-                    Ok(v) => return Self::InterruptController(v),
-                    Err(r) => r,
-                };
-
-                Self::Raw(raw)
-            }
-            fdt_raw::Node::Chosen(chosen) => {
-                let raw = RawNode::from(chosen.deref());
-                Self::Chosen(NodeChosen(raw))
-            }
-            fdt_raw::Node::Memory(memory) => {
-                let raw = RawNode::from(memory.deref());
-                Self::Memory(NodeMemory::from_raw(raw))
-            }
-        }
-    }
-}
-
-#[enum_dispatch::enum_dispatch(Node)]
-pub trait NodeTrait {
-    fn as_raw(&self) -> &RawNode;
-    fn as_raw_mut(&mut self) -> &mut RawNode;
-    fn to_raw(self) -> RawNode;
-}
-
-impl NodeTrait for RawNode {
-    fn as_raw(&self) -> &RawNode {
-        self
-    }
-    fn as_raw_mut(&mut self) -> &mut RawNode {
-        self
-    }
-    fn to_raw(self) -> RawNode {
-        self
-    }
-}
-
-impl NodeOp for Node {}
-impl NodeOp for RawNode {}
-
-pub trait NodeOp: NodeTrait {
-    fn name(&self) -> &str {
-        &self.as_raw().name
-    }
-
-    fn children(&self) -> core::slice::Iter<'_, Node> {
-        self.as_raw().children.iter()
-    }
-
-    fn children_mut(&mut self) -> core::slice::IterMut<'_, Node> {
-        self.as_raw_mut().children.iter_mut()
-    }
-
-    /// 获取所有子节点名称（按原始顺序）
-    fn child_names(&self) -> Vec<&str> {
-        self.children().map(|child| child.name()).collect()
-    }
-
-    /// 获取子节点数量
-    fn child_count(&self) -> usize {
-        self.as_raw().children.len()
-    }
-
-    /// 按索引获取子节点
-    fn child_at(&self, index: usize) -> Option<&Node> {
-        self.as_raw().children.get(index)
-    }
-
-    /// 按索引获取子节点（可变）
-    fn child_at_mut(&mut self, index: usize) -> Option<&mut Node> {
-        self.as_raw_mut().children.get_mut(index)
-    }
-
-    /// 重建子节点缓存索引
-    /// 当手动修改children向量时调用此方法重新建立索引
-    fn rebuild_children_cache(&mut self) {
-        self.as_raw_mut().children_cache.clear();
-        let mut elem = vec![];
-
-        for (index, child) in self.children().enumerate() {
-            elem.push((child.name().to_string(), index));
-        }
-
-        for (name, index) in elem {
-            self.as_raw_mut().children_cache.insert(name, index);
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            properties: BTreeMap::new(),
+            children: Vec::new(),
+            name_cache: BTreeMap::new(),
         }
     }
 
-    /// 添加子节点
-    fn add_child(&mut self, child: Node) -> &mut Self {
-        let child_name = child.name().to_string();
-        let index = self.child_count();
-        self.as_raw_mut().children.push(child);
-        self.as_raw_mut().children_cache.insert(child_name, index);
-        self
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
-    /// 添加属性
-    fn add_property(&mut self, prop: Property) -> &mut Self {
-        self.as_raw_mut().properties.push(prop);
-        self
+    pub fn properties(&self) -> impl Iterator<Item = &Property> {
+        self.properties.values()
     }
 
-    fn properties(&self) -> core::slice::Iter<'_, Property> {
-        self.as_raw().properties.iter()
+    pub fn children(&self) -> impl Iterator<Item = &Node> {
+        self.children.iter()
     }
 
-    fn properties_mut(&mut self) -> core::slice::IterMut<'_, Property> {
-        self.as_raw_mut().properties.iter_mut()
+    pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Node> {
+        self.children.iter_mut()
     }
 
-    /// 按名称查找属性
-    fn find_property(&self, name: &str) -> Option<&Property> {
-        self.properties().find(|p| p.name() == name)
+    pub fn add_child(&mut self, child: Node) {
+        let index = self.children.len();
+        self.name_cache.insert(child.name.clone(), index);
+        self.children.push(child);
     }
 
-    /// 按名称查找属性（可变）
-    fn find_property_mut(&mut self, name: &str) -> Option<&mut Property> {
-        self.properties_mut().find(|p| p.name() == name)
-    }
-
-    /// 移除属性
-    fn remove_property(&mut self, name: &str) -> Option<Property> {
-        self.properties()
-            .position(|p| p.name() == name)
-            .map(|pos| self.as_raw_mut().properties.remove(pos))
-    }
-
-    /// 移除子节点，支持 node-name@unit-address 格式
-    ///
-    /// # 匹配规则
-    /// - 精确匹配：如果名称包含 @，优先精确匹配完整名称
-    /// - 部分匹配：如果精确匹配失败，尝试匹配节点名部分（忽略 @unit-address）
-    fn remove_child(&mut self, name: &str) -> Option<Node> {
-        // 首先尝试精确匹配（使用缓存）
-        if let Some(&index) = self.as_raw().children_cache.get(name) {
-            let child = self.as_raw_mut().children.remove(index);
-            self.as_raw_mut().children_cache.remove(name);
-            // 重建缓存，因为索引已经改变
-            self.rebuild_children_cache();
-            return Some(child);
-        }
-
-        // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
-        let name_base = name.split('@').next().unwrap_or(name);
-
-        // 找到匹配的节点名称
-        let matching_index = self.children().position(|child| {
-            let child_base = child.name().split('@').next().unwrap_or(child.name());
-            child_base == name_base
-        });
-
-        if let Some(index) = matching_index {
-            let child = self.as_raw_mut().children.remove(index);
-            // 重建缓存，因为索引已经改变
-            self.rebuild_children_cache();
-            Some(child)
+    pub fn get_child(&self, name: &str) -> Option<&Node> {
+        if let Some(&index) = self.name_cache.get(name) {
+            self.children.get(index)
         } else {
             None
         }
     }
 
-    /// 精确匹配子节点，不支持部分匹配
-    fn find_child_exact(&self, name: &str) -> Option<&Node> {
-        if let Some(&index) = self.as_raw().children_cache.get(name) {
-            self.as_raw().children.get(index)
+    pub fn get_child_mut(&mut self, name: &str) -> Option<&mut Node> {
+        if let Some(&index) = self.name_cache.get(name) {
+            self.children.get_mut(index)
         } else {
             None
         }
     }
 
-    /// 查找子节点（支持智能匹配，等同于 remove_child 的查找逻辑）
-    fn find_child(&self, name: &str) -> Vec<&Node> {
-        let mut results = Vec::new();
-        // 首先尝试精确匹配（使用缓存）
-        if let Some(&index) = self.as_raw().children_cache.get(name) {
-            results.push(self.as_raw().children.get(index).unwrap());
-
-            return results;
-        }
-
-        // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
-        let name_base = name.split('@').next().unwrap_or(name);
-
-        // 找到匹配的节点
-        for child in self.children() {
-            let child_base = child.name().split('@').next().unwrap_or(child.name());
-            if child_base == name_base {
-                results.push(child);
-            }
-        }
-
-        results
-    }
-
-    /// 精确匹配子节点（可变），不支持部分匹配
-    fn find_child_exact_mut(&mut self, name: &str) -> Option<&mut Node> {
-        if let Some(&index) = self.as_raw().children_cache.get(name) {
-            self.as_raw_mut().children.get_mut(index)
+    pub fn remove_child(&mut self, name: &str) -> Option<Node> {
+        if let Some(&index) = self.name_cache.get(name) {
+            self.name_cache.remove(name);
+            Some(self.children.remove(index))
         } else {
             None
         }
     }
 
-    /// 查找子节点（支持智能匹配，等同于 remove_child 的查找逻辑）
-    fn find_child_mut(&mut self, name: &str) -> Option<&mut Node> {
-        // 首先尝试精确匹配（使用缓存）
-        if let Some(&index) = self.as_raw().children_cache.get(name) {
-            return self.as_raw_mut().children.get_mut(index);
-        }
-
-        // 如果精确匹配失败，尝试部分匹配（忽略 @unit-address）
-        let name_base = name.split('@').next().unwrap_or(name);
-
-        // 找到匹配的节点
-        for child in self.children_mut() {
-            let child_base = child.name().split('@').next().unwrap_or(child.name());
-            if child_base == name_base {
-                return Some(child);
-            }
-        }
-
-        None
+    pub fn set_property(&mut self, prop: Property) {
+        self.properties.insert(prop.name.clone(), prop);
     }
 
-    /// 精确删除子节点，不支持部分匹配
-    fn remove_child_exact(&mut self, name: &str) -> Option<Node> {
-        if let Some(&index) = self.as_raw_mut().children_cache.get(name) {
-            let child = self.as_raw_mut().children.remove(index);
-            self.as_raw_mut().children_cache.remove(name);
-            // 重建缓存，因为索引已经改变
-            self.rebuild_children_cache();
-            Some(child)
-        } else {
-            None
-        }
+    pub fn get_property(&self, name: &str) -> Option<&Property> {
+        self.properties.get(name)
     }
 
-    /// 获取所有子节点名称（按字典序排序）
-    fn child_names_sorted(&self) -> Vec<&str> {
-        let mut names = self
-            .children()
-            .map(|child| child.name())
-            .collect::<Vec<_>>();
-        names.sort();
-        names
+    pub fn get_property_mut(&mut self, name: &str) -> Option<&mut Property> {
+        self.properties.get_mut(name)
     }
 
-    /// 设置或更新属性
-    fn set_property(&mut self, prop: Property) -> &mut Self {
-        let name = prop.name();
-        if let Some(pos) = self.properties().position(|p| p.name() == name) {
-            self.as_raw_mut().properties[pos] = prop;
-        } else {
-            self.as_raw_mut().properties.push(prop);
-        }
-        self
+    pub fn remove_property(&mut self, name: &str) -> Option<Property> {
+        self.properties.remove(name)
     }
 
-    /// 获取 #address-cells 值
-    fn address_cells(&self) -> Option<u8> {
-        let prop = self.find_property("#address-cells")?;
-        let PropertyKind::Num(v) = &prop.kind else {
-            return None;
-        };
-        Some(*v as _)
+    pub fn address_cells(&self) -> Option<u32> {
+        self.get_property("#address-cells")
+            .and_then(|prop| prop.get_u32())
     }
 
-    /// 获取 #size-cells 值
-    fn size_cells(&self) -> Option<u8> {
-        let prop = self.find_property("#size-cells")?;
-        let PropertyKind::Num(v) = &prop.kind else {
-            return None;
-        };
-        Some(*v as _)
+    pub fn size_cells(&self) -> Option<u32> {
+        self.get_property("#size-cells")
+            .and_then(|prop| prop.get_u32())
     }
 
-    /// 获取 phandle 值
-    fn phandle(&self) -> Option<Phandle> {
-        let prop = self.find_property("phandle")?;
-        match prop.kind {
-            PropertyKind::Phandle(p) => Some(p),
+    pub fn phandle(&self) -> Option<Phandle> {
+        self.get_property("phandle")
+            .and_then(|prop| prop.get_u32())
+            .map(Phandle::from)
+    }
+
+    pub fn interrupt_parent(&self) -> Option<Phandle> {
+        self.get_property("interrupt-parent")
+            .and_then(|prop| prop.get_u32())
+            .map(Phandle::from)
+    }
+
+    pub fn status(&self) -> Option<Status> {
+        let prop = self.get_property("status")?;
+        let s = prop.as_str()?;
+        match s {
+            "okay" => Some(Status::Okay),
+            "disabled" => Some(Status::Disabled),
             _ => None,
         }
     }
 
-    fn status(&self) -> Option<Status> {
-        let prop = self.find_property("status")?;
-        match &prop.kind {
-            PropertyKind::Status(s) => Some(*s),
-            _ => None,
+    pub fn ranges(&self, parent_address_cells: u32) -> Option<Vec<RangesEntry>> {
+        let prop = self.get_property("ranges")?;
+        let mut entries = Vec::new();
+        let mut reader = prop.as_reader();
+
+        // 当前节点的 #address-cells 用于子节点地址
+        let child_address_cells = self.address_cells().unwrap_or(2) as usize;
+        // 父节点的 #address-cells 用于父总线地址
+        let parent_addr_cells = parent_address_cells as usize;
+        // 当前节点的 #size-cells
+        let size_cells = self.size_cells().unwrap_or(1) as usize;
+
+        while let (Some(child_addr), Some(parent_addr), Some(size)) = (
+            reader.read_cells(child_address_cells),
+            reader.read_cells(parent_addr_cells),
+            reader.read_cells(size_cells),
+        ) {
+            entries.push(RangesEntry {
+                child_bus_address: child_addr,
+                parent_bus_address: parent_addr,
+                length: size,
+            });
         }
+
+        Some(entries)
     }
 
-    fn interrupt_parent(&self) -> Option<Phandle> {
-        let prop = self.find_property("interrupt-parent")?;
-        match prop.kind {
-            PropertyKind::Phandle(p) => Some(p),
-            _ => None,
-        }
-    }
-
-    fn device_type(&self) -> Option<&str> {
-        let prop = self.find_property("device_type")?;
-        match &prop.kind {
-            PropertyKind::Str(s) => Some(s.as_str()),
-            _ => None,
-        }
-    }
-
-    fn compatibles(&self) -> Vec<&str> {
-        let mut res = vec![];
-
-        if let Some(prop) = self.find_property("compatible") {
-            match &prop.kind {
-                PropertyKind::StringList(list) => {
-                    for s in list {
-                        res.push(s.as_str());
-                    }
-                }
-                PropertyKind::Str(s) => {
-                    res.push(s.as_str());
-                }
-                _ => unreachable!(),
-            }
-        }
-
-        res
+    pub fn compatible(&self) -> Option<StrIter<'_>> {
+        let prop = self.get_property("compatible")?;
+        Some(prop.as_str_iter())
     }
 
     /// 通过精确路径删除子节点及其子树
@@ -428,7 +182,7 @@ pub trait NodeOp: NodeTrait {
     /// assert!(removed.is_some());
     /// # Ok::<(), fdt_raw::FdtError>(())
     /// ```
-    fn remove_by_path(&mut self, path: &str) -> Result<Option<Node>, fdt_raw::FdtError> {
+    pub fn remove_by_path(&mut self, path: &str) -> Result<Option<Node>, fdt_raw::FdtError> {
         let normalized_path = path.trim_start_matches('/');
         if normalized_path.is_empty() {
             return Err(fdt_raw::FdtError::InvalidInput);
@@ -465,48 +219,45 @@ pub trait NodeOp: NodeTrait {
             let current_part = parts[index];
 
             // 中间级别只支持精确匹配（使用缓存）
-            if let Some(&child_index) = self.as_raw().children_cache.get(current_part) {
-                self.as_raw_mut().children[child_index].remove_child_recursive(parts, index + 1)
+            if let Some(&child_index) = self.name_cache.get(current_part) {
+                self.children[child_index].remove_child_recursive(parts, index + 1)
             } else {
                 // 路径不存在
                 Ok(None)
             }
         }
     }
-}
 
-/// 可编辑的节点
-#[derive(Clone, Debug)]
-pub struct RawNode {
-    pub name: String,
-    pub properties: Vec<Property>,
-    // 子节点列表，保持原始顺序
-    pub children: Vec<Node>,
-    // 名称到索引的缓存映射，用于快速查找
-    children_cache: BTreeMap<String, usize>,
-}
-
-impl RawNode {
-    /// 创建新节点
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            properties: Vec::new(),
-            children: Vec::new(),
-            children_cache: BTreeMap::new(),
+    /// 精确删除子节点，不支持部分匹配
+    fn remove_child_exact(&mut self, name: &str) -> Option<Node> {
+        if let Some(&index) = self.name_cache.get(name) {
+            let child = self.children.remove(index);
+            self.name_cache.remove(name);
+            Some(child)
+        } else {
+            None
         }
     }
 }
 
-impl<'a> From<&fdt_raw::NodeBase<'a>> for RawNode {
-    fn from(raw_node: &fdt_raw::NodeBase<'a>) -> Self {
-        let mut node = RawNode::new(raw_node.name());
-        // 转换属性
-        for prop in raw_node.properties() {
-            // 其他属性使用标准的 From 转换
-            let raw = super::prop::Property::from(prop);
-            node.properties.push(raw);
+impl From<&fdt_raw::Node<'_>> for Node {
+    fn from(raw: &fdt_raw::Node<'_>) -> Self {
+        let mut new_node = Node::new(raw.name());
+        // 复制属性
+        for raw_prop in raw.properties() {
+            let prop = Property::from(&raw_prop);
+            new_node.set_property(prop);
         }
-        node
+        new_node
+    }
+}
+
+impl Debug for Node {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Node")
+            .field("name", &self.name)
+            // .field("properties", &self.properties)
+            // .field("children_count", &self.children.len())
+            .finish()
     }
 }

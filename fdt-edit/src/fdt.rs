@@ -4,14 +4,11 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use fdt_raw::{FdtError, Phandle, Status};
 
 pub use fdt_raw::MemoryReservation;
+use fdt_raw::{FdtError, Phandle, Status};
 
-use crate::Node;
-use crate::ctx::{PathTraverser, PathTraverserMut};
-use crate::encode::{FdtData, FdtEncoder};
-use crate::{FdtContext, NodeMut, NodeRef, node::NodeOp, prop::PropertyKind};
+use crate::{Node, NodeIter, NodeIterMut, NodeMut, NodeRef};
 
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]
@@ -38,7 +35,7 @@ impl Fdt {
         Self {
             boot_cpuid_phys: 0,
             memory_reservations: Vec::new(),
-            root: Node::root(),
+            root: Node::new(""),
             phandle_cache: BTreeMap::new(),
         }
     }
@@ -65,7 +62,7 @@ impl Fdt {
         let mut fdt = Fdt {
             boot_cpuid_phys: header.boot_cpuid_phys,
             memory_reservations: raw_fdt.memory_reservations().collect(),
-            root: Node::root(),
+            root: Node::new(""),
             phandle_cache: BTreeMap::new(),
         };
 
@@ -75,7 +72,7 @@ impl Fdt {
 
         for raw_node in raw_fdt.all_nodes() {
             let level = raw_node.level();
-            let node = Node::from_raw(raw_node);
+            let node = Node::from(&raw_node);
 
             // 弹出栈直到达到正确的父级别
             // level 0 = 根节点，应该直接放入空栈
@@ -124,7 +121,7 @@ impl Fdt {
         }
 
         // 递归处理子节点
-        for child in node.children() {
+        for child in &node.children {
             let child_name = child.name();
             let child_path = if current_path == "/" {
                 format!("/{}", child_name)
@@ -135,24 +132,40 @@ impl Fdt {
         }
     }
 
-    pub fn find_by_path<'a>(&'a self, path: &str) -> Vec<NodeRef<'a>> {
+    pub fn find_by_path<'a>(&'a self, path: &str) -> impl Iterator<Item = NodeRef<'a>> {
         let path = self
             .normalize_path(path)
             .unwrap_or_else(|| path.to_string());
-        let ctx = self.create_context();
-        PathTraverser::new(&self.root, &path, ctx).traverse_fuzzy()
+
+        NodeIter::new(self.root()).filter_map(move |node_ref| {
+            if node_ref.ctx.current_path == path {
+                Some(node_ref)
+            } else {
+                None
+            }
+        })
     }
 
     pub fn get_by_path<'a>(&'a self, path: &str) -> Option<NodeRef<'a>> {
         let path = self.normalize_path(path)?;
-        let ctx = self.create_context();
-        PathTraverser::new(&self.root, &path, ctx).traverse_exact()
+        NodeIter::new(self.root()).find_map(move |node_ref| {
+            if node_ref.ctx.current_path == path {
+                Some(node_ref)
+            } else {
+                None
+            }
+        })
     }
 
     pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
         let path = self.normalize_path(path)?;
-        let ctx = FdtContext::new();
-        PathTraverserMut::new(&mut self.root, &path, ctx).traverse_exact()
+        NodeIterMut::new(self.root_mut()).find_map(move |node_mut| {
+            if node_mut.ctx.current_path == path {
+                Some(node_mut)
+            } else {
+                None
+            }
+        })
     }
 
     /// 规范化路径：如果是别名则解析为完整路径，否则确保以 / 开头
@@ -161,32 +174,17 @@ impl Fdt {
             Some(path.to_string())
         } else {
             // 尝试解析别名
-            self.resolve_alias(path)
-                .or_else(|| Some(format!("/{}", path)))
+            self.resolve_alias(path).map(|s| s.to_string())
         }
-    }
-
-    /// 创建包含 phandle_map 的上下文
-    fn create_context(&self) -> FdtContext<'_> {
-        let mut ctx = FdtContext::new();
-        let mut phandle_map = alloc::collections::BTreeMap::new();
-        FdtContext::build_phandle_map_from_node(&self.root, &mut phandle_map);
-        ctx.set_phandle_map(phandle_map);
-        ctx
     }
 
     /// 解析别名，返回对应的完整路径
     ///
     /// 从 /aliases 节点查找别名对应的路径
-    pub fn resolve_alias(&self, alias: &str) -> Option<String> {
+    pub fn resolve_alias(&self, alias: &str) -> Option<&str> {
         let aliases_node = self.get_by_path("/aliases")?;
         let prop = aliases_node.find_property(alias)?;
-
-        // 从属性中获取字符串值（路径）
-        match &prop.kind {
-            PropertyKind::Raw(raw) => raw.as_string_list().into_iter().next(),
-            _ => None,
-        }
+        prop.as_str()
     }
 
     /// 获取所有别名
@@ -197,11 +195,8 @@ impl Fdt {
         if let Some(aliases_node) = self.get_by_path("/aliases") {
             for prop in aliases_node.properties() {
                 let name = prop.name().to_string();
-                if let PropertyKind::Raw(raw) = &prop.kind
-                    && let Some(path) = raw.as_str()
-                {
-                    result.push((name, path.to_string()));
-                }
+                let path = prop.as_str().unwrap().to_string();
+                result.push((name, path));
             }
         }
         result
@@ -249,7 +244,7 @@ impl Fdt {
     /// ```
     pub fn apply_overlay(&mut self, overlay: &Fdt) -> Result<(), FdtError> {
         // 遍历 overlay 根节点的所有子节点
-        for child in overlay.root.children() {
+        for child in &overlay.root.children {
             if child.name().starts_with("fragment@") || child.name() == "fragment" {
                 // fragment 格式
                 self.apply_fragment(child)?;
@@ -278,7 +273,7 @@ impl Fdt {
 
         // 找到 __overlay__ 子节点
         let overlay_node = fragment
-            .find_child_exact("__overlay__")
+            .get_child("__overlay__")
             .ok_or(FdtError::NotFound)?;
 
         // 找到目标节点并应用覆盖
@@ -294,21 +289,18 @@ impl Fdt {
     /// 解析 fragment 的目标路径
     fn resolve_fragment_target(&self, fragment: &Node) -> Result<String, FdtError> {
         // 优先使用 target-path（字符串路径）
-        if let Some(prop) = fragment.find_property("target-path")
-            && let PropertyKind::Raw(raw) = &prop.kind
-        {
-            return Ok(raw.as_str().ok_or(FdtError::Utf8Parse)?.to_string());
+        if let Some(prop) = fragment.get_property("target-path") {
+            return Ok(prop.as_str().ok_or(FdtError::Utf8Parse)?.to_string());
         }
 
         // 使用 target（phandle 引用）
-        if let Some(prop) = fragment.find_property("target")
-            && let PropertyKind::Raw(raw) = &prop.kind
-        {
-            let ph = Phandle::from(raw.as_u32_vec()[0]);
+        if let Some(prop) = fragment.get_property("target") {
+            let ph = prop.get_u32().ok_or(FdtError::InvalidInput)?;
+            let ph = Phandle::from(ph);
 
             // 通过 phandle 找到节点，然后构建路径
             if let Some(node) = self.find_by_phandle(ph) {
-                return Ok(node.ctx.current_path);
+                return Ok(node.ctx.current_path.clone());
             }
         }
 
@@ -327,7 +319,7 @@ impl Fdt {
             .ok_or(FdtError::NotFound)?;
 
         // 合并 overlay 的属性和子节点
-        Self::merge_nodes(&mut target, overlay_node);
+        Self::merge_nodes(target.node, overlay_node);
 
         Ok(())
     }
@@ -341,7 +333,7 @@ impl Fdt {
 
         for child in overlay.children() {
             let child_name = child.name();
-            if let Some(existing) = self.root.find_child_mut(child_name) {
+            if let Some(existing) = self.root.get_child_mut(child_name) {
                 // 合并到现有子节点
                 Self::merge_nodes(existing, child);
             } else {
@@ -363,7 +355,7 @@ impl Fdt {
         // 合并子节点
         for source_child in source.children() {
             let child_name = &source_child.name();
-            if let Some(target_child) = target.find_child_mut(child_name) {
+            if let Some(target_child) = target.get_child_mut(child_name) {
                 // 递归合并
                 Self::merge_nodes(target_child, source_child);
             } else {
@@ -439,22 +431,10 @@ impl Fdt {
     /// # Ok::<(), fdt_raw::FdtError>(())
     /// ```
     pub fn remove_node(&mut self, path: &str) -> Result<Option<Node>, FdtError> {
-        let normalized_path = path.trim_start_matches('/');
-        if normalized_path.is_empty() {
-            return Err(FdtError::InvalidInput);
-        }
-
-        // 首先检查是否是别名
-        if !path.starts_with('/') {
-            // 可能是别名，尝试解析
-            if let Some(resolved_path) = self.resolve_alias(path) {
-                // 删除实际节点
-                return self.root.remove_by_path(&resolved_path);
-            }
-        }
+        let normalized_path = self.normalize_path(path).ok_or(FdtError::InvalidInput)?;
 
         // 直接使用精确路径删除
-        let result = self.root.remove_by_path(path)?;
+        let result = self.root.remove_by_path(&normalized_path)?;
 
         // 如果删除成功且结果是 None，说明路径不存在
         if result.is_none() {
@@ -468,27 +448,21 @@ impl Fdt {
     ///
     /// 返回包含根节点及其所有子节点的迭代器，按照深度优先遍历顺序
     pub fn all_nodes(&self) -> impl Iterator<Item = NodeRef<'_>> + '_ {
-        let mut root_ctx = FdtContext::for_root();
-
-        // 构建 phandle 映射
-        let mut phandle_map = alloc::collections::BTreeMap::new();
-        FdtContext::build_phandle_map_from_node(&self.root, &mut phandle_map);
-        root_ctx.set_phandle_map(phandle_map);
-
-        AllNodes {
-            stack: vec![(&self.root, root_ctx)],
-        }
+        NodeIter::new(&self.root)
     }
 
-    /// 序列化为 FDT 二进制数据
-    pub fn encode(&self) -> FdtData {
-        FdtEncoder::new(self).encode()
+    pub fn all_nodes_mut(&mut self) -> impl Iterator<Item = NodeMut<'_>> + '_ {
+        NodeIterMut::new(&mut self.root)
     }
 
     pub fn find_compatible(&self, compatible: &[&str]) -> Vec<NodeRef<'_>> {
         let mut results = Vec::new();
         for node_ref in self.all_nodes() {
-            for comp in node_ref.compatibles() {
+            let Some(ls) = node_ref.compatible() else {
+                continue;
+            };
+
+            for comp in ls {
                 if compatible.contains(&comp) {
                     results.push(node_ref);
                     break;
@@ -496,27 +470,5 @@ impl Fdt {
             }
         }
         results
-    }
-}
-
-/// 深度优先的节点迭代器
-struct AllNodes<'a> {
-    stack: Vec<(&'a Node, FdtContext<'a>)>,
-}
-
-impl<'a> Iterator for AllNodes<'a> {
-    type Item = NodeRef<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let (node, ctx) = self.stack.pop()?;
-
-        // 使用栈实现前序深度优先，保持原始子节点顺序
-        for child in node.children().rev() {
-            // 为子节点创建新的上下文，当前节点成为父节点
-            let child_ctx = ctx.for_child(node);
-            self.stack.push((child, child_ctx));
-        }
-
-        Some(NodeRef::new(node, ctx))
     }
 }
