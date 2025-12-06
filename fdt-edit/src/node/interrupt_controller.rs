@@ -22,6 +22,13 @@ impl NodeTrait for NodeInterruptController {
 }
 
 impl NodeInterruptController {
+    pub fn try_from_raw(raw: RawNode) -> Result<Self, RawNode> {
+        if !is_interrupt_controller_node(&raw) {
+            return Err(raw);
+        }
+        Ok(NodeInterruptController(raw))
+    }
+
     pub fn new(raw: RawNode) -> Self {
         NodeInterruptController(raw)
     }

@@ -49,7 +49,11 @@ impl NodeTrait for NodeClock {
 }
 
 impl NodeClock {
-    pub fn new(raw: RawNode) -> Self {
+    pub fn try_from_raw(raw: RawNode) -> Result<Self, RawNode> {
+        if !raw.properties.iter().any(|p| p.name() == "#clock-cells") {
+            return Err(raw);
+        }
+
         let clock_output_names = Self::get_string_list(&raw, "clock-output-names");
         let clock_names = Self::get_string_list(&raw, "clock-names");
         let clock_cells = Self::get_u32(&raw, "#clock-cells").unwrap_or(0);
@@ -68,13 +72,13 @@ impl NodeClock {
             ClockType::Normal
         };
 
-        NodeClock {
+        Ok(NodeClock {
             clock_output_names,
             clock_names,
             clock_cells,
             kind,
             raw,
-        }
+        })
     }
 
     /// 获取字符串列表属性

@@ -54,39 +54,6 @@ impl Node {
         Self::Raw(RawNode::new(""))
     }
 
-    // fn new(raw: RawNode) -> Self {
-    //     let name = raw.name.as_str();
-
-    //     // 根据节点名称或属性判断类型
-    //     if name == "chosen" {
-    //         return Self::Chosen(NodeChosen(raw));
-    //     }
-
-    //     if name.starts_with("memory") {
-    //         return Self::Memory(NodeMemory(raw));
-    //     }
-
-    //     // 检查是否是中断控制器
-    //     if is_interrupt_controller_node(&raw) {
-    //         return Self::InterruptController(NodeInterruptController::new(raw));
-    //     }
-
-    //     // 检查是否是时钟提供者
-    //     if raw.properties.iter().any(|p| p.name() == "#clock-cells") {
-    //         return Self::Clock(NodeClock::new(raw));
-    //     }
-
-    //     // 检查 device_type 属性
-    //     let mut node = Self::Raw(raw);
-    //     if let Some(t) = node.find_property("device_type")
-    //         && let PropertyKind::Str(dt) = &t.kind
-    //         && dt.as_str() == "pci"
-    //     {
-    //         node = Self::Pci(NodePci(node.to_raw()));
-    //     }
-    //     node
-    // }
-
     pub fn new_raw(name: &str) -> Self {
         Self::Raw(RawNode::new(name))
     }
@@ -94,11 +61,24 @@ impl Node {
     pub fn from_raw<'a>(val: fdt_raw::Node<'a>) -> Self {
         match val {
             fdt_raw::Node::General(node_base) => {
+                let mut raw = RawNode::from(node_base);
 
-                
+                raw = match NodePci::try_from_raw(raw) {
+                    Ok(v) => return Self::Pci(v),
+                    Err(r) => r,
+                };
 
-                let raw_node = RawNode::from(node_base);
-                Self::Raw(raw_node)
+                raw = match NodeClock::try_from_raw(raw) {
+                    Ok(v) => return Self::Clock(v),
+                    Err(r) => r,
+                };
+
+                raw = match NodeInterruptController::try_from_raw(raw) {
+                    Ok(v) => return Self::InterruptController(v),
+                    Err(r) => r,
+                };
+
+                Self::Raw(raw)
             }
             fdt_raw::Node::Chosen(chosen) => {
                 let mut new_one = NodeChosen::new();

@@ -58,6 +58,14 @@ impl NodeTrait for NodePci {
 }
 
 impl NodePci {
+    pub fn try_from_raw(raw: RawNode) -> Result<Self, RawNode> {
+        if raw.device_type() == Some("pci") {
+            Ok(NodePci(raw))
+        } else {
+            Err(raw)
+        }
+    }
+
     pub fn new(name: &str) -> Self {
         NodePci(RawNode::new(name))
     }
