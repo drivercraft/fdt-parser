@@ -15,7 +15,6 @@ mod interrupt_controller;
 mod memory;
 mod pci;
 mod r#ref;
-pub(crate) mod write;
 
 pub use chosen::NodeChosen;
 pub use clock::{ClockRef, ClockType, FixedClock, NodeClock, NodeClockRef};
@@ -551,20 +550,21 @@ impl<'a> From<fdt_raw::Node<'a>> for Node {
         for prop in raw_node.properties() {
             // 特殊处理 reg 属性，需要 context 信息
             if prop.name() == "reg"
-                && let Some(reg_iter) = raw_node.reg() {
-                    let entries = reg_iter
-                        .map(|e| super::prop::Reg {
-                            address: e.address,
-                            size: e.size,
-                        })
-                        .collect();
-                    let prop = super::prop::Property {
-                        name: "reg".to_string(),
-                        kind: super::prop::PropertyKind::Reg(entries),
-                    };
-                    node.properties.push(prop);
-                    continue;
-                }
+                && let Some(reg_iter) = raw_node.reg()
+            {
+                let entries = reg_iter
+                    .map(|e| super::prop::Reg {
+                        address: e.address,
+                        size: e.size,
+                    })
+                    .collect();
+                let prop = super::prop::Property {
+                    name: "reg".to_string(),
+                    kind: super::prop::PropertyKind::Reg(entries),
+                };
+                node.properties.push(prop);
+                continue;
+            }
 
             // 其他属性使用标准的 From 转换
             let raw = super::prop::Property::from(prop);
