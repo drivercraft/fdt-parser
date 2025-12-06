@@ -9,10 +9,14 @@ use alloc::{
 
 use crate::{Phandle, Property, Status, prop::PropertyKind};
 
+mod chosen;
+mod memory;
 mod pci;
 mod r#ref;
 pub(crate) mod write;
 
+pub use chosen::NodeChosen;
+pub use memory::{MemoryRegion, NodeMemory};
 pub use pci::*;
 pub use r#ref::{NodeMut, NodeRef};
 
@@ -21,6 +25,8 @@ pub use r#ref::{NodeMut, NodeRef};
 pub enum Node {
     Raw(RawNode),
     Pci(NodePci),
+    Chosen(NodeChosen),
+    Memory(NodeMemory),
 }
 
 impl Deref for Node {
@@ -44,6 +50,18 @@ impl Node {
     }
 
     fn new(raw: RawNode) -> Self {
+        let name = raw.name.as_str();
+
+        // 根据节点名称或属性判断类型
+        if name == "chosen" {
+            return Self::Chosen(NodeChosen(raw));
+        }
+
+        if name.starts_with("memory") {
+            return Self::Memory(NodeMemory(raw));
+        }
+
+        // 检查 device_type 属性
         let mut node = Self::Raw(raw);
         if let Some(t) = node.find_property("device_type")
             && let PropertyKind::Str(dt) = &t.kind
@@ -56,6 +74,33 @@ impl Node {
 
     pub fn new_raw(name: &str) -> Self {
         Self::new(RawNode::new(name))
+    }
+
+    /// 尝试转换为 Chosen 节点
+    pub fn as_chosen(&self) -> Option<&NodeChosen> {
+        if let Node::Chosen(c) = self {
+            Some(c)
+        } else {
+            None
+        }
+    }
+
+    /// 尝试转换为 Memory 节点
+    pub fn as_memory(&self) -> Option<&NodeMemory> {
+        if let Node::Memory(m) = self {
+            Some(m)
+        } else {
+            None
+        }
+    }
+
+    /// 尝试转换为 Pci 节点
+    pub fn as_pci(&self) -> Option<&NodePci> {
+        if let Node::Pci(p) = self {
+            Some(p)
+        } else {
+            None
+        }
     }
 }
 
