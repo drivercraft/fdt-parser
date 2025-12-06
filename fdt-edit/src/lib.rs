@@ -4,12 +4,14 @@
 extern crate alloc;
 
 mod ctx;
+mod display;
 mod encode;
 mod fdt;
 mod node;
 mod prop;
 
 pub use ctx::FdtContext;
+pub use display::FmtLevel;
 pub use encode::{FdtData, FdtEncoder, NodeEncode};
 pub use fdt::{Fdt, MemoryReservation};
 pub use node::{Node, NodeMut, NodeOp, NodeRef, PciRange, PciSpace};
