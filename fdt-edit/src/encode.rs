@@ -1,5 +1,5 @@
 //! FDT 编码模块
-//! 
+//!
 //! 将 Fdt 结构序列化为 DTB 二进制格式
 
 use alloc::{string::String, vec::Vec};
@@ -208,7 +208,7 @@ impl<'a> FdtEncoder<'a> {
         // 构建 phandle 映射
         let mut phandle_map = alloc::collections::BTreeMap::new();
         FdtContext::build_phandle_map_from_node(&self.fdt.root, &mut phandle_map);
-        
+
         // 创建遍历上下文
         let mut fdt_ctx = FdtContext::new();
         fdt_ctx.set_phandle_map(phandle_map);
