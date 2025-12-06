@@ -199,16 +199,32 @@ impl NodePci {
         let encoded_address = [child_addr_high, child_addr_mid, child_addr_low];
         let mut masked_child_address = Vec::with_capacity(child_addr_cells);
 
-        for idx in 0..child_addr_cells {
-            let value = *encoded_address.get(idx).unwrap_or(&0);
+        // 使用迭代器替代不必要的范围循环
+        for (idx, value) in encoded_address.iter().enumerate() {
             masked_child_address.push(value & mask[idx]);
+        }
+
+        // 如果 encoded_address 比 mask 短，处理剩余的 mask 值
+        if encoded_address.len() < child_addr_cells {
+            // 如果 encoded_address 比 mask 短，填充剩余的 0 值
+            let remaining_zeros = child_addr_cells - encoded_address.len();
+            masked_child_address.extend(core::iter::repeat_n(0, remaining_zeros));
         }
 
         let encoded_irq = [interrupt_pin as u32];
         let mut masked_child_irq = Vec::with_capacity(child_irq_cells);
-        for idx in 0..child_irq_cells {
-            let value = *encoded_irq.get(idx).unwrap_or(&0);
-            masked_child_irq.push(value & mask[child_addr_cells + idx]);
+
+        // 使用迭代器替代不必要的范围循环
+        let mask_start = child_addr_cells;
+        let mask_end = child_addr_cells + encoded_irq.len().min(child_irq_cells);
+        for (value, mask_value) in encoded_irq.iter().zip(&mask[mask_start..mask_end]) {
+            masked_child_irq.push(value & mask_value);
+        }
+
+        // 如果 encoded_irq 比 child_irq_cells 短，处理剩余的 mask 值
+        if encoded_irq.len() < child_irq_cells {
+            let remaining_zeros = child_irq_cells - encoded_irq.len();
+            masked_child_irq.extend(core::iter::repeat_n(0, remaining_zeros));
         }
 
         // 在 interrupt-map 中查找匹配的条目
@@ -260,20 +276,14 @@ impl NodePci {
             if idx + child_addr_cells > data.len() {
                 break;
             }
-            let mut child_address = Vec::with_capacity(child_addr_cells);
-            for i in 0..child_addr_cells {
-                child_address.push(data[idx + i]);
-            }
+            let child_address = data[idx..idx + child_addr_cells].to_vec();
             idx += child_addr_cells;
 
             // 解析子 IRQ
             if idx + child_irq_cells > data.len() {
                 break;
             }
-            let mut child_irq = Vec::with_capacity(child_irq_cells);
-            for i in 0..child_irq_cells {
-                child_irq.push(data[idx + i]);
-            }
+            let child_irq = data[idx..idx + child_irq_cells].to_vec();
             idx += child_irq_cells;
 
             // 解析中断父 phandle
@@ -311,10 +321,7 @@ impl NodePci {
             if idx + parent_irq_cells > data.len() {
                 break;
             }
-            let mut parent_irq = Vec::with_capacity(parent_irq_cells);
-            for i in 0..parent_irq_cells {
-                parent_irq.push(data[idx + i]);
-            }
+            let parent_irq = data[idx..idx + parent_irq_cells].to_vec();
             idx += parent_irq_cells;
 
             // 应用 mask 到子地址和 IRQ
