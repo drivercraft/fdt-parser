@@ -383,13 +383,16 @@ pub trait NodeOp: NodeTrait {
     ///
     /// # 示例
     /// ```rust
-    /// # use fdt_edit::Node;
-    /// let mut node = Node::root();
-    /// // 精确删除节点
-    /// let removed = node.remove_by_path("soc/gpio@1000")?;
+    /// # use fdt_edit::{Node, NodeOp};
+    /// let mut root = Node::root();
+    /// // 添加测试节点
+    /// let mut soc = Node::new_raw("soc");
+    /// soc.add_child(Node::new_raw("gpio@1000"));
+    /// root.add_child(soc);
     ///
-    /// // 精确删除嵌套节点
-    /// let removed = node.remove_by_path("soc/i2c@0/eeprom@50")?;
+    /// // 精确删除节点
+    /// let removed = root.remove_by_path("soc/gpio@1000")?;
+    /// assert!(removed.is_some());
     /// # Ok::<(), fdt_raw::FdtError>(())
     /// ```
     fn remove_by_path(&mut self, path: &str) -> Result<Option<Node>, fdt_raw::FdtError> {

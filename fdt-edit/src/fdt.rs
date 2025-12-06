@@ -238,7 +238,7 @@ impl Fdt {
     ///
     /// 从 /aliases 节点查找别名对应的路径
     pub fn resolve_alias(&self, alias: &str) -> Option<String> {
-        let aliases_node = self.get_by_path("aliases")?;
+        let aliases_node = self.get_by_path("/aliases")?;
         let prop = aliases_node.find_property(alias)?;
 
         // 从属性中获取字符串值（路径）
@@ -253,7 +253,7 @@ impl Fdt {
     /// 返回 (别名, 路径) 的列表
     pub fn aliases(&self) -> Vec<(String, String)> {
         let mut result = Vec::new();
-        if let Some(aliases_node) = self.get_by_path("aliases") {
+        if let Some(aliases_node) = self.get_by_path("/aliases") {
             for prop in aliases_node.properties() {
                 let name = prop.name().to_string();
                 if let PropertyKind::Raw(raw) = &prop.kind
@@ -484,20 +484,17 @@ impl Fdt {
     ///
     /// # 示例
     /// ```rust
-    /// # use fdt_edit::Fdt;
+    /// # use fdt_edit::{Fdt, Node, NodeOp};
     /// let mut fdt = Fdt::new();
     ///
     /// // 先添加节点再删除
-    /// let mut soc = fdt_edit::Node::new("soc");
-    /// let mut gpio = fdt_edit::Node::new("gpio@1000");
-    /// soc.add_child(gpio);
+    /// let mut soc = Node::new_raw("soc");
+    /// soc.add_child(Node::new_raw("gpio@1000"));
     /// fdt.root.add_child(soc);
     ///
     /// // 精确删除节点
     /// let removed = fdt.remove_node("soc/gpio@1000")?;
-    ///
-    /// // 删除不存在的节点会返回 NotFound 错误
-    /// // let removed = fdt.remove_node("nonexistent")?; // 这会返回 Err(NotFound)
+    /// assert!(removed.is_some());
     /// # Ok::<(), fdt_raw::FdtError>(())
     /// ```
     pub fn remove_node(&mut self, path: &str) -> Result<Option<Node>, FdtError> {
