@@ -82,18 +82,21 @@ impl<'a> NodeRefPci<'a> {
         let mut ranges = Vec::new();
 
         // PCI ranges format: <child-bus-address parent-bus-address size>
-        // child-bus-address: 3 cells (pci.hi pci.mid pci.lo)
-        // parent-bus-address: 2 cells for 64-bit systems (high, low)
-        // size: 2 cells for 64-bit sizes (high, low)
+        // child-bus-address: 3 cells (pci.hi pci.mid pci.lo) - PCI 地址固定 3 cells
+        // parent-bus-address: 使用父节点的 #address-cells
+        // size: 使用当前节点的 #size-cells
+        let parent_addr_cells = self.ctx.parent_address_cells() as usize;
+        let size_cells = self.size_cells().unwrap_or(2) as usize;
+
         while let Some(pci_hi) = data.read_u32() {
-            // Parse child bus address (3 cells for PCI)
+            // Parse child bus address (3 cells for PCI: phys.hi, phys.mid, phys.lo)
             let bus_address = data.read_u64()?;
 
-            // Parse parent bus address (2 cells for 64-bit)
-            let parent_addr = data.read_u64()?;
+            // Parse parent bus address (使用父节点的 #address-cells)
+            let parent_addr = data.read_cells(parent_addr_cells)?;
 
-            // Parse size (2 cells for 64-bit)
-            let size = data.read_u64()?;
+            // Parse size (使用当前节点的 #size-cells)
+            let size = data.read_cells(size_cells)?;
 
             // Extract PCI address space and prefetchable from child_addr[0]
             let (space, prefetchable) = self.decode_pci_address_space(pci_hi);
