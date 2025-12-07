@@ -9,8 +9,9 @@ keywords = ["device-tree", "dtb", "embedded", "no-std", "editor"]
 license = "MIT OR Apache-2.0"
 name = "fdt-edit"
 readme = "README.md"
+homepage = "https://github.com/drivercraft/fdt-parser"
 repository = "https://github.com/drivercraft/fdt-parser"
-version = "0.1.0"
+version = "0.1.1"
 
 [dependencies]
 log = "0.4"

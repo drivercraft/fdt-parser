@@ -1,148 +1,233 @@
 # fdt-edit
 
-用于创建、编辑和编码设备树（FDT）的高级 Rust 库。
+A high-level Rust library for creating, editing, and encoding Flattened Device Tree (FDT) structures.
 
-## 概述
+## Overview
 
-`fdt-edit` 是一个功能丰富的设备树操作库，基于 `fdt-raw` 构建，提供了完整的设备树创建、编辑和编码功能。该库支持从零创建新的设备树，修改现有的设备树，以及将编辑后的设备树编码为标准 DTB 格式。
+`fdt-edit` is a feature-rich device tree manipulation library built on top of `fdt-raw`. It provides comprehensive functionality for creating new device trees from scratch, modifying existing device trees, and encoding the edited device trees into standard DTB format.
 
-## 特性
+## Features
 
-- **完整的设备树编辑**：支持节点和属性的增删改查
-- **类型安全的节点操作**：提供专门的节点类型（时钟、内存、PCI、中断控制器等）
-- **高效的编码器**：将内存中的设备树结构编码为标准 DTB 格式
-- **phandle 管理**：自动 phandle 分配和引用管理
-- **内存保留块支持**：完整的内存保留区域操作
-- **`no_std` 兼容**：适用于嵌入式环境
+- **Complete device tree editing**: Full CRUD operations for nodes and properties
+- **Type-safe node operations**: Specialized node types (clocks, memory, PCI, interrupt controllers, etc.)
+- **Efficient encoder**: Converts in-memory device tree structures to standard DTB format
+- **phandle management**: Automatic phandle allocation and reference management
+- **Memory reservation support**: Complete memory reservation region operations
+- **`no_std` compatible**: Suitable for embedded environments
 
-## 核心组件
+## Core Components
 
-### Fdt 结构
-可编辑的设备树容器：
-- 从原始 DTB 数据解析
-- 创建新的空设备树
-- 管理 phandle 缓存
-- 编码为 DTB 格式
+### Fdt Structure
+An editable device tree container that:
+- Parses from raw DTB data
+- Creates new empty device trees
+- Manages phandle cache
+- Encodes to DTB format
 
-### 节点系统
-支持多种专用节点类型：
-- **时钟节点**：时钟源和时钟消费者
-- **内存节点**：内存区域定义
-- **PCI 节点**：PCI 总线和设备
-- **中断控制器**：中断映射和管理
-- **通用节点**：可自定义的节点类型
+### Node System
+Supports multiple specialized node types:
+- **Clock nodes**: Clock sources and clock consumers
+- **Memory nodes**: Memory region definitions
+- **PCI nodes**: PCI buses and devices
+- **Interrupt controllers**: Interrupt mapping and management
+- **Generic nodes**: Customizable node types
 
-### 属性系统
-- **强类型属性**：各种数据类型的属性支持
-- **自动属性管理**：智能的属性增删改查
-- **格式化显示**：友好的节点和属性显示
+### Property System
+- **Type-safe properties**: Support for various data types
+- **Automatic property management**: Intelligent property CRUD operations
+- **Formatted display**: Friendly node and property display
 
-## 快速开始
-
-```rust
-use fdt_edit::{Fdt, Node, NodeKind};
-
-// 创建新的空设备树
-let mut fdt = Fdt::new();
-
-// 添加根节点下的子节点
-let memory_node = fdt.root_mut()
-    .add_child("memory@80000000")
-    .unwrap();
-memory_node.add_property("device_type", "memory")?;
-memory_node.add_property("reg", &[0x8000_0000u64, 0x1000_0000u64])?;
-
-// 添加时钟节点
-let clock_node = fdt.root_mut()
-    .add_child("clk_osc")
-    .unwrap();
-clock_node.add_property("compatible", &["fixed-clock"])?;
-clock_node.add_property("#clock-cells", &[0u32])?;
-clock_node.add_property("clock-frequency", &[24_000_000u32])?;
-
-// 编码为 DTB 数据
-let dtb_data = fdt.encode()?;
-```
-
-### 从现有 DTB 编辑
+## Quick Start
 
 ```rust
-// 解析现有 DTB
-let mut fdt = Fdt::from_bytes(&existing_dtb)?;
+use fdt_edit::Fdt;
 
-// 查找并修改节点
-if let Some(cpu_node) = fdt.root_mut()
-    .find_child_mut("cpus")?
-    .and_then(|n| n.find_child_mut("cpu@0")) {
+// Parse existing DTB from bytes
+let raw_data = include_bytes!("path/to/device-tree.dtb");
+let fdt = Fdt::from_bytes(&raw_data)?;
 
-    // 修改时钟频率
-    cpu_node.set_property("clock-frequency", &[1_200_000_000u32])?;
+// Access nodes by path
+let node = fdt.get_by_path("/chosen");
+if let Some(chosen) = node {
+    println!("Found chosen node: {}", chosen.name());
 }
 
-// 添加新的属性
-cpu_node.add_property("new-property", "value")?;
-
-// 重新编码
-let modified_dtb = fdt.encode()?;
+// Encode back to DTB format
+let dtb_data = fdt.encode();
+std::fs::write("output.dtb", dtb_data.as_bytes())?;
 ```
 
-### 节点遍历和查找
+### Node Traversal and Searching
 
 ```rust
-// 遍历所有节点
-for node in fdt.root().traverse() {
-    match node.kind() {
+use fdt_edit::{Fdt, NodeKind};
+
+let fdt = Fdt::from_bytes(&dtb_data)?;
+
+// Iterate through all nodes
+for node in fdt.all_nodes() {
+    println!("Node: {} at path {}", node.name(), node.path());
+
+    // Match specialized node types
+    match node.as_ref() {
         NodeKind::Memory(mem) => {
-            println!("Memory node: {:x?}", mem.regions());
+            println!("  Memory node with regions:");
+            for region in mem.regions() {
+                println!("    address=0x{:x}, size=0x{:x}", region.address, region.size);
+            }
         }
         NodeKind::Clock(clock) => {
-            println!("Clock: {}, freq: {}", clock.name(), clock.frequency()?);
+            println!("  Clock node: {} (#clock-cells={})", clock.name(), clock.clock_cells);
+        }
+        NodeKind::Pci(pci) => {
+            if let Some(range) = pci.bus_range() {
+                println!("  PCI bus range: {:?}", range);
+            }
         }
         _ => {
-            println!("Generic node: {}", node.name());
+            println!("  Generic node");
         }
     }
 }
 
-// 查找特定节点
-if let Some(chosen) = fdt.root().find_child("chosen") {
-    if let Some(bootargs) = chosen.get_property("bootargs") {
-        println!("Boot args: {}", bootargs.as_str()?);
+// Find nodes by path pattern
+let virtio_nodes: Vec<_> = fdt.find_by_path("/virtio_mmio").collect();
+println!("Found {} virtio_mmio nodes", virtio_nodes.len());
+```
+
+### Node Modification and Creation
+
+```rust
+use fdt_edit::{Fdt, Node};
+
+let mut fdt = Fdt::from_bytes(&dtb_data)?;
+
+// Create new node manually
+let mut new_node = Node::new("test-device@12340000");
+// Add properties (API in development)
+// new_node.add_property("compatible", &["vendor,test-device"]);
+// new_node.add_property("reg", &[0x12340000u64, 0x1000u64]);
+
+// Add to root node
+fdt.root.add_child(new_node);
+
+// Remove existing node
+if fdt.get_by_path("/psci").is_some() {
+    let removed = fdt.remove_node("/psci")?;
+    println!("Removed psci node: {}", removed.unwrap().name());
+}
+
+// Save the modified device tree
+let modified_dtb = fdt.encode();
+std::fs::write("modified.dtb", modified_dtb.as_bytes())?;
+```
+
+### Specialized Node Access
+
+```rust
+use fdt_edit::{Fdt, NodeKind};
+
+let fdt = Fdt::from_bytes(&dtb_data)?;
+
+// Find and work with memory nodes
+for node in fdt.all_nodes() {
+    if let NodeKind::Memory(mem) = node.as_ref() {
+        let regions = mem.regions();
+        if !regions.is_empty() {
+            println!("Memory node '{}' has {} regions:", mem.name(), regions.len());
+            for (i, region) in regions.iter().enumerate() {
+                println!("  Region {}: 0x{:x}-0x{:x}", i, region.address, region.address + region.size);
+            }
+        }
+    }
+}
+
+// Find clock nodes
+let mut clock_count = 0;
+for node in fdt.all_nodes() {
+    if let NodeKind::Clock(clock) = node.as_ref() {
+        clock_count += 1;
+        println!("Clock {}: cells={}, output-names={:?}",
+                 clock.name(),
+                 clock.clock_cells,
+                 clock.clock_output_names);
     }
 }
 ```
 
-## 依赖
+### Display as Device Tree Source
 
-- `fdt-raw` - 底层 FDT 解析库
-- `log = "0.4"` - 日志记录
-- `enum_dispatch = "0.3.13"` - 枚举分发优化
+```rust
+use fdt_edit::Fdt;
 
-## 开发依赖
+let fdt = Fdt::from_bytes(&dtb_data)?;
 
-- `dtb-file` - 测试数据
-- `env_logger = "0.11"` - 日志实现
+// Display as DTS format (including memory reservations)
+println!("{}", fdt);
+// Output will show:
+// /dts-v1/;
+// /memreserve/ 0x80000000 0x100000;
+// / {
+//     #address-cells = <0x2>;
+//     #size-cells = <0x2>;
+//     compatible = "qemu,arm64";
+//     ...
+// };
+```
 
-## 许可证
+## Current Status
 
-本项目采用开源许可证，具体许可证类型请查看项目根目录的 LICENSE 文件。
+This library is under active development. Currently supported features:
+- ✅ Parse DTB files into editable structures
+- ✅ Encode device trees back to DTB format
+- ✅ Display device trees in DTS format
+- ✅ Access to memory reservations
+- 🚧 Node editing APIs (in development)
 
-## 贡献
+## Dependencies
 
-欢迎提交 Issue 和 Pull Request。请确保：
+- `fdt-raw` - Low-level FDT parsing library
+- `log = "0.4"` - Logging support
+- `enum_dispatch = "0.3.13"` - Enum dispatch optimization
 
-1. 代码遵循项目的格式规范（`cargo fmt`）
-2. 通过所有测试（`cargo test`）
-3. 通过 Clippy 检查（`cargo clippy`）
-4. 新功能添加相应的测试用例
+## Dev Dependencies
 
-## 相关项目
+- `dtb-file` - Test data
+- `env_logger = "0.11"` - Logger implementation
 
-- [fdt-raw](../fdt-raw/) - 底层 FDT 解析库
-- [fdt-parser](../fdt-parser/) - 高级缓存式 FDT 解析器
-- [dtb-tool](../dtb-tool/) - DTB 文件检查工具
-- [dtb-file](../dtb-file/) - 测试数据包
+## Testing
 
-## 示例
+The library includes comprehensive tests that verify round-trip compatibility:
 
-更多使用示例请查看 `examples/` 目录（如果存在）或源码中的测试用例。
+```bash
+cargo test
+```
+
+The main test (`test_parse_and_rebuild`) ensures that:
+1. A DTB file can be parsed successfully
+2. The parsed structure can be encoded back to DTB
+3. The original and rebuilt DTB files produce identical DTS output when using `dtc`
+
+## License
+
+This project is licensed under open source licenses. Please see the LICENSE file in the project root for specific license types.
+
+## Contributing
+
+Issues and Pull Requests are welcome. Please ensure:
+
+1. Code follows the project's formatting standards (`cargo fmt`)
+2. All tests pass (`cargo test`)
+3. Clippy checks pass (`cargo clippy`)
+4. New features include appropriate test cases
+
+## Related Projects
+
+- [fdt-raw](../fdt-raw/) - Low-level FDT parsing library
+- [fdt-parser](../fdt-parser/) - High-level cached FDT parser
+- [dtb-tool](../dtb-tool/) - DTB file inspection tool
+- [dtb-file](../dtb-file/) - Test data package
+
+## Examples
+
+More usage examples can be found in the source code test files, particularly in `tests/edit.rs`.

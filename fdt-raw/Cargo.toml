@@ -9,6 +9,7 @@ keywords = ["device-tree", "dtb", "embedded", "no-std", "bare-metal"]
 license = "MIT OR Apache-2.0"
 name = "fdt-raw"
 readme = "README.md"
+homepage = "https://github.com/drivercraft/fdt-parser"
 repository = "https://github.com/drivercraft/fdt-parser"
 version = "0.1.0"
 
