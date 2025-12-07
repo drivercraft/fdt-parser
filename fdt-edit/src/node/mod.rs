@@ -9,15 +9,18 @@ use fdt_raw::data::StrIter;
 
 use crate::{Phandle, Property, RangesEntry, Status};
 
-mod iter;
 mod gerneric;
+mod iter;
 
 pub use iter::*;
 
 #[derive(Clone)]
 pub struct Node {
     pub name: String,
-    pub(crate) properties: BTreeMap<String, Property>,
+    /// 属性列表（保持原始顺序）
+    pub(crate) properties: Vec<Property>,
+    /// 属性名到索引的映射（用于快速查找）
+    pub(crate) prop_cache: BTreeMap<String, usize>,
     pub(crate) children: Vec<Node>,
     pub(crate) name_cache: BTreeMap<String, usize>,
 }
@@ -26,7 +29,8 @@ impl Node {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            properties: BTreeMap::new(),
+            properties: Vec::new(),
+            prop_cache: BTreeMap::new(),
             children: Vec::new(),
             name_cache: BTreeMap::new(),
         }
@@ -37,7 +41,7 @@ impl Node {
     }
 
     pub fn properties(&self) -> impl Iterator<Item = &Property> {
-        self.properties.values()
+        self.properties.iter()
     }
 
     pub fn children(&self) -> impl Iterator<Item = &Node> {
@@ -80,19 +84,42 @@ impl Node {
     }
 
     pub fn set_property(&mut self, prop: Property) {
-        self.properties.insert(prop.name.clone(), prop);
+        let name = prop.name.clone();
+        if let Some(&idx) = self.prop_cache.get(&name) {
+            // 更新已存在的属性
+            self.properties[idx] = prop;
+        } else {
+            // 添加新属性
+            let idx = self.properties.len();
+            self.prop_cache.insert(name, idx);
+            self.properties.push(prop);
+        }
     }
 
     pub fn get_property(&self, name: &str) -> Option<&Property> {
-        self.properties.get(name)
+        self.prop_cache.get(name).map(|&idx| &self.properties[idx])
     }
 
     pub fn get_property_mut(&mut self, name: &str) -> Option<&mut Property> {
-        self.properties.get_mut(name)
+        self.prop_cache
+            .get(name)
+            .map(|&idx| &mut self.properties[idx])
     }
 
     pub fn remove_property(&mut self, name: &str) -> Option<Property> {
-        self.properties.remove(name)
+        if let Some(&idx) = self.prop_cache.get(name) {
+            self.prop_cache.remove(name);
+            // 重建索引（移除元素后需要更新后续索引）
+            let prop = self.properties.remove(idx);
+            for (_, v) in self.prop_cache.iter_mut() {
+                if *v > idx {
+                    *v -= 1;
+                }
+            }
+            Some(prop)
+        } else {
+            None
+        }
     }
 
     pub fn address_cells(&self) -> Option<u32> {

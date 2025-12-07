@@ -11,11 +11,11 @@ pub struct NodeRefGen<'a> {
 
 impl<'a> NodeRefGen<'a> {
     pub fn find_property(&self, name: &str) -> Option<&'a Property> {
-        self.node.properties.get(name)
+        self.node.get_property(name)
     }
 
     pub fn properties(&self) -> impl Iterator<Item = &'a Property> {
-        self.node.properties.values()
+        self.node.properties.iter()
     }
 
     fn op(&'a self) -> RefOp<'a> {
