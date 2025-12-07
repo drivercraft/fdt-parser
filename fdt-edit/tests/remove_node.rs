@@ -29,9 +29,9 @@ mod tests {
         let mut fdt = Fdt::new();
 
         // 创建嵌套节点: /soc/i2c@0/eeprom@50
-        let mut soc = Node::new_raw("soc");
-        let mut i2c = Node::new_raw("i2c@0");
-        let eeprom = Node::new_raw("eeprom@50");
+        let mut soc = Node::new("soc");
+        let mut i2c = Node::new("i2c@0");
+        let eeprom = Node::new("eeprom@50");
         i2c.add_child(eeprom);
         soc.add_child(i2c);
         fdt.root.add_child(soc);
@@ -66,7 +66,7 @@ mod tests {
         let mut fdt = Fdt::new();
 
         // 添加直接子节点
-        fdt.root.add_child(Node::new_raw("memory@0"));
+        fdt.root.add_child(Node::new("memory@0"));
 
         // 验证存在
         assert!(fdt.get_by_path("/memory@0").is_some());
@@ -95,18 +95,18 @@ mod tests {
     #[test]
     fn test_node_remove_by_path() {
         // 直接测试 Node 的 remove_by_path 方法
-        let mut root = Node::root();
+        let mut root = Node::new("");
 
         // 创建结构: /a/b/c
-        let mut a = Node::new_raw("a");
-        let mut b = Node::new_raw("b");
-        let c = Node::new_raw("c");
+        let mut a = Node::new("a");
+        let mut b = Node::new("b");
+        let c = Node::new("c");
         b.add_child(c);
         a.add_child(b);
         root.add_child(a);
 
         // 验证 c 存在
-        assert!(root.find_child_exact("a").is_some());
+        assert!(root.get_child("a").is_some());
 
         // 删除 c
         let removed = root.remove_by_path("a/b/c");
@@ -124,13 +124,13 @@ mod tests {
         assert!(removed.unwrap().is_some());
 
         // 所有节点都已删除
-        assert!(root.find_child_exact("a").is_none());
+        assert!(root.get_child("a").is_none());
     }
 
     #[test]
     fn test_remove_with_leading_slash() {
         let mut fdt = Fdt::new();
-        fdt.root.add_child(Node::new_raw("test"));
+        fdt.root.add_child(Node::new("test"));
 
         // 带有和不带斜杠的路径都应该工作
         let result = fdt.remove_node("/test");
@@ -142,9 +142,9 @@ mod tests {
         let mut fdt = Fdt::new();
 
         // 添加多个兄弟节点
-        fdt.root.add_child(Node::new_raw("node1"));
-        fdt.root.add_child(Node::new_raw("node2"));
-        fdt.root.add_child(Node::new_raw("node3"));
+        fdt.root.add_child(Node::new("node1"));
+        fdt.root.add_child(Node::new("node2"));
+        fdt.root.add_child(Node::new("node3"));
 
         // 删除中间节点
         let removed = fdt.remove_node("/node2");
