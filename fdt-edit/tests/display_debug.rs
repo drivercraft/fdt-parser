@@ -227,8 +227,12 @@ mod tests {
         assert!(deep_debug.contains("[000]"));
 
         // 验证包含特定节点类型
-        assert!(deep_debug.contains("Clock") || deep_debug.contains("InterruptController") ||
-                deep_debug.contains("Memory") || deep_debug.contains("Generic"));
+        assert!(
+            deep_debug.contains("Clock")
+                || deep_debug.contains("InterruptController")
+                || deep_debug.contains("Memory")
+                || deep_debug.contains("Generic")
+        );
     }
 
     #[test]
@@ -242,7 +246,12 @@ mod tests {
 
         let mut uart = Node::new("uart@9000000");
         uart.set_property(Property::new("compatible", b"arm,pl011\0".to_vec()));
-        uart.set_property(Property::new("reg", vec![0x00, 0x90, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00]));
+        uart.set_property(Property::new(
+            "reg",
+            vec![
+                0x00, 0x90, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
+            ],
+        ));
         uart.set_property(Property::new("status", b"okay\0".to_vec()));
 
         soc.add_child(uart);

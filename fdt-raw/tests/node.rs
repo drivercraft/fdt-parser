@@ -111,7 +111,10 @@ fn test_fdt_debug() {
         ("nodes:", "nodes field"),
     ];
     for (pattern, desc) in struct_checks {
-        assert!(output.contains(pattern), "Debug output should contain {desc}");
+        assert!(
+            output.contains(pattern),
+            "Debug output should contain {desc}"
+        );
     }
 
     // 验证 header 字段
@@ -413,7 +416,6 @@ fn test_reg_parsing() {
                 );
             }
 
-  
             if node.name() == "fw-cfg@9020000" {
                 found_fw_cfg_reg = true;
                 assert_eq!(reg_infos.len(), 1, "fw-cfg should have one reg entry");

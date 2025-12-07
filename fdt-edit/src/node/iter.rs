@@ -7,7 +7,7 @@ use core::{
 use alloc::vec::Vec;
 
 use crate::{
-    Context, Node, NodeRefPci, NodeRefClock, NodeRefInterruptController, NodeRefMemory, NodeKind,
+    Context, Node, NodeKind, NodeRefClock, NodeRefInterruptController, NodeRefMemory, NodeRefPci,
     node::gerneric::{NodeMutGen, NodeRefGen},
 };
 

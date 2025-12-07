@@ -1,8 +1,8 @@
 #![cfg(unix)]
 
 use dtb_file::*;
-use fdt_edit::*;
 use fdt_edit::NodeKind;
+use fdt_edit::*;
 
 #[cfg(test)]
 mod tests {

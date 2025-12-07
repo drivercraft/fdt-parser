@@ -9,7 +9,7 @@ pub use fdt_raw::MemoryReservation;
 use fdt_raw::{FdtError, Phandle, Status};
 
 use crate::{
-    Node, NodeIter, NodeIterMut, NodeMut, NodeRef, NodeKind, ClockType,
+    ClockType, Node, NodeIter, NodeIterMut, NodeKind, NodeMut, NodeRef,
     encode::{FdtData, FdtEncoder},
 };
 
@@ -492,7 +492,11 @@ impl core::fmt::Display for Fdt {
 
         // 输出内存保留块
         for reservation in &self.memory_reservations {
-            writeln!(f, "/memreserve/ 0x{:x} 0x{:x};", reservation.address, reservation.size)?;
+            writeln!(
+                f,
+                "/memreserve/ 0x{:x} 0x{:x};",
+                reservation.address, reservation.size
+            )?;
         }
 
         // 输出根节点
@@ -522,7 +526,11 @@ impl Fdt {
     fn fmt_debug_deep(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         writeln!(f, "Fdt {{")?;
         writeln!(f, "    boot_cpuid_phys: 0x{:x},", self.boot_cpuid_phys)?;
-        writeln!(f, "    memory_reservations_count: {},", self.memory_reservations.len())?;
+        writeln!(
+            f,
+            "    memory_reservations_count: {},",
+            self.memory_reservations.len()
+        )?;
         writeln!(f, "    phandle_cache_size: {},", self.phandle_cache.len())?;
         writeln!(f, "    nodes:")?;
 
@@ -534,7 +542,13 @@ impl Fdt {
         writeln!(f, "}}")
     }
 
-    fn fmt_node_debug(&self, f: &mut core::fmt::Formatter<'_>, node: &NodeRef, indent: usize, index: usize) -> core::fmt::Result {
+    fn fmt_node_debug(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node: &NodeRef,
+        indent: usize,
+        index: usize,
+    ) -> core::fmt::Result {
         // 打印缩进
         for _ in 0..indent {
             write!(f, "    ")?;
@@ -580,8 +594,7 @@ impl Fdt {
                 if !regions.is_empty() {
                     write!(f, " ({} regions", regions.len())?;
                     for (i, region) in regions.iter().take(2).enumerate() {
-                        write!(f, ", [{}]: 0x{:x}+0x{:x}",
-                               i, region.address, region.size)?;
+                        write!(f, ", [{}]: 0x{:x}+0x{:x}", i, region.address, region.size)?;
                     }
                     if regions.len() > 2 {
                         write!(f, ", ...")?;

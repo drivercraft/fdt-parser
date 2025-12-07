@@ -1,6 +1,9 @@
 use core::ops::Deref;
 
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use fdt_raw::MemoryRegion;
 
 use crate::node::gerneric::NodeRefGen;
@@ -65,10 +68,7 @@ impl<'a> NodeRefMemory<'a> {
                 reader.read_cells(address_cells),
                 reader.read_cells(size_cells),
             ) {
-                regions.push(MemoryRegion {
-                    address,
-                    size,
-                });
+                regions.push(MemoryRegion { address, size });
             }
         }
         regions
@@ -92,10 +92,10 @@ impl<'a> Deref for NodeRefMemory<'a> {
 /// 检查节点是否是 memory 节点
 fn is_memory_node(node: &NodeRefGen) -> bool {
     // 检查 device_type 属性是否为 "memory"
-    if let Some(device_type) = node.device_type() {
-        if device_type == "memory" {
-            return true;
-        }
+    if let Some(device_type) = node.device_type()
+        && device_type == "memory"
+    {
+        return true;
     }
 
     // 或者节点名以 "memory" 开头

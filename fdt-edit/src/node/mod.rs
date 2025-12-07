@@ -311,4 +311,3 @@ impl From<&fdt_raw::Node<'_>> for Node {
         new_node
     }
 }
-

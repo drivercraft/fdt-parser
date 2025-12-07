@@ -1,6 +1,9 @@
 use core::ops::Deref;
 
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use fdt_raw::Phandle;
 
 use crate::node::gerneric::NodeRefGen;
@@ -201,12 +204,7 @@ impl<'a> NodeRefClock<'a> {
             // 从 clock-names 获取对应的名称
             let name = clock_names.get(index).cloned();
 
-            clocks.push(ClockRef::with_name(
-                name,
-                phandle,
-                clock_cells,
-                specifier,
-            ));
+            clocks.push(ClockRef::with_name(name, phandle, clock_cells, specifier));
             index += 1;
         }
 
