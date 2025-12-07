@@ -11,11 +11,15 @@ use crate::{Phandle, Property, RangesEntry, Status, node::gerneric::NodeRefGen};
 
 mod clock;
 mod gerneric;
+mod interrupt_controller;
 mod iter;
+mod memory;
 mod pci;
 
 pub use clock::*;
+pub use interrupt_controller::*;
 pub use iter::*;
+pub use memory::*;
 pub use pci::*;
 
 /// 节点类型枚举，用于模式匹配
@@ -23,6 +27,8 @@ pub use pci::*;
 pub enum NodeKind<'a> {
     Clock(NodeRefClock<'a>),
     Pci(NodeRefPci<'a>),
+    InterruptController(NodeRefInterruptController<'a>),
+    Memory(NodeRefMemory<'a>),
     Generic(NodeRefGen<'a>),
 }
 
@@ -222,11 +228,11 @@ impl Node {
     ///
     /// # 示例
     /// ```rust
-    /// # use fdt_edit::{Node, NodeOp};
-    /// let mut root = Node::root();
+    /// # use fdt_edit::Node;
+    /// let mut root = Node::new("");
     /// // 添加测试节点
-    /// let mut soc = Node::new_raw("soc");
-    /// soc.add_child(Node::new_raw("gpio@1000"));
+    /// let mut soc = Node::new("soc");
+    /// soc.add_child(Node::new("gpio@1000"));
     /// root.add_child(soc);
     ///
     /// // 精确删除节点

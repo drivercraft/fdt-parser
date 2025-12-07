@@ -8,7 +8,7 @@ use core::{
 use alloc::vec::Vec;
 
 use crate::{
-    Context, Node, NodeRefPci, NodeRefClock, NodeKind,
+    Context, Node, NodeRefPci, NodeRefClock, NodeRefInterruptController, NodeRefMemory, NodeKind,
     node::gerneric::{NodeMutGen, NodeRefGen},
 };
 
@@ -17,6 +17,8 @@ pub enum NodeRef<'a> {
     Gerneric(NodeRefGen<'a>),
     Pci(NodeRefPci<'a>),
     Clock(NodeRefClock<'a>),
+    InterruptController(NodeRefInterruptController<'a>),
+    Memory(NodeRefMemory<'a>),
 }
 
 impl<'a> NodeRef<'a> {
@@ -35,6 +37,18 @@ impl<'a> NodeRef<'a> {
             Err(v) => v,
         };
 
+        // 然后尝试 InterruptController
+        g = match NodeRefInterruptController::try_from(g) {
+            Ok(ic) => return Self::InterruptController(ic),
+            Err(v) => v,
+        };
+
+        // 最后尝试 Memory
+        g = match NodeRefMemory::try_from(g) {
+            Ok(mem) => return Self::Memory(mem),
+            Err(v) => v,
+        };
+
         Self::Gerneric(g)
     }
 
@@ -43,6 +57,8 @@ impl<'a> NodeRef<'a> {
         match self {
             NodeRef::Clock(clock) => NodeKind::Clock(clock.clone()),
             NodeRef::Pci(pci) => NodeKind::Pci(pci.clone()),
+            NodeRef::InterruptController(ic) => NodeKind::InterruptController(ic.clone()),
+            NodeRef::Memory(mem) => NodeKind::Memory(mem.clone()),
             NodeRef::Gerneric(generic) => NodeKind::Generic(generic.clone()),
         }
     }
@@ -56,6 +72,8 @@ impl<'a> Deref for NodeRef<'a> {
             NodeRef::Gerneric(n) => n,
             NodeRef::Pci(n) => &n.node,
             NodeRef::Clock(n) => &n.node,
+            NodeRef::InterruptController(n) => &n.node,
+            NodeRef::Memory(n) => &n.node,
         }
     }
 }

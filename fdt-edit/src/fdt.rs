@@ -384,12 +384,12 @@ impl Fdt {
     ///
     /// # 示例
     /// ```rust
-    /// # use fdt_edit::{Fdt, Node, NodeOp};
+    /// # use fdt_edit::{Fdt, Node};
     /// let mut fdt = Fdt::new();
     ///
     /// // 先添加节点再删除
-    /// let mut soc = Node::new_raw("soc");
-    /// soc.add_child(Node::new_raw("gpio@1000"));
+    /// let mut soc = Node::new("soc");
+    /// soc.add_child(Node::new("gpio@1000"));
     /// fdt.root.add_child(soc);
     ///
     /// // 精确删除节点

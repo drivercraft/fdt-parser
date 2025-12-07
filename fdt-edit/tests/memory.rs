@@ -2,6 +2,7 @@
 
 use dtb_file::*;
 use fdt_edit::*;
+use fdt_edit::NodeKind;
 
 #[cfg(test)]
 mod tests {
@@ -16,7 +17,7 @@ mod tests {
         // 遍历查找 memory 节点
         let mut found_memory = false;
         for node in fdt.all_nodes() {
-            if let Node::Memory(mem) = node.as_ref() {
+            if let NodeKind::Memory(mem) = node.as_ref() {
                 found_memory = true;
                 println!("Memory node: {}", mem.name());
             }
@@ -31,7 +32,7 @@ mod tests {
 
         // 查找 memory 节点并获取区域信息
         for node in fdt.all_nodes() {
-            if let Node::Memory(mem) = node.as_ref() {
+            if let NodeKind::Memory(mem) = node.as_ref() {
                 let regions = mem.regions();
                 // memory 节点应该有至少一个区域
                 if !regions.is_empty() {
@@ -52,7 +53,7 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            if let Node::Memory(mem) = node.as_ref() {
+            if let NodeKind::Memory(mem) = node.as_ref() {
                 // memory 节点应该有 device_type 属性
                 let dt = mem.device_type();
                 if let Some(device_type) = dt {
