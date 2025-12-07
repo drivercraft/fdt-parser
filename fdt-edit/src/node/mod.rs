@@ -10,6 +10,7 @@ use fdt_raw::data::StrIter;
 use crate::{Phandle, Property, RangesEntry, Status, node::gerneric::NodeRefGen};
 
 mod clock;
+mod display;
 mod gerneric;
 mod interrupt_controller;
 mod iter;
@@ -17,6 +18,7 @@ mod memory;
 mod pci;
 
 pub use clock::*;
+pub use display::*;
 pub use interrupt_controller::*;
 pub use iter::*;
 pub use memory::*;
@@ -310,12 +312,3 @@ impl From<&fdt_raw::Node<'_>> for Node {
     }
 }
 
-impl Debug for Node {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Node")
-            .field("name", &self.name)
-            // .field("properties", &self.properties)
-            // .field("children_count", &self.children.len())
-            .finish()
-    }
-}

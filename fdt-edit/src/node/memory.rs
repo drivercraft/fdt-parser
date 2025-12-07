@@ -38,7 +38,7 @@ impl NodeMemory {
 }
 
 /// Memory 节点引用
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct NodeRefMemory<'a> {
     pub node: NodeRefGen<'a>,
 }

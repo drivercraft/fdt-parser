@@ -1,5 +1,4 @@
 use core::{
-    fmt::Debug,
     ops::{Deref, DerefMut},
     ptr::NonNull,
     slice::Iter,
@@ -12,7 +11,7 @@ use crate::{
     node::gerneric::{NodeMutGen, NodeRefGen},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum NodeRef<'a> {
     Gerneric(NodeRefGen<'a>),
     Pci(NodeRefPci<'a>),
@@ -78,7 +77,6 @@ impl<'a> Deref for NodeRef<'a> {
     }
 }
 
-#[derive(Debug)]
 pub enum NodeMut<'a> {
     Gerneric(NodeMutGen<'a>),
 }

@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use crate::node::gerneric::NodeRefGen;
 
 /// 中断控制器节点引用
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct NodeRefInterruptController<'a> {
     pub node: NodeRefGen<'a>,
 }

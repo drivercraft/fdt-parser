@@ -9,12 +9,12 @@ pub use fdt_raw::MemoryReservation;
 use fdt_raw::{FdtError, Phandle, Status};
 
 use crate::{
-    Node, NodeIter, NodeIterMut, NodeMut, NodeRef,
+    Node, NodeIter, NodeIterMut, NodeMut, NodeRef, NodeKind, ClockType,
     encode::{FdtData, FdtEncoder},
 };
 
 /// 可编辑的 FDT
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Fdt {
     /// 引导 CPU ID
     pub boot_cpuid_phys: u32,
@@ -392,9 +392,13 @@ impl Fdt {
     /// soc.add_child(Node::new("gpio@1000"));
     /// fdt.root.add_child(soc);
     ///
-    /// // 精确删除节点
-    /// let removed = fdt.remove_node("soc/gpio@1000")?;
+    /// // 精确删除节点（使用完整路径）
+    /// let removed = fdt.remove_node("/soc/gpio@1000")?;
     /// assert!(removed.is_some());
+    ///
+    /// // 尝试删除不存在的节点会返回错误
+    /// let not_found = fdt.remove_node("/soc/nonexistent");
+    /// assert!(not_found.is_err());
     /// # Ok::<(), fdt_raw::FdtError>(())
     /// ```
     pub fn remove_node(&mut self, path: &str) -> Result<Option<Node>, FdtError> {
@@ -478,5 +482,133 @@ impl Fdt {
     /// 序列化为 FDT 二进制数据
     pub fn encode(&self) -> FdtData {
         FdtEncoder::new(self).encode()
+    }
+}
+
+impl core::fmt::Display for Fdt {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // 输出 DTS 头部信息
+        writeln!(f, "/dts-v1/;")?;
+
+        // 输出内存保留块
+        for reservation in &self.memory_reservations {
+            writeln!(f, "/memreserve/ 0x{:x} 0x{:x};", reservation.address, reservation.size)?;
+        }
+
+        // 输出根节点
+        writeln!(f, "{}", self.root)
+    }
+}
+
+impl core::fmt::Debug for Fdt {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if f.alternate() {
+            // Deep debug format with node traversal
+            self.fmt_debug_deep(f)
+        } else {
+            // Simple debug format (current behavior)
+            f.debug_struct("Fdt")
+                .field("boot_cpuid_phys", &self.boot_cpuid_phys)
+                .field("memory_reservations_count", &self.memory_reservations.len())
+                .field("root_node_name", &self.root.name)
+                .field("total_nodes", &self.root.children.len())
+                .field("phandle_cache_size", &self.phandle_cache.len())
+                .finish()
+        }
+    }
+}
+
+impl Fdt {
+    fn fmt_debug_deep(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        writeln!(f, "Fdt {{")?;
+        writeln!(f, "    boot_cpuid_phys: 0x{:x},", self.boot_cpuid_phys)?;
+        writeln!(f, "    memory_reservations_count: {},", self.memory_reservations.len())?;
+        writeln!(f, "    phandle_cache_size: {},", self.phandle_cache.len())?;
+        writeln!(f, "    nodes:")?;
+
+        // 遍历所有节点并打印带缩进的调试信息
+        for (i, node) in self.all_nodes().enumerate() {
+            self.fmt_node_debug(f, &node, 2, i)?;
+        }
+
+        writeln!(f, "}}")
+    }
+
+    fn fmt_node_debug(&self, f: &mut core::fmt::Formatter<'_>, node: &NodeRef, indent: usize, index: usize) -> core::fmt::Result {
+        // 打印缩进
+        for _ in 0..indent {
+            write!(f, "    ")?;
+        }
+
+        // 打印节点索引和基本信息
+        write!(f, "[{:03}] {}: ", index, node.name())?;
+
+        // 根据节点类型打印特定信息
+        match node.as_ref() {
+            NodeKind::Clock(clock) => {
+                write!(f, "Clock")?;
+                if let ClockType::Fixed(fixed) = &clock.kind {
+                    write!(f, " (Fixed, {}Hz)", fixed.frequency)?;
+                } else {
+                    write!(f, " (Provider)")?;
+                }
+                if !clock.clock_output_names.is_empty() {
+                    write!(f, ", outputs: {:?}", clock.clock_output_names)?;
+                }
+                write!(f, ", cells={}", clock.clock_cells)?;
+            }
+            NodeKind::Pci(pci) => {
+                write!(f, "PCI")?;
+                if let Some(bus_range) = pci.bus_range() {
+                    write!(f, " (bus: {:?})", bus_range)?;
+                }
+                write!(f, ", interrupt-cells={}", pci.interrupt_cells())?;
+            }
+            NodeKind::InterruptController(ic) => {
+                write!(f, "InterruptController")?;
+                if let Some(cells) = ic.interrupt_cells() {
+                    write!(f, " (cells={})", cells)?;
+                }
+                let compatibles = ic.compatibles();
+                if !compatibles.is_empty() {
+                    write!(f, ", compatible: {:?}", compatibles)?;
+                }
+            }
+            NodeKind::Memory(mem) => {
+                write!(f, "Memory")?;
+                let regions = mem.regions();
+                if !regions.is_empty() {
+                    write!(f, " ({} regions", regions.len())?;
+                    for (i, region) in regions.iter().take(2).enumerate() {
+                        write!(f, ", [{}]: 0x{:x}+0x{:x}",
+                               i, region.address, region.size)?;
+                    }
+                    if regions.len() > 2 {
+                        write!(f, ", ...")?;
+                    }
+                    write!(f, ")")?;
+                }
+            }
+            NodeKind::Generic(_) => {
+                write!(f, "Generic")?;
+            }
+        }
+
+        // 打印 phandle 信息
+        if let Some(phandle) = node.phandle() {
+            write!(f, ", phandle={}", phandle)?;
+        }
+
+        // 打印地址和大小 cells 信息
+        if let Some(address_cells) = node.address_cells() {
+            write!(f, ", #address-cells={}", address_cells)?;
+        }
+        if let Some(size_cells) = node.size_cells() {
+            write!(f, ", #size-cells={}", size_cells)?;
+        }
+
+        writeln!(f)?;
+
+        Ok(())
     }
 }

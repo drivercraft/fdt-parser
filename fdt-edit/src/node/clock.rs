@@ -84,7 +84,7 @@ impl ClockRef {
 }
 
 /// 时钟提供者节点引用
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct NodeRefClock<'a> {
     pub node: NodeRefGen<'a>,
     pub clock_output_names: Vec<String>,

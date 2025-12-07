@@ -12,8 +12,7 @@ mod prop;
 
 pub use ctx::Context;
 // pub use display::FmtLevel;
-// pub use encode::{FdtData, FdtEncoder, NodeEncode};
 pub use fdt::{Fdt, MemoryReservation};
-pub use node::*;
 pub use node::NodeKind;
+pub use node::*;
 pub use prop::{Phandle, Property, RangesEntry, RegInfo, Status};
