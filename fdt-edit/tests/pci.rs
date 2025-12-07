@@ -1,7 +1,19 @@
 #[cfg(test)]
 mod tests {
+    use std::sync::Once;
+
     use dtb_file::{fdt_phytium, fdt_qemu};
     use fdt_edit::*;
+
+    fn init_logging() {
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter_level(log::LevelFilter::Trace)
+                .try_init();
+        });
+    }
 
     #[test]
     fn test_pci_node_detection() {
@@ -145,6 +157,8 @@ mod tests {
 
     #[test]
     fn test_pci_irq_map2() {
+        init_logging();
+
         let raw = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw).unwrap();
         let node_ref = fdt

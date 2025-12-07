@@ -121,20 +121,12 @@ impl<'a> Context<'a> {
     }
 
     pub fn push(&mut self, node: &'a Node) {
-        if let Some(ph) = node.phandle() {
-            self.phandle_map.insert(ph, node);
-        }
         self.parents.push(node);
     }
 
     /// 通过 phandle 查找节点
     pub fn find_by_phandle(&self, phandle: Phandle) -> Option<&'a Node> {
         self.phandle_map.get(&phandle).copied()
-    }
-
-    /// 设置 phandle 到节点的映射
-    pub fn set_phandle_map(&mut self, map: BTreeMap<Phandle, &'a Node>) {
-        self.phandle_map = map;
     }
 
     /// 从 Fdt 构建 phandle 映射

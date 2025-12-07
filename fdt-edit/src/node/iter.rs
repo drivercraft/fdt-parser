@@ -79,7 +79,10 @@ pub struct NodeIter<'a> {
 
 impl<'a> NodeIter<'a> {
     pub fn new(root: &'a Node) -> Self {
-        let ctx = Context::new();
+        let mut ctx = Context::new();
+        // 预先构建整棵树的 phandle_map
+        // 这样在遍历任何节点时都能通过 phandle 找到其他节点
+        Context::build_phandle_map_from_node(root, &mut ctx.phandle_map);
 
         Self {
             ctx,
@@ -151,9 +154,18 @@ impl RawChildIter {
 
 impl<'a> NodeIterMut<'a> {
     pub fn new(root: &'a mut Node) -> Self {
+        let mut ctx = Context::new();
+        // 预先构建整棵树的 phandle_map
+        // 使用原始指针来避免借用冲突
+        let root_ptr = root as *mut Node;
+        unsafe {
+            // 用不可变引用构建 phandle_map
+            Context::build_phandle_map_from_node(&*root_ptr, &mut ctx.phandle_map);
+        }
+
         Self {
-            ctx: Context::new(),
-            node: Some(NonNull::from(root)),
+            ctx,
+            node: NonNull::new(root_ptr),
             stack: vec![],
             _marker: core::marker::PhantomData,
         }

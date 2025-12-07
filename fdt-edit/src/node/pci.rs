@@ -2,6 +2,7 @@ use core::ops::{Deref, Range};
 
 use alloc::vec::Vec;
 use fdt_raw::{FdtError, Phandle, data::U32Iter};
+use log::debug;
 
 use crate::node::gerneric::NodeRefGen;
 
@@ -139,7 +140,11 @@ impl<'a> NodeRefPci<'a> {
         // 获取 interrupt-map 和 mask
         let interrupt_map = self.interrupt_map()?;
 
-        let mut mask = self.interrupt_map_mask().ok_or(FdtError::NotFound)?;
+        // 将 mask 转换为 Vec 以便索引访问
+        let mask: Vec<u32> = self
+            .interrupt_map_mask()
+            .ok_or(FdtError::NotFound)?
+            .collect();
 
         // 构造 PCI 设备的子地址
         // 格式: [bus_num, device_num, func_num] 在适当的位
@@ -151,41 +156,35 @@ impl<'a> NodeRefPci<'a> {
 
         let child_addr_cells = self.address_cells().unwrap_or(3) as usize;
         let child_irq_cells = self.interrupt_cells() as usize;
-        let required_mask_len = child_addr_cells + child_irq_cells;
-        if mask.len() < required_mask_len {
-            mask.resize(required_mask_len, 0xffff_ffff);
-        }
 
         let encoded_address = [child_addr_high, child_addr_mid, child_addr_low];
         let mut masked_child_address = Vec::with_capacity(child_addr_cells);
 
-        // 使用迭代器替代不必要的范围循环
-        for (idx, value) in encoded_address.iter().enumerate() {
-            masked_child_address.push(value & mask[idx]);
+        // 应用 mask 到子地址
+        for (idx, value) in encoded_address.iter().take(child_addr_cells).enumerate() {
+            let mask_value = mask.get(idx).copied().unwrap_or(0xffff_ffff);
+            masked_child_address.push(value & mask_value);
         }
 
-        // 如果 encoded_address 比 mask 短，处理剩余的 mask 值
-        if encoded_address.len() < child_addr_cells {
-            // 如果 encoded_address 比 mask 短，填充剩余的 0 值
-            let remaining_zeros = child_addr_cells - encoded_address.len();
-            masked_child_address.extend(core::iter::repeat_n(0, remaining_zeros));
-        }
+        // 如果 encoded_address 比 child_addr_cells 短，填充 0
+        let remaining = child_addr_cells.saturating_sub(encoded_address.len());
+        masked_child_address.extend(core::iter::repeat_n(0, remaining));
 
         let encoded_irq = [interrupt_pin as u32];
         let mut masked_child_irq = Vec::with_capacity(child_irq_cells);
 
-        // 使用迭代器替代不必要的范围循环
-        let mask_start = child_addr_cells;
-        let mask_end = child_addr_cells + encoded_irq.len().min(child_irq_cells);
-        for (value, mask_value) in encoded_irq.iter().zip(&mask[mask_start..mask_end]) {
+        // 应用 mask 到子 IRQ
+        for (idx, value) in encoded_irq.iter().take(child_irq_cells).enumerate() {
+            let mask_value = mask
+                .get(child_addr_cells + idx)
+                .copied()
+                .unwrap_or(0xffff_ffff);
             masked_child_irq.push(value & mask_value);
         }
 
-        // 如果 encoded_irq 比 child_irq_cells 短，处理剩余的 mask 值
-        if encoded_irq.len() < child_irq_cells {
-            let remaining_zeros = child_irq_cells - encoded_irq.len();
-            masked_child_irq.extend(core::iter::repeat_n(0, remaining_zeros));
-        }
+        // 如果 encoded_irq 比 child_irq_cells 短，填充 0
+        let remaining_irq = child_irq_cells.saturating_sub(encoded_irq.len());
+        masked_child_irq.extend(core::iter::repeat_n(0, remaining_irq));
 
         // 在 interrupt-map 中查找匹配的条目
         for mapping in &interrupt_map {
@@ -211,9 +210,13 @@ impl<'a> NodeRefPci<'a> {
             .find_property("interrupt-map")
             .ok_or(FdtError::NotFound)?;
 
-        let mut mask = self.interrupt_map_mask().ok_or(FdtError::NotFound)?;
+        // 将 mask 和 data 转换为 Vec 以便索引访问
+        let mask: Vec<u32> = self
+            .interrupt_map_mask()
+            .ok_or(FdtError::NotFound)?
+            .collect();
 
-        let mut data = prop.get_u32_iter();
+        let mut data = prop.as_reader();
         let mut mappings = Vec::new();
 
         // 计算每个条目的大小
@@ -221,64 +224,88 @@ impl<'a> NodeRefPci<'a> {
         let child_addr_cells = self.address_cells().unwrap_or(3) as usize;
         let child_irq_cells = self.interrupt_cells() as usize;
 
-        let required_mask_len = child_addr_cells + child_irq_cells;
-        if mask.len() < required_mask_len {
-            mask.resize(required_mask_len, 0xffff_ffff);
-        }
-
-        let mut idx = 0;
-        while idx < data.len() {
+        loop {
             // 解析子地址
-            if idx + child_addr_cells > data.len() {
-                break;
+            let mut child_address = Vec::with_capacity(child_addr_cells);
+            for _ in 0..child_addr_cells {
+                match data.read_u32() {
+                    Some(v) => child_address.push(v),
+                    None => return Ok(mappings), // 数据结束
+                }
             }
-            let child_address = data[idx..idx + child_addr_cells].to_vec();
-            idx += child_addr_cells;
 
             // 解析子 IRQ
-            if idx + child_irq_cells > data.len() {
-                break;
+            let mut child_irq = Vec::with_capacity(child_irq_cells);
+            for _ in 0..child_irq_cells {
+                match data.read_u32() {
+                    Some(v) => child_irq.push(v),
+                    None => return Ok(mappings),
+                }
             }
-            let child_irq = data[idx..idx + child_irq_cells].to_vec();
-            idx += child_irq_cells;
 
             // 解析中断父 phandle
-            if idx >= data.len() {
-                break;
-            }
-            let interrupt_parent_raw = data[idx];
+            let interrupt_parent_raw = match data.read_u32() {
+                Some(v) => v,
+                None => return Ok(mappings),
+            };
             let interrupt_parent = Phandle::from(interrupt_parent_raw);
-            idx += 1;
 
-            // 通过 phandle 查找中断父节点以获取其 address_cells 和 interrupt_cells
+            debug!(
+                "Looking for interrupt parent phandle: 0x{:x} (raw: {})",
+                interrupt_parent.raw(),
+                interrupt_parent_raw
+            );
+            debug!(
+                "Context phandle_map keys: {:?}",
+                self.ctx
+                    .phandle_map
+                    .keys()
+                    .map(|p| format!("0x{:x}", p.raw()))
+                    .collect::<Vec<_>>()
+            );
+
+            // 通过 phandle 查找中断父节点以获取其 #address-cells 和 #interrupt-cells
+            // 根据 devicetree 规范，interrupt-map 中的 parent unit address 使用中断父节点的 #address-cells
             let (parent_addr_cells, parent_irq_cells) =
                 if let Some(irq_parent) = self.ctx.find_by_phandle(interrupt_parent) {
+                    debug!("Found interrupt parent: {:?}", irq_parent.name);
+
+                    // 直接使用中断父节点的 #address-cells
                     let addr_cells = irq_parent.address_cells().unwrap_or(0) as usize;
+
                     let irq_cells = irq_parent
-                        .find_property("#interrupt-cells")
-                        .and_then(|p| match &p.kind {
-                            PropertyKind::Num(v) => Some(*v as usize),
-                            _ => None,
-                        })
-                        .unwrap_or(3);
+                        .get_property("#interrupt-cells")
+                        .and_then(|p| p.get_u32())
+                        .unwrap_or(3) as usize;
+                    debug!(
+                        "irq_parent addr_cells: {}, irq_cells: {}",
+                        addr_cells, irq_cells
+                    );
                     (addr_cells, irq_cells)
                 } else {
+                    debug!(
+                        "Interrupt parent phandle 0x{:x} NOT FOUND in context!",
+                        interrupt_parent.raw()
+                    );
                     // 默认值：address_cells=0, interrupt_cells=3 (GIC 格式)
                     (0, 3)
                 };
 
             // 跳过父地址 cells
-            if idx + parent_addr_cells > data.len() {
-                break;
+            for _ in 0..parent_addr_cells {
+                if data.read_u32().is_none() {
+                    return Ok(mappings);
+                }
             }
-            idx += parent_addr_cells;
 
             // 解析父 IRQ
-            if idx + parent_irq_cells > data.len() {
-                break;
+            let mut parent_irq = Vec::with_capacity(parent_irq_cells);
+            for _ in 0..parent_irq_cells {
+                match data.read_u32() {
+                    Some(v) => parent_irq.push(v),
+                    None => return Ok(mappings),
+                }
             }
-            let parent_irq = data[idx..idx + parent_irq_cells].to_vec();
-            idx += parent_irq_cells;
 
             // 应用 mask 到子地址和 IRQ
             let masked_address: Vec<u32> = child_address
@@ -308,8 +335,6 @@ impl<'a> NodeRefPci<'a> {
                 parent_irq,
             });
         }
-
-        Ok(mappings)
     }
 }
 
