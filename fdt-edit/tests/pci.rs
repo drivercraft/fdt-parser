@@ -12,7 +12,7 @@ mod tests {
         let mut pci_nodes_found = 0;
         for node in fdt.all_nodes() {
             {
-                if let Node::Pci(pci) = &*node {
+                if let NodeRef::Pci(pci) = node {
                     pci_nodes_found += 1;
                     println!("Found PCI node: {}", pci.name());
                 }
@@ -30,7 +30,7 @@ mod tests {
 
         for node in fdt.all_nodes() {
             {
-                if let Node::Pci(pci) = &*node
+                if let NodeRef::Pci(pci) = node
                     && let Some(range) = pci.bus_range()
                 {
                     println!("Found bus-range: {range:?}");
@@ -50,7 +50,7 @@ mod tests {
 
         for node in fdt.all_nodes() {
             {
-                if let Node::Pci(pci) = &*node {
+                if let NodeRef::Pci(pci) = node {
                     // Test address cells
                     assert_eq!(
                         pci.address_cells(),
@@ -67,7 +67,7 @@ mod tests {
                     }
 
                     // Test compatibles
-                    let compatibles = pci.compatibles();
+                    let compatibles = pci.compatibles().collect::<Vec<_>>();
                     if !compatibles.is_empty() {
                         println!("Compatibles: {:?}", compatibles);
                     }
@@ -90,7 +90,7 @@ mod tests {
             .next()
             .unwrap();
 
-        let Node::Pci(pci) = &*node else {
+        let NodeRef::Pci(pci) = node else {
             panic!("Not a PCI node");
         };
 
@@ -134,11 +134,11 @@ mod tests {
             .next()
             .unwrap();
 
-        let Node::Pci(pci) = node_ref.node else {
+        let NodeRef::Pci(pci) = node_ref else {
             panic!("Not a PCI node");
         };
 
-        let irq = pci.child_interrupts(&node_ref.ctx, 0, 0, 0, 4).unwrap();
+        let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
 
         assert!(!irq.irqs.is_empty());
     }
@@ -153,11 +153,11 @@ mod tests {
             .next()
             .unwrap();
 
-        let Node::Pci(pci) = node_ref.node else {
+        let NodeRef::Pci(pci) = node_ref else {
             panic!("Not a PCI node");
         };
 
-        let irq = pci.child_interrupts(&node_ref.ctx, 0, 2, 0, 1).unwrap();
+        let irq = pci.child_interrupts(0, 2, 0, 1).unwrap();
 
         let want = [0, 5, 4];
 

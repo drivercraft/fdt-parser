@@ -11,8 +11,10 @@ use crate::{Phandle, Property, RangesEntry, Status};
 
 mod gerneric;
 mod iter;
+mod pci;
 
 pub use iter::*;
+pub use pci::*;
 
 #[derive(Clone)]
 pub struct Node {
@@ -184,6 +186,18 @@ impl Node {
     pub fn compatible(&self) -> Option<StrIter<'_>> {
         let prop = self.get_property("compatible")?;
         Some(prop.as_str_iter())
+    }
+
+    pub fn compatibles(&self) -> impl Iterator<Item = &str> {
+        self.get_property("compatible")
+            .map(|prop| prop.as_str_iter())
+            .into_iter()
+            .flatten()
+    }
+
+    pub fn device_type(&self) -> Option<&str> {
+        let prop = self.get_property("device_type")?;
+        prop.as_str()
     }
 
     /// 通过精确路径删除子节点及其子树

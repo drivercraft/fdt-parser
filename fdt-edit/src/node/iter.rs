@@ -8,18 +8,26 @@ use core::{
 use alloc::vec::Vec;
 
 use crate::{
-    Context, Node,
+    Context, Node, NodeRefPci,
     node::gerneric::{NodeMutGen, NodeRefGen},
 };
 
 #[derive(Clone, Debug)]
 pub enum NodeRef<'a> {
     Gerneric(NodeRefGen<'a>),
+    Pci(NodeRefPci<'a>),
 }
 
 impl<'a> NodeRef<'a> {
     pub fn new(node: &'a Node, ctx: Context<'a>) -> Self {
-        Self::Gerneric(NodeRefGen { node, ctx })
+        let mut g = NodeRefGen { node, ctx };
+
+        g = match NodeRefPci::try_from(g) {
+            Ok(pci) => return Self::Pci(pci),
+            Err(v) => v,
+        };
+
+        Self::Gerneric(g)
     }
 }
 
@@ -29,6 +37,7 @@ impl<'a> Deref for NodeRef<'a> {
     fn deref(&self) -> &Self::Target {
         match self {
             NodeRef::Gerneric(n) => n,
+            NodeRef::Pci(n) => &n.node,
         }
     }
 }
