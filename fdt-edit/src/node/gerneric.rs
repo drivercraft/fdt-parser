@@ -1,5 +1,6 @@
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use core::{fmt::Debug, ops::Deref};
+use fdt_raw::RegInfo;
 
 use crate::{Context, Node, Property};
 
@@ -36,6 +37,10 @@ impl<'a> NodeRefGen<'a> {
     pub fn path_eq_fuzzy(&self, path: &str) -> bool {
         self.op().ref_path_eq_fuzzy(path)
     }
+
+    pub fn regs(&self) -> Option<Vec<Reg>> {
+        self.op().regs()
+    }
 }
 
 impl Deref for NodeRefGen<'_> {
@@ -69,6 +74,10 @@ impl<'a> NodeMutGen<'a> {
 
     pub fn path_eq_fuzzy(&self, path: &str) -> bool {
         self.op().ref_path_eq_fuzzy(path)
+    }
+
+    pub fn regs(&self) -> Option<Vec<Reg>> {
+        self.op().regs()
     }
 }
 
@@ -139,4 +148,52 @@ impl<'a> RefOp<'a> {
         }
         true
     }
+
+    fn regs(&self) -> Option<Vec<Reg>> {
+        let prop = self.node.get_property("reg")?;
+        let mut iter = prop.as_reader();
+        let address_cells = self.ctx.parent_address_cells() as usize;
+        let size_cells = self.ctx.parent_size_cells() as usize;
+
+        // 从上下文获取当前 ranges
+        let ranges = self.ctx.current_ranges();
+        let mut out = vec![];
+        let mut size = None;
+
+        while let Some(mut address) = iter.read_cells(address_cells) {
+            if size_cells > 0 {
+                size = iter.read_cells(size_cells);
+            } else {
+                size = None;
+            }
+            let child_bus_address = address;
+
+            if let Some(ref ranges) = ranges {
+                for r in ranges {
+                    if child_bus_address >= r.child_bus_address
+                        && child_bus_address < r.child_bus_address + r.length
+                    {
+                        address = child_bus_address - r.child_bus_address + r.parent_bus_address;
+                        break;
+                    }
+                }
+            }
+
+            let reg = Reg {
+                address,
+                child_bus_address,
+                size,
+            };
+            out.push(reg);
+        }
+
+        Some(out)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Reg {
+    pub address: u64,
+    pub child_bus_address: u64,
+    pub size: Option<u64>,
 }

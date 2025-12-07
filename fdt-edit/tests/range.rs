@@ -24,7 +24,7 @@ mod tests {
 
         let node = fdt.get_by_path("/soc/serial@7e215040").unwrap();
 
-        let reg = node.reg().unwrap()[0];
+        let reg = node.regs().unwrap()[0];
 
         info!("reg: {:#x?}", reg);
 

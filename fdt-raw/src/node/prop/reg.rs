@@ -41,7 +41,7 @@ impl Iterator for RegIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let address;
-        let mut size: Option<u64> = None;
+        let size;
         if self.address_cells == 1 {
             address = self.reader.read_u32().map(|addr| addr as u64)?;
         } else if self.address_cells == 2 {
@@ -49,11 +49,15 @@ impl Iterator for RegIter<'_> {
         } else {
             return None;
         }
-
-        if self.size_cells == 1 {
-            size = Some(self.reader.read_u32().map(|s| s as u64)?);
+        if self.size_cells == 0 {
+            size = None;
+        } else if self.size_cells == 1 {
+            size = self.reader.read_u32().map(|s| s as u64);
         } else if self.size_cells == 2 {
-            size = Some(self.reader.read_u64()?);
+            size = self.reader.read_u64();
+        } else {
+            // 不支持的 size_cells
+            return None;
         }
 
         Some(RegInfo::new(address, size))
