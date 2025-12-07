@@ -5,7 +5,7 @@ extern crate alloc;
 
 mod ctx;
 // mod display;
-// mod encode;
+mod encode;
 mod fdt;
 mod node;
 mod prop;

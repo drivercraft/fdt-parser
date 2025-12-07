@@ -8,7 +8,10 @@ use alloc::{
 pub use fdt_raw::MemoryReservation;
 use fdt_raw::{FdtError, Phandle, Status};
 
-use crate::{Node, NodeIter, NodeIterMut, NodeMut, NodeRef};
+use crate::{
+    Node, NodeIter, NodeIterMut, NodeMut, NodeRef,
+    encode::{FdtData, FdtEncoder},
+};
 
 /// 可编辑的 FDT
 #[derive(Clone, Debug)]
@@ -130,42 +133,6 @@ impl Fdt {
             };
             self.build_phandle_cache_recursive(child, &child_path);
         }
-    }
-
-    pub fn find_by_path<'a>(&'a self, path: &str) -> impl Iterator<Item = NodeRef<'a>> {
-        let path = self
-            .normalize_path(path)
-            .unwrap_or_else(|| path.to_string());
-
-        NodeIter::new(self.root()).filter_map(move |node_ref| {
-            if node_ref.path_eq_fuzzy(&path) {
-                Some(node_ref)
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn get_by_path<'a>(&'a self, path: &str) -> Option<NodeRef<'a>> {
-        let path = self.normalize_path(path)?;
-        NodeIter::new(self.root()).find_map(move |node_ref| {
-            if node_ref.path_eq(&path) {
-                Some(node_ref)
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
-        let path = self.normalize_path(path)?;
-        NodeIterMut::new(self.root_mut()).find_map(move |node_mut| {
-            if node_mut.path_eq(&path) {
-                Some(node_mut)
-            } else {
-                None
-            }
-        })
     }
 
     /// 规范化路径：如果是别名则解析为完整路径，否则确保以 / 开头
@@ -455,6 +422,42 @@ impl Fdt {
         NodeIterMut::new(&mut self.root)
     }
 
+    pub fn find_by_path<'a>(&'a self, path: &str) -> impl Iterator<Item = NodeRef<'a>> {
+        let path = self
+            .normalize_path(path)
+            .unwrap_or_else(|| path.to_string());
+
+        NodeIter::new(self.root()).filter_map(move |node_ref| {
+            if node_ref.path_eq_fuzzy(&path) {
+                Some(node_ref)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn get_by_path<'a>(&'a self, path: &str) -> Option<NodeRef<'a>> {
+        let path = self.normalize_path(path)?;
+        NodeIter::new(self.root()).find_map(move |node_ref| {
+            if node_ref.path_eq(&path) {
+                Some(node_ref)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
+        let path = self.normalize_path(path)?;
+        NodeIterMut::new(self.root_mut()).find_map(move |node_mut| {
+            if node_mut.path_eq(&path) {
+                Some(node_mut)
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn find_compatible(&self, compatible: &[&str]) -> Vec<NodeRef<'_>> {
         let mut results = Vec::new();
         for node_ref in self.all_nodes() {
@@ -470,5 +473,10 @@ impl Fdt {
             }
         }
         results
+    }
+
+    /// 序列化为 FDT 二进制数据
+    pub fn encode(&self) -> FdtData {
+        FdtEncoder::new(self).encode()
     }
 }
