@@ -47,4 +47,21 @@ mod tests {
         println!("Total nodes: {}", count);
         assert_eq!(count, 56);
     }
+
+    #[test]
+    fn test_all_mut() {
+        // 解析原始 DTB
+        let raw_data = fdt_qemu();
+        let mut fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+        for node in fdt.all_nodes_mut() {
+            println!("Node: {:#?}", node);
+            println!("  {}", node.path());
+            println!("-------------------------");
+        }
+
+        let count = fdt.all_nodes().count();
+        println!("Total nodes: {}", count);
+        assert_eq!(count, 56);
+    }
 }

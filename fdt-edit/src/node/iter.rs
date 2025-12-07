@@ -1,7 +1,8 @@
 use core::{
     fmt::Debug,
     ops::{Deref, DerefMut},
-    slice::{Iter, IterMut},
+    ptr::NonNull,
+    slice::Iter,
 };
 
 use alloc::{string::String, vec::Vec};
@@ -62,8 +63,6 @@ impl Deref for NodeRefGen<'_> {
     }
 }
 
-impl<'a> NodeMutGen<'a> {}
-
 impl<'a> Deref for NodeRef<'a> {
     type Target = NodeRefGen<'a>;
 
@@ -79,6 +78,7 @@ pub struct NodeMutGen<'a> {
     pub ctx: Context<'a>,
 }
 
+#[derive(Debug)]
 pub enum NodeMut<'a> {
     Gerneric(NodeMutGen<'a>),
 }
@@ -175,16 +175,42 @@ impl<'a> Iterator for NodeIter<'a> {
 
 pub struct NodeIterMut<'a> {
     ctx: Context<'a>,
-    node: Option<&'a mut Node>,
-    stack: Vec<IterMut<'a, Node>>,
+    node: Option<NonNull<Node>>,
+    stack: Vec<RawChildIter>,
+    _marker: core::marker::PhantomData<&'a mut Node>,
+}
+
+/// 原始指针子节点迭代器
+struct RawChildIter {
+    ptr: *mut Node,
+    end: *mut Node,
+}
+
+impl RawChildIter {
+    fn new(children: &mut Vec<Node>) -> Self {
+        let ptr = children.as_mut_ptr();
+        let end = unsafe { ptr.add(children.len()) };
+        Self { ptr, end }
+    }
+
+    fn next(&mut self) -> Option<NonNull<Node>> {
+        if self.ptr < self.end {
+            let current = self.ptr;
+            self.ptr = unsafe { self.ptr.add(1) };
+            NonNull::new(current)
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a> NodeIterMut<'a> {
     pub fn new(root: &'a mut Node) -> Self {
         Self {
             ctx: Context::new(),
-            node: Some(root),
+            node: Some(NonNull::from(root)),
             stack: vec![],
+            _marker: core::marker::PhantomData,
         }
     }
 }
@@ -193,22 +219,30 @@ impl<'a> Iterator for NodeIterMut<'a> {
     type Item = NodeMut<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(n) = self.node.take() {
+        if let Some(node_ptr) = self.node.take() {
             // 返回当前节点，并将其子节点压入栈中
             let ctx = self.ctx.clone();
-            self.ctx.push(n);
-            self.stack.push(n.children.iter_mut());
-            return Some(NodeMut::new(n, ctx));
+            unsafe {
+                let node_ref = node_ptr.as_ref();
+                self.ctx.push(node_ref);
+                let node_mut = &mut *node_ptr.as_ptr();
+                self.stack.push(RawChildIter::new(&mut node_mut.children));
+                return Some(NodeMut::new(node_mut, ctx));
+            }
         }
 
         let iter = self.stack.last_mut()?;
 
-        if let Some(child) = iter.next() {
+        if let Some(child_ptr) = iter.next() {
             // 返回子节点，并将其子节点压入栈中
             let ctx = self.ctx.clone();
-            self.ctx.push(child);
-            self.stack.push(child.children.iter_mut());
-            return Some(NodeMut::new(child, ctx));
+            unsafe {
+                let child_ref = child_ptr.as_ref();
+                self.ctx.push(child_ref);
+                let child_mut = &mut *child_ptr.as_ptr();
+                self.stack.push(RawChildIter::new(&mut child_mut.children));
+                return Some(NodeMut::new(child_mut, ctx));
+            }
         }
 
         // 当前迭代器耗尽，弹出栈顶
@@ -221,6 +255,12 @@ impl<'a> Iterator for NodeIterMut<'a> {
 impl Debug for NodeRefGen<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "NodeRefGen {{ name: {} }}", self.node.name())
+    }
+}
+
+impl Debug for NodeMutGen<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "NodeMutGen {{ name: {} }}", self.node.name())
     }
 }
 
