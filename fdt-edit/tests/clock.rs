@@ -2,6 +2,7 @@
 
 use dtb_file::*;
 use fdt_edit::*;
+use fdt_edit::NodeKind;
 
 #[cfg(test)]
 mod tests {
@@ -16,7 +17,7 @@ mod tests {
         // 遍历查找 clock 节点（有 #clock-cells 属性的节点）
         let mut clock_count = 0;
         for node in fdt.all_nodes() {
-            if let Node::Clock(clock) = node.as_ref() {
+            if let NodeKind::Clock(clock) = node.as_ref() {
                 clock_count += 1;
                 println!(
                     "Clock node: {} (#clock-cells={})",
@@ -34,7 +35,7 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            if let Node::Clock(clock) = node.as_ref() {
+            if let NodeKind::Clock(clock) = node.as_ref() {
                 // 获取 #clock-cells
                 let cells = clock.clock_cells;
                 println!("Clock: {} cells={}", clock.name(), cells);
@@ -67,7 +68,7 @@ mod tests {
         // 查找固定时钟
         let mut found_with_freq = false;
         for node in fdt.all_nodes() {
-            if let Node::Clock(clock) = node.as_ref() {
+            if let NodeKind::Clock(clock) = node.as_ref() {
                 if let ClockType::Fixed(fixed) = &clock.kind {
                     // 打印固定时钟信息
                     println!(
@@ -96,7 +97,7 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            if let Node::Clock(clock) = node.as_ref() {
+            if let NodeKind::Clock(clock) = node.as_ref() {
                 let names = &clock.clock_output_names;
                 if !names.is_empty() {
                     // 测试 output_name 方法
@@ -119,7 +120,7 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            if let Node::Clock(clock) = node.as_ref() {
+            if let NodeKind::Clock(clock) = node.as_ref() {
                 match &clock.kind {
                     ClockType::Fixed(fixed) => {
                         // 打印固定时钟信息
@@ -146,10 +147,10 @@ mod tests {
 
         let mut found_clocks = false;
         for node in fdt.all_nodes() {
-            if let Node::Clock(clock_ref) = node.as_ref() {
+            if let NodeKind::Clock(clock_ref) = node.as_ref() {
                 found_clocks = true;
 
-                let clocks = clock_ref.clocks(&node.ctx);
+                let clocks = clock_ref.clocks();
                 if !clocks.is_empty() {
                     found_clocks = true;
                     println!(
@@ -182,8 +183,8 @@ mod tests {
 
         for node in fdt.all_nodes() {
             // 使用 as_clock_ref 获取带上下文的 clock 引用
-            if let Node::Clock(clock) = node.as_ref() {
-                let clocks = clock.clocks(&node.ctx);
+            if let NodeKind::Clock(clock) = node.as_ref() {
+                let clocks = clock.clocks();
                 for clk in clocks {
                     // 测试 select() 方法
                     if clk.cells > 0 {

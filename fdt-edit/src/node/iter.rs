@@ -8,7 +8,7 @@ use core::{
 use alloc::vec::Vec;
 
 use crate::{
-    Context, Node, NodeRefPci,
+    Context, Node, NodeRefPci, NodeRefClock, NodeKind,
     node::gerneric::{NodeMutGen, NodeRefGen},
 };
 
@@ -16,18 +16,35 @@ use crate::{
 pub enum NodeRef<'a> {
     Gerneric(NodeRefGen<'a>),
     Pci(NodeRefPci<'a>),
+    Clock(NodeRefClock<'a>),
 }
 
 impl<'a> NodeRef<'a> {
     pub fn new(node: &'a Node, ctx: Context<'a>) -> Self {
         let mut g = NodeRefGen { node, ctx };
 
+        // 先尝试 PCI
         g = match NodeRefPci::try_from(g) {
             Ok(pci) => return Self::Pci(pci),
             Err(v) => v,
         };
 
+        // 再尝试 Clock
+        g = match NodeRefClock::try_from(g) {
+            Ok(clock) => return Self::Clock(clock),
+            Err(v) => v,
+        };
+
         Self::Gerneric(g)
+    }
+
+    /// 获取节点的具体类型用于模式匹配
+    pub fn as_ref(&self) -> NodeKind<'a> {
+        match self {
+            NodeRef::Clock(clock) => NodeKind::Clock(clock.clone()),
+            NodeRef::Pci(pci) => NodeKind::Pci(pci.clone()),
+            NodeRef::Gerneric(generic) => NodeKind::Generic(generic.clone()),
+        }
     }
 }
 
@@ -38,6 +55,7 @@ impl<'a> Deref for NodeRef<'a> {
         match self {
             NodeRef::Gerneric(n) => n,
             NodeRef::Pci(n) => &n.node,
+            NodeRef::Clock(n) => &n.node,
         }
     }
 }

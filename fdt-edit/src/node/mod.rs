@@ -7,14 +7,24 @@ use alloc::{
 };
 use fdt_raw::data::StrIter;
 
-use crate::{Phandle, Property, RangesEntry, Status};
+use crate::{Phandle, Property, RangesEntry, Status, node::gerneric::NodeRefGen};
 
+mod clock;
 mod gerneric;
 mod iter;
 mod pci;
 
+pub use clock::*;
 pub use iter::*;
 pub use pci::*;
+
+/// 节点类型枚举，用于模式匹配
+#[derive(Clone, Debug)]
+pub enum NodeKind<'a> {
+    Clock(NodeRefClock<'a>),
+    Pci(NodeRefPci<'a>),
+    Generic(NodeRefGen<'a>),
+}
 
 #[derive(Clone)]
 pub struct Node {
