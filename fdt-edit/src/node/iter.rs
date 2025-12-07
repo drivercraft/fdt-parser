@@ -175,14 +175,16 @@ impl<'a> Iterator for NodeIter<'a> {
 
 pub struct NodeIterMut<'a> {
     ctx: Context<'a>,
-    iter: IterMut<'a, Node>,
+    node: Option<&'a mut Node>,
+    stack: Vec<IterMut<'a, Node>>,
 }
 
 impl<'a> NodeIterMut<'a> {
     pub fn new(root: &'a mut Node) -> Self {
         Self {
             ctx: Context::new(),
-            iter: root.children.iter_mut(),
+            node: Some(root),
+            stack: vec![],
         }
     }
 }
@@ -191,7 +193,28 @@ impl<'a> Iterator for NodeIterMut<'a> {
     type Item = NodeMut<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        if let Some(n) = self.node.take() {
+            // 返回当前节点，并将其子节点压入栈中
+            let ctx = self.ctx.clone();
+            self.ctx.push(n);
+            self.stack.push(n.children.iter_mut());
+            return Some(NodeMut::new(n, ctx));
+        }
+
+        let iter = self.stack.last_mut()?;
+
+        if let Some(child) = iter.next() {
+            // 返回子节点，并将其子节点压入栈中
+            let ctx = self.ctx.clone();
+            self.ctx.push(child);
+            self.stack.push(child.children.iter_mut());
+            return Some(NodeMut::new(child, ctx));
+        }
+
+        // 当前迭代器耗尽，弹出栈顶
+        self.stack.pop();
+        self.ctx.parents.pop();
+        self.next()
     }
 }
 
