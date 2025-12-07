@@ -38,7 +38,7 @@ impl<'a> NodeRefGen<'a> {
         self.op().ref_path_eq_fuzzy(path)
     }
 
-    pub fn regs(&self) -> Option<Vec<Reg>> {
+    pub fn regs(&self) -> Option<Vec<RegFixed>> {
         self.op().regs()
     }
 }
@@ -76,8 +76,60 @@ impl<'a> NodeMutGen<'a> {
         self.op().ref_path_eq_fuzzy(path)
     }
 
-    pub fn regs(&self) -> Option<Vec<Reg>> {
+    pub fn regs(&self) -> Option<Vec<RegFixed>> {
         self.op().regs()
+    }
+
+    /// 设置 reg 属性
+    ///
+    /// # 参数
+    /// - `regs`: RegInfo 列表，其中 `address` 是 CPU 地址（物理地址）
+    ///
+    /// 该方法会根据父节点的 ranges 将 CPU 地址转换为 bus 地址后存储
+    pub fn set_regs(&mut self, regs: &[RegInfo]) {
+        let address_cells = self.ctx.parent_address_cells() as usize;
+        let size_cells = self.ctx.parent_size_cells() as usize;
+        let ranges = self.ctx.current_ranges();
+
+        let mut data = Vec::new();
+
+        for reg in regs {
+            // 将 CPU 地址转换为 bus 地址
+            let mut bus_address = reg.address;
+            if let Some(ref ranges) = ranges {
+                for r in ranges {
+                    // 检查 CPU 地址是否在 ranges 映射范围内
+                    if reg.address >= r.parent_bus_address
+                        && reg.address < r.parent_bus_address + r.length
+                    {
+                        // 反向转换：cpu_address -> bus_address
+                        bus_address = reg.address - r.parent_bus_address + r.child_bus_address;
+                        break;
+                    }
+                }
+            }
+
+            // 写入 bus address (big-endian)
+            if address_cells == 1 {
+                data.extend_from_slice(&(bus_address as u32).to_be_bytes());
+            } else if address_cells == 2 {
+                data.extend_from_slice(&((bus_address >> 32) as u32).to_be_bytes());
+                data.extend_from_slice(&((bus_address & 0xFFFF_FFFF) as u32).to_be_bytes());
+            }
+
+            // 写入 size (big-endian)
+            if size_cells == 1 {
+                let size = reg.size.unwrap_or(0);
+                data.extend_from_slice(&(size as u32).to_be_bytes());
+            } else if size_cells == 2 {
+                let size = reg.size.unwrap_or(0);
+                data.extend_from_slice(&((size >> 32) as u32).to_be_bytes());
+                data.extend_from_slice(&((size & 0xFFFF_FFFF) as u32).to_be_bytes());
+            }
+        }
+
+        let prop = Property::new("reg", data);
+        self.node.set_property(prop);
     }
 }
 
@@ -149,7 +201,7 @@ impl<'a> RefOp<'a> {
         true
     }
 
-    fn regs(&self) -> Option<Vec<Reg>> {
+    fn regs(&self) -> Option<Vec<RegFixed>> {
         let prop = self.node.get_property("reg")?;
         let mut iter = prop.as_reader();
         let address_cells = self.ctx.parent_address_cells() as usize;
@@ -158,7 +210,7 @@ impl<'a> RefOp<'a> {
         // 从上下文获取当前 ranges
         let ranges = self.ctx.current_ranges();
         let mut out = vec![];
-        let mut size = None;
+        let mut size;
 
         while let Some(mut address) = iter.read_cells(address_cells) {
             if size_cells > 0 {
@@ -179,7 +231,7 @@ impl<'a> RefOp<'a> {
                 }
             }
 
-            let reg = Reg {
+            let reg = RegFixed {
                 address,
                 child_bus_address,
                 size,
@@ -192,7 +244,7 @@ impl<'a> RefOp<'a> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Reg {
+pub struct RegFixed {
     pub address: u64,
     pub child_bus_address: u64,
     pub size: Option<u64>,
