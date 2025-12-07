@@ -3,8 +3,8 @@ use core::fmt;
 use alloc::vec::Vec;
 
 use crate::{
-    ClockType, Node, NodeKind, NodeMut, NodeRef, NodeRefClock, NodeRefInterruptController, NodeRefMemory,
-    Property,
+    ClockType, Node, NodeKind, NodeMut, NodeRef, NodeRefClock, NodeRefInterruptController,
+    NodeRefMemory, Property,
 };
 
 /// Node 的 DTS 显示格式化器
@@ -47,16 +47,6 @@ impl<'a> NodeDisplay<'a> {
         Ok(())
     }
 
-    fn format_node_name(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.node.name)?;
-
-        // 如果节点名为空（根节点），输出为 /
-        if self.node.name.is_empty() {
-            write!(f, "/")?;
-        }
-        Ok(())
-    }
-
     fn format_property(&self, prop: &Property, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.format_indent(f)?;
         match prop.name() {
@@ -76,8 +66,12 @@ impl<'a> NodeDisplay<'a> {
                 write!(f, "{} = ", prop.name())?;
                 self.format_string_list(prop, f)?;
             }
-            "interrupt-controller" | "#address-cells" | "#size-cells" | "#interrupt-cells"
-            | "#clock-cells" | "phandle" => {
+            "interrupt-controller"
+            | "#address-cells"
+            | "#size-cells"
+            | "#interrupt-cells"
+            | "#clock-cells"
+            | "phandle" => {
                 write!(f, "{};", prop.name())?;
             }
             _ => {
@@ -96,7 +90,7 @@ impl<'a> NodeDisplay<'a> {
         // 获取 parent 的 address-cells 和 size-cells
         // 这里需要从上下文获取，暂时使用默认值
         let address_cells = 2; // 默认值
-        let size_cells = 1;     // 默认值
+        let size_cells = 1; // 默认值
 
         while let (Some(addr), Some(size)) = (
             reader.read_cells(address_cells),
@@ -203,13 +197,8 @@ impl<'a> fmt::Display for NodeDisplay<'a> {
         }
 
         // 关闭节点
-        if !self.node.name.is_empty() || !self.node.children.is_empty() {
-            self.format_indent(f)?;
-            writeln!(f, "}};")?;
-        } else {
-            self.format_indent(f)?;
-            writeln!(f, "}};")?;
-        }
+        self.format_indent(f)?;
+        writeln!(f, "}};")?;
 
         Ok(())
     }
@@ -302,8 +291,13 @@ impl<'a> NodeRefDisplay<'a> {
                 if !regions.is_empty() {
                     write!(f, " ({} regions)", regions.len())?;
                     for (i, region) in regions.iter().take(3).enumerate() {
-                        write!(f, "\n    [{}]: 0x{:x}-0x{:x}",
-                               i, region.address, region.address + region.size)?;
+                        write!(
+                            f,
+                            "\n    [{}]: 0x{:x}-0x{:x}",
+                            i,
+                            region.address,
+                            region.address + region.size
+                        )?;
                     }
                 }
                 if let Some(dt) = mem.device_type() {
@@ -327,11 +321,10 @@ impl<'a> fmt::Display for NodeRefDisplay<'a> {
         if self.show_details {
             write!(f, "{}: ", self.node_ref.name())?;
             self.format_type_info(f)?;
-            write!(f, "\n")?;
+            writeln!(f)?;
 
             // 添加缩进并显示 DTS
-            let dts_display = NodeDisplay::new(self.node_ref)
-                .indent(self.indent + 1);
+            let dts_display = NodeDisplay::new(self.node_ref).indent(self.indent + 1);
             write!(f, "{}", dts_display)?;
         } else {
             write!(f, "{}", self.node_ref.name())?;
@@ -353,13 +346,16 @@ impl fmt::Debug for NodeRef<'_> {
         f.debug_struct("NodeRef")
             .field("name", &self.name())
             .field("path", &self.path())
-            .field("node_type", &match self.as_ref() {
-                NodeKind::Clock(_) => "Clock",
-                NodeKind::Pci(_) => "PCI",
-                NodeKind::InterruptController(_) => "InterruptController",
-                NodeKind::Memory(_) => "Memory",
-                NodeKind::Generic(_) => "Generic",
-            })
+            .field(
+                "node_type",
+                &match self.as_ref() {
+                    NodeKind::Clock(_) => "Clock",
+                    NodeKind::Pci(_) => "PCI",
+                    NodeKind::InterruptController(_) => "InterruptController",
+                    NodeKind::Memory(_) => "Memory",
+                    NodeKind::Generic(_) => "Generic",
+                },
+            )
             .field("phandle", &self.phandle())
             .finish()
     }
@@ -429,7 +425,7 @@ impl fmt::Display for NodeMut<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NodeMut::Gerneric(generic) => {
-                let display = NodeDisplay::new(&generic.node);
+                let display = NodeDisplay::new(generic.node);
                 write!(f, "{}", display)
             }
         }
@@ -439,16 +435,25 @@ impl fmt::Display for NodeMut<'_> {
 impl fmt::Debug for NodeMut<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NodeMut")
-            .field("name", &match self {
-                NodeMut::Gerneric(generic) => generic.node.name(),
-            })
+            .field(
+                "name",
+                &match self {
+                    NodeMut::Gerneric(generic) => generic.node.name(),
+                },
+            )
             .field("node_type", &"Generic")
-            .field("children_count", &match self {
-                NodeMut::Gerneric(generic) => generic.node.children.len(),
-            })
-            .field("properties_count", &match self {
-                NodeMut::Gerneric(generic) => generic.node.properties.len(),
-            })
+            .field(
+                "children_count",
+                &match self {
+                    NodeMut::Gerneric(generic) => generic.node.children.len(),
+                },
+            )
+            .field(
+                "properties_count",
+                &match self {
+                    NodeMut::Gerneric(generic) => generic.node.properties.len(),
+                },
+            )
             .finish()
     }
 }
