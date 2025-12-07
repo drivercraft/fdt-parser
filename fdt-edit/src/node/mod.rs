@@ -10,6 +10,7 @@ use fdt_raw::data::StrIter;
 use crate::{Phandle, Property, RangesEntry, Status};
 
 mod iter;
+mod gerneric;
 
 pub use iter::*;
 

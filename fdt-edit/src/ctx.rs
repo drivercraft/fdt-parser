@@ -1,8 +1,5 @@
-use alloc::{
-    collections::BTreeMap,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
+
 use fdt_raw::{Phandle, Status};
 
 use crate::{Node, RangesEntry};
