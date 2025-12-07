@@ -1,10 +1,15 @@
 [package]
 authors = ["周睿 <zrufo747@outlook.com>"]
-categories = ["embedded", "no-std"]
-description = "A crate for parsing FDT"
-documentation = "https://docs.rs/fdt-parser"
+categories = ["embedded", "no-std", "hardware-support"]
+description = "A low-level, no-std compatible library for parsing Flattened Device Tree (FDT) binary files"
+documentation = "https://docs.rs/fdt-raw"
 edition = "2024"
+exclude = [".git*", "*.md", "tests/"]
+keywords = ["device-tree", "dtb", "embedded", "no-std", "bare-metal"]
+license = "MIT OR Apache-2.0"
 name = "fdt-raw"
+readme = "README.md"
+repository = "https://github.com/drivercraft/fdt-parser"
 version = "0.1.0"
 
 [dependencies]
@@ -15,3 +20,11 @@ thiserror = {version = "2", default-features = false}
 [dev-dependencies]
 dtb-file = { path = "../dtb-file" }
 env_logger = "0.11"
+
+[features]
+default = []
+std = []
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-none-softfloat", "riscv64gc-unknown-none-elf"]

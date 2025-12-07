@@ -213,8 +213,8 @@ impl Pci {
         while !data.remain().as_ref().is_empty() {
             // Parse child bus address (3 cells for PCI)
             let mut child_addr = [0u32; 3];
-            for i in 0..3 {
-                child_addr[i] = data.take_u32().ok()?;
+            for addr in child_addr.iter_mut() {
+                *addr = data.take_u32().ok()?;
             }
 
             // Parse parent bus address (2 cells for 64-bit)
@@ -296,9 +296,9 @@ impl Pci {
 
         let encoded_address = [child_addr_high, child_addr_mid, child_addr_low];
         let mut masked_child_address = Vec::with_capacity(child_addr_cells);
-        for idx in 0..child_addr_cells {
+        for (idx, mask) in mask.iter().enumerate().take(child_addr_cells) {
             let value = *encoded_address.get(idx).unwrap_or(&0);
-            masked_child_address.push(value & mask[idx]);
+            masked_child_address.push(value & mask);
         }
 
         let encoded_irq = [pin];

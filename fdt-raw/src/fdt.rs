@@ -1,6 +1,40 @@
 use core::fmt;
 
-use crate::{FdtError, data::Bytes, header::Header, iter::FdtIter};
+use crate::{FdtError, MemoryReservation, data::Bytes, header::Header, iter::FdtIter};
+
+/// Memory reservation block iterator
+pub struct MemoryReservationIter<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> Iterator for MemoryReservationIter<'a> {
+    type Item = MemoryReservation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // 确保我们有足够的数据来读取地址和大小（各8字节）
+        if self.offset + 16 > self.data.len() {
+            return None;
+        }
+
+        // 读取地址（8字节，大端序）
+        let address_bytes = &self.data[self.offset..self.offset + 8];
+        let address = u64::from_be_bytes(address_bytes.try_into().unwrap());
+        self.offset += 8;
+
+        // 读取大小（8字节，大端序）
+        let size_bytes = &self.data[self.offset..self.offset + 8];
+        let size = u64::from_be_bytes(size_bytes.try_into().unwrap());
+        self.offset += 8;
+
+        // 检查是否到达终止符（地址和大小都为0）
+        if address == 0 && size == 0 {
+            return None;
+        }
+
+        Some(MemoryReservation { address, size })
+    }
+}
 
 /// 写入缩进（使用空格）
 fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Result {
@@ -26,6 +60,7 @@ impl<'a> Fdt<'a> {
             });
         }
         let buffer = Bytes::new(data);
+
         Ok(Fdt {
             header,
             data: buffer,
@@ -42,7 +77,8 @@ impl<'a> Fdt<'a> {
     pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Fdt<'a>, FdtError> {
         let header = unsafe { Header::from_ptr(ptr)? };
 
-        let data = Bytes::new(unsafe { core::slice::from_raw_parts(ptr, header.totalsize as _) });
+        let data_slice = unsafe { core::slice::from_raw_parts(ptr, header.totalsize as _) };
+        let data = Bytes::new(data_slice);
 
         Ok(Fdt { header, data })
     }
@@ -57,6 +93,14 @@ impl<'a> Fdt<'a> {
 
     pub fn all_nodes(&self) -> FdtIter<'a> {
         FdtIter::new(self.clone())
+    }
+
+    /// Get an iterator over memory reservation entries
+    pub fn memory_reservations(&self) -> MemoryReservationIter<'a> {
+        MemoryReservationIter {
+            data: self.data.as_slice(),
+            offset: self.header.off_mem_rsvmap as usize,
+        }
     }
 }
 
@@ -134,86 +178,77 @@ impl fmt::Debug for Fdt<'_> {
             // 打印属性
             for prop in node.properties() {
                 write_indent(f, level + 3, "\t")?;
-                // 使用 Debug 格式展示解析后的属性
-                match &prop {
-                    crate::Property::Reg(reg) => {
-                        write!(f, "reg: [")?;
-                        for (i, info) in reg.iter().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "{{addr: {:#x}, size: {:?}}}", info.address, info.size)?;
-                        }
-                        writeln!(f, "]")?;
-                    }
-
-                    crate::Property::Compatible(iter) => {
-                        write!(f, "compatible: [")?;
-                        for (i, s) in iter.clone().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "\"{}\"", s)?;
-                        }
-                        writeln!(f, "]")?;
-                    }
-                    crate::Property::AddressCells(v) => {
-                        writeln!(f, "#address-cells: {}", v)?;
-                    }
-                    crate::Property::SizeCells(v) => {
-                        writeln!(f, "#size-cells: {}", v)?;
-                    }
-                    crate::Property::InterruptCells(v) => {
-                        writeln!(f, "#interrupt-cells: {}", v)?;
-                    }
-                    crate::Property::Model(s) => {
-                        writeln!(f, "model: \"{}\"", s)?;
-                    }
-                    crate::Property::DeviceType(s) => {
-                        writeln!(f, "device_type: \"{}\"", s)?;
-                    }
-                    crate::Property::Status(s) => {
-                        writeln!(f, "status: {:?}", s)?;
-                    }
-                    crate::Property::Phandle(p) => {
-                        writeln!(f, "phandle: {}", p)?;
-                    }
-                    crate::Property::LinuxPhandle(p) => {
-                        writeln!(f, "linux,phandle: {}", p)?;
-                    }
-                    crate::Property::InterruptParent(p) => {
-                        writeln!(f, "interrupt-parent: {}", p)?;
-                    }
-
-                    crate::Property::ClockNames(iter) => {
-                        write!(f, "clock-names: [")?;
-                        for (i, s) in iter.clone().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "\"{}\"", s)?;
-                        }
-                        writeln!(f, "]")?;
-                    }
-                    crate::Property::DmaCoherent => {
-                        writeln!(f, "dma-coherent")?;
-                    }
-                    crate::Property::Unknown(raw) => {
-                        if raw.is_empty() {
-                            writeln!(f, "{}", raw.name())?;
-                        } else if let Some(s) = raw.as_str() {
-                            writeln!(f, "{}: \"{}\"", raw.name(), s)?;
-                        } else if raw.len() == 4 {
-                            let v = u32::from_be_bytes(raw.data().try_into().unwrap());
-                            writeln!(f, "{}: {:#x}", raw.name(), v)?;
-                        } else {
-                            writeln!(f, "{}: <{} bytes>", raw.name(), raw.len())?;
-                        }
+                if let Some(v) = prop.as_address_cells() {
+                    writeln!(f, "#address-cells: {}", v)?;
+                } else if let Some(v) = prop.as_size_cells() {
+                    writeln!(f, "#size-cells: {}", v)?;
+                } else if let Some(v) = prop.as_interrupt_cells() {
+                    writeln!(f, "#interrupt-cells: {}", v)?;
+                } else if let Some(s) = prop.as_status() {
+                    writeln!(f, "status: {:?}", s)?;
+                } else if let Some(p) = prop.as_phandle() {
+                    writeln!(f, "phandle: {}", p)?;
+                } else {
+                    // 默认处理未知属性
+                    if prop.is_empty() {
+                        writeln!(f, "{}", prop.name())?;
+                    } else if let Some(s) = prop.as_str() {
+                        writeln!(f, "{}: \"{}\"", prop.name(), s)?;
+                    } else if prop.len() == 4 {
+                        let v = u32::from_be_bytes(prop.data().as_slice().try_into().unwrap());
+                        writeln!(f, "{}: {:#x}", prop.name(), v)?;
+                    } else {
+                        writeln!(f, "{}: <{} bytes>", prop.name(), prop.len())?;
                     }
                 }
             }
         }
 
         writeln!(f, "}}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use heapless::Vec;
+
+    #[test]
+    fn test_memory_reservation_iterator() {
+        // 创建一个简单的测试数据：一个内存保留条目 + 终止符
+        let mut test_data = [0u8; 32];
+
+        // 地址: 0x80000000, 大小: 0x10000000 (256MB)
+        test_data[0..8].copy_from_slice(&0x80000000u64.to_be_bytes());
+        test_data[8..16].copy_from_slice(&0x10000000u64.to_be_bytes());
+        // 终止符: address=0, size=0
+        test_data[16..24].copy_from_slice(&0u64.to_be_bytes());
+        test_data[24..32].copy_from_slice(&0u64.to_be_bytes());
+
+        let iter = MemoryReservationIter {
+            data: &test_data,
+            offset: 0,
+        };
+
+        let reservations: Vec<MemoryReservation, 4> = iter.collect();
+        assert_eq!(reservations.len(), 1);
+        assert_eq!(reservations[0].address, 0x80000000);
+        assert_eq!(reservations[0].size, 0x10000000);
+    }
+
+    #[test]
+    fn test_empty_memory_reservation_iterator() {
+        // 只有终止符
+        let mut test_data = [0u8; 16];
+        test_data[0..8].copy_from_slice(&0u64.to_be_bytes());
+        test_data[8..16].copy_from_slice(&0u64.to_be_bytes());
+
+        let iter = MemoryReservationIter {
+            data: &test_data,
+            offset: 0,
+        };
+
+        let reservations: Vec<MemoryReservation, 4> = iter.collect();
+        assert_eq!(reservations.len(), 0);
     }
 }

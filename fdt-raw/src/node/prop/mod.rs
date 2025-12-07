@@ -7,23 +7,22 @@ use core::fmt;
 
 use log::error;
 
-pub use reg::{Reg, RegInfo, RegIter};
+pub use reg::{RegInfo, RegIter};
 
-use super::NodeContext;
 use crate::{
     FdtError, Phandle, Status, Token,
-    data::{Bytes, Reader},
+    data::{Bytes, Reader, StrIter, U32Iter},
 };
 
 /// 通用属性，包含名称和原始数据
 #[derive(Clone)]
-pub struct RawProperty<'a> {
+pub struct Property<'a> {
     name: &'a str,
-    data: &'a [u8],
+    data: Bytes<'a>,
 }
 
-impl<'a> RawProperty<'a> {
-    pub fn new(name: &'a str, data: &'a [u8]) -> Self {
+impl<'a> Property<'a> {
+    pub fn new(name: &'a str, data: Bytes<'a>) -> Self {
         Self { name, data }
     }
 
@@ -31,8 +30,8 @@ impl<'a> RawProperty<'a> {
         self.name
     }
 
-    pub fn data(&self) -> &'a [u8] {
-        self.data
+    pub fn data(&self) -> Bytes<'a> {
+        self.data.clone()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -45,229 +44,192 @@ impl<'a> RawProperty<'a> {
 
     /// 作为 u32 迭代器
     pub fn as_u32_iter(&self) -> U32Iter<'a> {
-        U32Iter::new(self.data)
+        self.data.as_u32_iter()
     }
 
     /// 作为字符串迭代器（用于 compatible 等属性）
     pub fn as_str_iter(&self) -> StrIter<'a> {
-        StrIter { data: self.data }
+        self.data.as_str_iter()
+    }
+
+    /// 获取数据作为字节切片
+    pub fn as_slice(&self) -> &[u8] {
+        self.data.as_slice()
     }
 
     /// 作为单个 u64 值
     pub fn as_u64(&self) -> Option<u64> {
-        if self.data.len() != 8 {
+        let mut iter = self.as_u32_iter();
+        let high = iter.next()? as u64;
+        let low = iter.next()? as u64;
+        if iter.next().is_some() {
             return None;
         }
-        Some(u64::from_be_bytes(self.data.try_into().unwrap()))
+        Some((high << 32) | low)
     }
 
     /// 作为单个 u32 值
     pub fn as_u32(&self) -> Option<u32> {
-        if self.data.len() != 4 {
+        let mut iter = self.as_u32_iter();
+        let value = iter.next()?;
+        if iter.next().is_some() {
             return None;
         }
-        Some(u32::from_be_bytes(self.data.try_into().unwrap()))
+        Some(value)
     }
 
     /// 作为字符串
     pub fn as_str(&self) -> Option<&'a str> {
-        if self.data.is_empty() {
-            return None;
-        }
-        // 去除尾部的 null 终止符
-        let data = if self.data.last() == Some(&0) {
-            &self.data[..self.data.len() - 1]
+        let bytes = self.data.as_slice();
+        let cstr = CStr::from_bytes_until_nul(bytes).ok()?;
+        cstr.to_str().ok()
+    }
+
+    /// 获取为 #address-cells 值
+    pub fn as_address_cells(&self) -> Option<u8> {
+        if self.name == "#address-cells" {
+            self.as_u32().map(|v| v as u8)
         } else {
-            self.data
-        };
-        core::str::from_utf8(data).ok()
-    }
-}
-
-/// 类型化属性枚举
-#[derive(Clone)]
-pub enum Property<'a> {
-    /// #address-cells 属性
-    AddressCells(u8),
-    /// #size-cells 属性
-    SizeCells(u8),
-    /// reg 属性（已解析）
-    Reg(Reg<'a>),
-    /// compatible 属性（字符串列表）
-    Compatible(StrIter<'a>),
-    /// model 属性
-    Model(&'a str),
-    /// status 属性
-    Status(Status),
-    /// phandle 属性
-    Phandle(Phandle),
-    /// linux,phandle 属性
-    LinuxPhandle(Phandle),
-    /// device_type 属性
-    DeviceType(&'a str),
-    /// interrupt-parent 属性
-    InterruptParent(Phandle),
-    /// interrupt-cells 属性
-    InterruptCells(u8),
-    /// clock-names 属性
-    ClockNames(StrIter<'a>),
-    /// dma-coherent 属性（无数据）
-    DmaCoherent,
-    /// 未识别的通用属性
-    Unknown(RawProperty<'a>),
-}
-
-impl<'a> Property<'a> {
-    /// 获取属性名称
-    pub fn name(&self) -> &str {
-        match self {
-            Property::AddressCells(_) => "#address-cells",
-            Property::SizeCells(_) => "#size-cells",
-            Property::Reg(_) => "reg",
-            Property::Compatible(_) => "compatible",
-            Property::Model(_) => "model",
-            Property::Status(_) => "status",
-            Property::Phandle(_) => "phandle",
-            Property::LinuxPhandle(_) => "linux,phandle",
-            Property::DeviceType(_) => "device_type",
-            Property::InterruptParent(_) => "interrupt-parent",
-            Property::InterruptCells(_) => "#interrupt-cells",
-            Property::ClockNames(_) => "clock-names",
-            Property::DmaCoherent => "dma-coherent",
-            Property::Unknown(raw) => raw.name(),
+            None
         }
     }
 
-    /// 从名称和数据创建类型化属性
-    fn from_raw(name: &'a str, data: &'a [u8], context: &NodeContext) -> Self {
-        match name {
-            "#address-cells" => {
-                if data.len() == 4 {
-                    let val = u32::from_be_bytes(data.try_into().unwrap()) as u8;
-                    Property::AddressCells(val)
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-            "#size-cells" => {
-                if data.len() == 4 {
-                    let val = u32::from_be_bytes(data.try_into().unwrap()) as u8;
-                    Property::SizeCells(val)
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-            "#interrupt-cells" => {
-                if data.len() == 4 {
-                    let val = u32::from_be_bytes(data.try_into().unwrap()) as u8;
-                    Property::InterruptCells(val)
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-            "reg" => {
-                // 使用 context 中的 cells 信息解析 reg
-                let reg = Reg::new(
-                    data,
-                    context.parent_address_cells,
-                    context.parent_size_cells,
-                );
-                Property::Reg(reg)
-            }
-            "compatible" => Property::Compatible(StrIter { data }),
-            "model" => {
-                if let Some(s) = Self::parse_str(data) {
-                    Property::Model(s)
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-            "status" => {
-                if let Some(s) = Self::parse_str(data) {
-                    match s {
-                        "okay" | "ok" => Property::Status(Status::Okay),
-                        "disabled" => Property::Status(Status::Disabled),
-                        _ => Property::Unknown(RawProperty::new(name, data)),
-                    }
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-            "phandle" => {
-                if data.len() == 4 {
-                    let val = u32::from_be_bytes(data.try_into().unwrap());
-                    Property::Phandle(Phandle::from(val))
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-            "linux,phandle" => {
-                if data.len() == 4 {
-                    let val = u32::from_be_bytes(data.try_into().unwrap());
-                    Property::LinuxPhandle(Phandle::from(val))
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-            "device_type" => {
-                if let Some(s) = Self::parse_str(data) {
-                    Property::DeviceType(s)
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-            "interrupt-parent" => {
-                if data.len() == 4 {
-                    let val = u32::from_be_bytes(data.try_into().unwrap());
-                    Property::InterruptParent(Phandle::from(val))
-                } else {
-                    Property::Unknown(RawProperty::new(name, data))
-                }
-            }
-
-            "clock-names" => Property::ClockNames(StrIter { data }),
-            "dma-coherent" => Property::DmaCoherent,
-            _ => Property::Unknown(RawProperty::new(name, data)),
-        }
-    }
-
-    /// 解析字符串（去除 null 终止符）
-    fn parse_str(data: &[u8]) -> Option<&str> {
-        if data.is_empty() {
-            return None;
-        }
-        let data = if data.last() == Some(&0) {
-            &data[..data.len() - 1]
+    /// 获取为 #size-cells 值
+    pub fn as_size_cells(&self) -> Option<u8> {
+        if self.name == "#size-cells" {
+            self.as_u32().map(|v| v as u8)
         } else {
-            data
-        };
-        core::str::from_utf8(data).ok()
+            None
+        }
     }
 
-    /// 尝试获取为通用属性
-    pub fn as_raw(&self) -> Option<&RawProperty<'a>> {
-        match self {
-            Property::Unknown(raw) => Some(raw),
-            _ => None,
+    /// 获取为 #interrupt-cells 值
+    pub fn as_interrupt_cells(&self) -> Option<u8> {
+        if self.name == "#interrupt-cells" {
+            self.as_u32().map(|v| v as u8)
+        } else {
+            None
         }
+    }
+
+    /// 获取为 status 枚举
+    pub fn as_status(&self) -> Option<Status> {
+        let v = self.as_str()?;
+        if self.name == "status" {
+            match v {
+                "okay" | "ok" => Some(Status::Okay),
+                "disabled" => Some(Status::Disabled),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 phandle
+    pub fn as_phandle(&self) -> Option<Phandle> {
+        if self.name == "phandle" {
+            self.as_u32().map(Phandle::from)
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 device_type 字符串
+    pub fn as_device_type(&self) -> Option<&'a str> {
+        if self.name == "device_type" {
+            self.as_str()
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 interrupt-parent
+    pub fn as_interrupt_parent(&self) -> Option<Phandle> {
+        if self.name == "interrupt-parent" {
+            self.as_u32().map(Phandle::from)
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 clock-names 字符串列表
+    pub fn as_clock_names(&self) -> Option<StrIter<'a>> {
+        if self.name == "clock-names" {
+            Some(self.as_str_iter())
+        } else {
+            None
+        }
+    }
+
+    /// 获取为 compatible 字符串列表
+    pub fn as_compatible(&self) -> Option<StrIter<'a>> {
+        if self.name == "compatible" {
+            Some(self.as_str_iter())
+        } else {
+            None
+        }
+    }
+
+    /// 是否为 dma-coherent 属性
+    pub fn is_dma_coherent(&self) -> bool {
+        self.name == "dma-coherent" && self.data.is_empty()
     }
 }
 
 impl fmt::Display for Property<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Property::AddressCells(v) => write!(f, "#address-cells = <{:#x}>", v),
-            Property::SizeCells(v) => write!(f, "#size-cells = <{:#x}>", v),
-            Property::InterruptCells(v) => write!(f, "#interrupt-cells = <{:#x}>", v),
-            Property::Reg(reg) => {
-                write!(f, "reg = ")?;
-                format_bytes(f, reg.as_slice())
+        if self.is_empty() {
+            write!(f, "{}", self.name())
+        } else if let Some(v) = self.as_address_cells() {
+            write!(f, "#address-cells = <{:#x}>", v)
+        } else if let Some(v) = self.as_size_cells() {
+            write!(f, "#size-cells = <{:#x}>", v)
+        } else if let Some(v) = self.as_interrupt_cells() {
+            write!(f, "#interrupt-cells = <{:#x}>", v)
+        } else if self.name() == "reg" {
+            // reg 属性需要特殊处理，但我们没有 context 信息
+            // 直接显示原始数据
+            write!(f, "reg = ")?;
+            format_bytes(f, &self.data())
+        } else if let Some(s) = self.as_status() {
+            write!(f, "status = \"{:?}\"", s)
+        } else if let Some(p) = self.as_phandle() {
+            write!(f, "phandle = {}", p)
+        } else if let Some(p) = self.as_interrupt_parent() {
+            write!(f, "interrupt-parent = {}", p)
+        } else if let Some(s) = self.as_device_type() {
+            write!(f, "device_type = \"{}\"", s)
+        } else if let Some(iter) = self.as_compatible() {
+            write!(f, "compatible = ")?;
+            let mut first = true;
+            for s in iter.clone() {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "\"{}\"", s)?;
+                first = false;
             }
-
-            Property::Compatible(iter) => {
-                write!(f, "compatible = ")?;
+            Ok(())
+        } else if let Some(iter) = self.as_clock_names() {
+            write!(f, "clock-names = ")?;
+            let mut first = true;
+            for s in iter.clone() {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "\"{}\"", s)?;
+                first = false;
+            }
+            Ok(())
+        } else if self.is_dma_coherent() {
+            write!(f, "dma-coherent")
+        } else if let Some(s) = self.as_str() {
+            // 检查是否有多个字符串
+            if self.data().iter().filter(|&&b| b == 0).count() > 1 {
+                write!(f, "{} = ", self.name())?;
                 let mut first = true;
-                for s in iter.clone() {
+                for s in self.as_str_iter() {
                     if !first {
                         write!(f, ", ")?;
                     }
@@ -275,55 +237,17 @@ impl fmt::Display for Property<'_> {
                     first = false;
                 }
                 Ok(())
+            } else {
+                write!(f, "{} = \"{}\"", self.name(), s)
             }
-            Property::Model(s) => write!(f, "model = \"{}\"", s),
-            Property::DeviceType(s) => write!(f, "device_type = \"{}\"", s),
-            Property::Status(s) => write!(f, "status = \"{:?}\"", s),
-            Property::Phandle(p) => write!(f, "phandle = {}", p),
-            Property::LinuxPhandle(p) => write!(f, "linux,phandle = {}", p),
-            Property::InterruptParent(p) => write!(f, "interrupt-parent = {}", p),
-            Property::ClockNames(iter) => {
-                write!(f, "clock-names = ")?;
-                let mut first = true;
-                for s in iter.clone() {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "\"{}\"", s)?;
-                    first = false;
-                }
-                Ok(())
-            }
-            Property::DmaCoherent => write!(f, "dma-coherent"),
-            Property::Unknown(raw) => {
-                if raw.is_empty() {
-                    write!(f, "{}", raw.name())
-                } else if let Some(s) = raw.as_str() {
-                    // 检查是否有多个字符串
-                    if raw.data().iter().filter(|&&b| b == 0).count() > 1 {
-                        write!(f, "{} = ", raw.name())?;
-                        let mut first = true;
-                        for s in raw.as_str_iter() {
-                            if !first {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "\"{}\"", s)?;
-                            first = false;
-                        }
-                        Ok(())
-                    } else {
-                        write!(f, "{} = \"{}\"", raw.name(), s)
-                    }
-                } else if raw.len() == 4 {
-                    // 单个 u32
-                    let v = u32::from_be_bytes(raw.data().try_into().unwrap());
-                    write!(f, "{} = <{:#x}>", raw.name(), v)
-                } else {
-                    // 原始字节
-                    write!(f, "{} = ", raw.name())?;
-                    format_bytes(f, raw.data())
-                }
-            }
+        } else if self.len() == 4 {
+            // 单个 u32
+            let v = u32::from_be_bytes(self.data().as_slice().try_into().unwrap());
+            write!(f, "{} = <{:#x}>", self.name(), v)
+        } else {
+            // 原始字节
+            write!(f, "{} = ", self.name())?;
+            format_bytes(f, &self.data())
         }
     }
 }
@@ -360,16 +284,15 @@ fn format_bytes(f: &mut fmt::Formatter<'_>, data: &[u8]) -> fmt::Result {
 pub struct PropIter<'a> {
     reader: Reader<'a>,
     strings: Bytes<'a>,
-    context: NodeContext,
     finished: bool,
 }
 
 impl<'a> PropIter<'a> {
-    pub(crate) fn new(reader: Reader<'a>, strings: Bytes<'a>, context: NodeContext) -> Self {
+    pub(crate) fn new(reader: Reader<'a>, strings: Bytes<'a>) -> Self {
         Self {
             reader,
             strings,
-            context,
+
             finished: false,
         }
     }
@@ -422,7 +345,7 @@ impl<'a> Iterator for PropIter<'a> {
             match token {
                 Token::Prop => {
                     // 读取属性长度
-                    let len_bytes = match self.reader.read_bytes(4) {
+                    let len = match self.reader.read_u32() {
                         Some(b) => b,
                         None => {
                             self.handle_error(FdtError::BufferTooSmall {
@@ -431,10 +354,9 @@ impl<'a> Iterator for PropIter<'a> {
                             return None;
                         }
                     };
-                    let len = u32::from_be_bytes(len_bytes.try_into().unwrap()) as usize;
 
                     // 读取属性名偏移
-                    let nameoff_bytes = match self.reader.read_bytes(4) {
+                    let nameoff = match self.reader.read_u32() {
                         Some(b) => b,
                         None => {
                             self.handle_error(FdtError::BufferTooSmall {
@@ -443,11 +365,10 @@ impl<'a> Iterator for PropIter<'a> {
                             return None;
                         }
                     };
-                    let nameoff = u32::from_be_bytes(nameoff_bytes.try_into().unwrap());
 
                     // 读取属性数据
                     let prop_data = if len > 0 {
-                        match self.reader.read_bytes(len) {
+                        match self.reader.read_bytes(len as _) {
                             Some(b) => b,
                             None => {
                                 self.handle_error(FdtError::BufferTooSmall {
@@ -457,7 +378,7 @@ impl<'a> Iterator for PropIter<'a> {
                             }
                         }
                     } else {
-                        &[]
+                        Bytes::new(&[])
                     };
 
                     // 读取属性名
@@ -472,7 +393,7 @@ impl<'a> Iterator for PropIter<'a> {
                     // 对齐到 4 字节边界
                     self.align4();
 
-                    return Some(Property::from_raw(name, prop_data, &self.context));
+                    return Some(Property::new(name, prop_data));
                 }
                 Token::BeginNode | Token::EndNode | Token::End => {
                     // 遇到节点边界，回溯并终止属性迭代
@@ -493,70 +414,5 @@ impl<'a> Iterator for PropIter<'a> {
                 }
             }
         }
-    }
-}
-
-/// u32 值迭代器
-#[derive(Clone)]
-pub struct U32Iter<'a> {
-    data: &'a [u8],
-}
-
-impl<'a> U32Iter<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
-        Self { data }
-    }
-}
-
-impl Iterator for U32Iter<'_> {
-    type Item = u32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.data.len() < 4 {
-            return None;
-        }
-        let value = u32::from_be_bytes(self.data[..4].try_into().unwrap());
-        self.data = &self.data[4..];
-        Some(value)
-    }
-}
-
-/// 字符串迭代器（用于 compatible 等多字符串属性）
-#[derive(Clone)]
-pub struct StrIter<'a> {
-    data: &'a [u8],
-}
-
-impl<'a> Iterator for StrIter<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.data.is_empty() {
-            return None;
-        }
-
-        // 查找 null 终止符
-        let end = self
-            .data
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(self.data.len());
-
-        if end == 0 {
-            // 空字符串，跳过 null
-            self.data = &self.data[1..];
-            return self.next();
-        }
-
-        let s = core::str::from_utf8(&self.data[..end]).ok()?;
-
-        // 跳过字符串和 null 终止符
-        if end < self.data.len() {
-            self.data = &self.data[end + 1..];
-        } else {
-            self.data = &[];
-        }
-
-        Some(s)
     }
 }

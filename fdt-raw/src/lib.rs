@@ -1,6 +1,6 @@
 #![no_std]
 
-mod data;
+pub mod data;
 mod define;
 mod fdt;
 mod header;

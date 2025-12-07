@@ -10,7 +10,7 @@ fn test_parse_and_rebuild() {
     // 解析原始 DTB
     let raw_data = fdt_qemu();
     let fdt = Fdt::from_bytes(&raw_data).unwrap();
-    let fdt_data = fdt.to_bytes();
+    let fdt_data = fdt.encode();
 
     // 创建临时文件
     let temp_dir = std::env::temp_dir();
@@ -145,3 +145,25 @@ fn test_parse_and_rebuild() {
 
     println!("✅ 测试通过：原始DTB和重建DTB的DTS表示完全一致");
 }
+
+// TODO: 需要为 Fdt 实现 Display trait
+// #[test]
+// fn test_display_dts() {
+//     // 解析 DTB
+//     let raw_data = fdt_qemu();
+//     let fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+//     // 使用 Display 输出 DTS
+//     let dts = format!("{}", fdt);
+
+//     // 验证输出格式
+//     assert!(dts.starts_with("/dts-v1/;"), "DTS 应该以 /dts-v1/; 开头");
+//     assert!(dts.contains("/ {"), "DTS 应该包含根节点");
+//     assert!(dts.contains("};"), "DTS 应该包含节点闭合");
+
+//     // 验证包含一些常见节点
+//     assert!(dts.contains("compatible"), "DTS 应该包含 compatible 属性");
+
+//     println!("✅ Display 测试通过");
+//     println!("DTS 输出前 500 字符:\n{}", &dts[..dts.len().min(500)]);
+// }

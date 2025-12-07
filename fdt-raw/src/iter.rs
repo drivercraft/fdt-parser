@@ -150,7 +150,7 @@ impl<'a> Iterator for FdtIter<'a> {
                                         }
                                     }
 
-                                    return Some(node);
+                                    return Some(node.into());
                                 }
                                 Err(e) => {
                                     self.handle_error(e);
