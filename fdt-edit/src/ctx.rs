@@ -123,32 +123,11 @@ impl<'a> Context<'a> {
         parent.ranges(grandparent_address_cells)
     }
 
-    /// 压入父节点，进入子节点前调用
-    pub fn push_parent(&mut self, parent: &'a Node) {
-        if let Some(ph) = parent.phandle() {
-            self.phandle_map.insert(ph, parent);
+    pub fn push(&mut self, node: &'a Node) {
+        if let Some(ph) = node.phandle() {
+            self.phandle_map.insert(ph, node);
         }
-
-        // 压入父节点栈
-        self.parents.push(parent);
-    }
-
-    /// 弹出父节点，离开子节点后调用
-    pub fn pop_parent(&mut self) -> Option<&'a Node> {
-        let node = self.parents.pop()?;
-
-        Some(node)
-    }
-
-    /// 为进入指定子节点创建新的上下文
-    /// 当前节点成为新上下文的父节点
-    pub fn for_child(&self, current_node: &'a Node) -> Self {
-        let mut child_ctx = Self {
-            parents: self.parents.clone(),
-            phandle_map: self.phandle_map.clone(),
-        };
-        child_ctx.push_parent(current_node);
-        child_ctx
+        self.parents.push(node);
     }
 
     /// 通过 phandle 查找节点

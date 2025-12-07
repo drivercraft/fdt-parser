@@ -1,12 +1,12 @@
 use core::{
     fmt::Debug,
     ops::{Deref, DerefMut},
-    slice::IterMut,
+    slice::{Iter, IterMut},
 };
 
 use alloc::{string::String, vec::Vec};
 
-use crate::{Context, Node, Property, ctx};
+use crate::{Context, Node, Property};
 
 #[derive(Clone, Debug)]
 pub enum NodeRef<'a> {
@@ -127,13 +127,19 @@ impl<'a> DerefMut for NodeMut<'a> {
 }
 
 pub struct NodeIter<'a> {
-    stack: Vec<(&'a Node, Context<'a>)>,
+    ctx: Context<'a>,
+    node: Option<&'a Node>,
+    stack: Vec<Iter<'a, Node>>,
 }
 
 impl<'a> NodeIter<'a> {
     pub fn new(root: &'a Node) -> Self {
+        let ctx = Context::new();
+
         Self {
-            stack: vec![(root, Context::new())],
+            ctx,
+            node: Some(root),
+            stack: vec![],
         }
     }
 }
@@ -142,16 +148,28 @@ impl<'a> Iterator for NodeIter<'a> {
     type Item = NodeRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (node, ctx) = self.stack.pop()?;
-
-        // 使用栈实现前序深度优先，保持原始子节点顺序
-        for child in node.children.iter().rev() {
-            // 为子节点创建新的上下文，当前节点成为父节点
-            let child_ctx = ctx.for_child(node);
-            self.stack.push((child, child_ctx));
+        if let Some(n) = self.node.take() {
+            // 返回当前节点，并将其子节点压入栈中
+            let ctx = self.ctx.clone();
+            self.ctx.push(n);
+            self.stack.push(n.children.iter());
+            return Some(NodeRef::new(n, ctx));
         }
 
-        Some(NodeRef::new(node, ctx))
+        let iter = self.stack.last_mut()?;
+
+        if let Some(child) = iter.next() {
+            // 返回子节点，并将其子节点压入栈中
+            let ctx = self.ctx.clone();
+            self.ctx.push(child);
+            self.stack.push(child.children.iter());
+            return Some(NodeRef::new(child, ctx));
+        }
+
+        // 当前迭代器耗尽，弹出栈顶
+        self.stack.pop();
+        self.ctx.parents.pop();
+        self.next()
     }
 }
 
