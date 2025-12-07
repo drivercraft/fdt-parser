@@ -138,27 +138,18 @@ impl Fdt {
             .unwrap_or_else(|| path.to_string());
 
         NodeIter::new(self.root()).filter_map(move |node_ref| {
-            let want = path.split("/");
-            let got = node_ref.ctx.current_path.split("/");
-            let last_idx = core::cmp::min(want.clone().count(), got.clone().count());
-            for (w, g) in want.zip(got).take(last_idx - 1) {
-                if w != g {
-                    return None;
-                }
+            if node_ref.path_eq_fuzzy(&path) {
+                Some(node_ref)
+            } else {
+                None
             }
-            let want_name = path.rsplit('/').next().unwrap_or("");
-            let got_name = node_ref.node.name();
-            if !got_name.starts_with(want_name) {
-                return None;
-            }
-            Some(node_ref)
         })
     }
 
     pub fn get_by_path<'a>(&'a self, path: &str) -> Option<NodeRef<'a>> {
         let path = self.normalize_path(path)?;
         NodeIter::new(self.root()).find_map(move |node_ref| {
-            if node_ref.ctx.current_path == path {
+            if node_ref.path_eq(&path) {
                 Some(node_ref)
             } else {
                 None
@@ -169,7 +160,7 @@ impl Fdt {
     pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
         let path = self.normalize_path(path)?;
         NodeIterMut::new(self.root_mut()).find_map(move |node_mut| {
-            if node_mut.ctx.current_path == path {
+            if node_mut.path_eq(&path) {
                 Some(node_mut)
             } else {
                 None
@@ -309,7 +300,7 @@ impl Fdt {
 
             // 通过 phandle 找到节点，然后构建路径
             if let Some(node) = self.find_by_phandle(ph) {
-                return Ok(node.ctx.current_path.clone());
+                return Ok(node.path());
             }
         }
 

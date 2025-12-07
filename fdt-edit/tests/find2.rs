@@ -25,6 +25,10 @@ mod tests {
         for n in node {
             println!("Found node {n:#?}");
         }
+
+        let count = fdt.find_by_path("/virtio_mmio").count();
+        println!("Total found nodes: {}", count);
+        assert_eq!(count, 32);
     }
 
     #[test]
@@ -35,6 +39,8 @@ mod tests {
 
         for node in fdt.all_nodes() {
             println!("Node: {:#?}", node);
+            println!("  {}", node.path());
+            println!("-------------------------");
         }
 
         let count = fdt.all_nodes().count();

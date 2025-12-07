@@ -1,4 +1,8 @@
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 use fdt_raw::{Phandle, Status};
 
 use crate::{Node, RangesEntry};
@@ -13,8 +17,7 @@ pub struct Context<'a> {
     /// 父节点引用栈（从根节点到当前节点的父节点）
     /// 栈底是根节点，栈顶是当前节点的直接父节点
     pub parents: Vec<&'a Node>,
-    /// 当前节点的完整路径
-    pub current_path: String,
+
     /// phandle 到节点引用的映射
     /// 用于通过 phandle 快速查找节点（如中断父节点）
     pub phandle_map: BTreeMap<Phandle, &'a Node>,
@@ -24,6 +27,14 @@ impl<'a> Context<'a> {
     /// 创建新的上下文
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn current_path(&self) -> String {
+        self.parents
+            .iter()
+            .map(|n| n.name())
+            .collect::<Vec<_>>()
+            .join("/")
     }
 
     /// 创建用于根节点的上下文
@@ -112,22 +123,8 @@ impl<'a> Context<'a> {
         parent.ranges(grandparent_address_cells)
     }
 
-    /// 添加路径段
-    pub fn path_add(&mut self, segment: &str) {
-        if !self.current_path.ends_with('/') {
-            self.current_path.push('/');
-        }
-        self.current_path.push_str(segment);
-    }
-
     /// 压入父节点，进入子节点前调用
     pub fn push_parent(&mut self, parent: &'a Node) {
-        // 更新路径
-        if !self.current_path.ends_with('/') {
-            self.current_path.push('/');
-        }
-        self.current_path.push_str(parent.name());
-
         if let Some(ph) = parent.phandle() {
             self.phandle_map.insert(ph, parent);
         }
@@ -140,14 +137,6 @@ impl<'a> Context<'a> {
     pub fn pop_parent(&mut self) -> Option<&'a Node> {
         let node = self.parents.pop()?;
 
-        // 更新路径：移除最后一个路径段
-        if let Some(last_slash) = self.current_path.rfind('/') {
-            self.current_path.truncate(last_slash);
-            if self.current_path.is_empty() {
-                self.current_path.push('/');
-            }
-        }
-
         Some(node)
     }
 
@@ -156,7 +145,6 @@ impl<'a> Context<'a> {
     pub fn for_child(&self, current_node: &'a Node) -> Self {
         let mut child_ctx = Self {
             parents: self.parents.clone(),
-            current_path: self.current_path.clone(),
             phandle_map: self.phandle_map.clone(),
         };
         child_ctx.push_parent(current_node);
