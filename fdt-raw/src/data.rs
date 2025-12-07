@@ -68,6 +68,10 @@ impl<'a> Bytes<'a> {
             reader: self.reader(),
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 #[derive(Clone)]
