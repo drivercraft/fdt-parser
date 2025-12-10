@@ -1,8 +1,11 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{fmt::Debug, ops::Deref};
 use fdt_raw::RegInfo;
 
-use crate::{Context, Node, Property};
+use crate::{Context, Node, NodeMut, Property};
 
 #[derive(Clone)]
 pub struct NodeRefGen<'a> {
@@ -130,6 +133,23 @@ impl<'a> NodeMutGen<'a> {
 
         let prop = Property::new("reg", data);
         self.node.set_property(prop);
+    }
+
+    pub fn add_child(&mut self, child: Node) -> NodeMut<'a> {
+        let name = child.name().to_string();
+        let mut ctx = self.ctx.clone();
+        unsafe {
+            let node_ptr = self.node as *mut Node;
+            let node = &*node_ptr;
+            ctx.push(node);
+        }
+        self.node.add_child(child);
+        let raw = self.node.get_child_mut(&name).unwrap();
+        unsafe {
+            let node_ptr = raw as *mut Node;
+            let node = &mut *node_ptr;
+            NodeMut::new(node, ctx)
+        }
     }
 }
 

@@ -184,13 +184,13 @@ impl Fdt {
     }
 
     /// 获取根节点
-    pub fn root(&self) -> &Node {
-        &self.root
+    pub fn root<'a>(&'a self) -> NodeRef<'a> {
+        self.get_by_path("/").unwrap()
     }
 
     /// 获取根节点（可变）
-    pub fn root_mut(&mut self) -> &mut Node {
-        &mut self.root
+    pub fn root_mut<'a>(&'a mut self) -> NodeMut<'a> {
+        self.get_by_path_mut("/").unwrap()
     }
 
     /// 应用设备树覆盖 (Device Tree Overlay)
@@ -431,7 +431,7 @@ impl Fdt {
             .normalize_path(path)
             .unwrap_or_else(|| path.to_string());
 
-        NodeIter::new(self.root()).filter_map(move |node_ref| {
+        NodeIter::new(&self.root).filter_map(move |node_ref| {
             if node_ref.path_eq_fuzzy(&path) {
                 Some(node_ref)
             } else {
@@ -442,7 +442,7 @@ impl Fdt {
 
     pub fn get_by_path<'a>(&'a self, path: &str) -> Option<NodeRef<'a>> {
         let path = self.normalize_path(path)?;
-        NodeIter::new(self.root()).find_map(move |node_ref| {
+        NodeIter::new(&self.root).find_map(move |node_ref| {
             if node_ref.path_eq(&path) {
                 Some(node_ref)
             } else {
@@ -453,7 +453,7 @@ impl Fdt {
 
     pub fn get_by_path_mut<'a>(&'a mut self, path: &str) -> Option<NodeMut<'a>> {
         let path = self.normalize_path(path)?;
-        NodeIterMut::new(self.root_mut()).find_map(move |node_mut| {
+        NodeIterMut::new(&mut self.root).find_map(move |node_mut| {
             if node_mut.path_eq(&path) {
                 Some(node_mut)
             } else {

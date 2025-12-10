@@ -130,11 +130,15 @@ mod tests {
     #[test]
     fn test_remove_with_leading_slash() {
         let mut fdt = Fdt::new();
-        fdt.root.add_child(Node::new("test"));
+        let node = fdt.root_mut().add_child(Node::new("test"));
+        assert_eq!(&node.path(), "/test");
+        println!("Node:\n {:?}", node);
 
         // 带有和不带斜杠的路径都应该工作
         let result = fdt.remove_node("/test");
         assert!(result.is_ok());
+
+        assert!(fdt.get_by_path("/test").is_none());
     }
 
     #[test]
