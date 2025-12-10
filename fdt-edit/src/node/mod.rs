@@ -78,6 +78,13 @@ impl Node {
         self.children.push(child);
     }
 
+    pub fn add_property(&mut self, prop: Property) {
+        let name = prop.name.clone();
+        let index = self.properties.len();
+        self.prop_cache.insert(name, index);
+        self.properties.push(prop);
+    }
+
     pub fn get_child(&self, name: &str) -> Option<&Node> {
         if let Some(&index) = self.name_cache.get(name) {
             self.children.get(index)
