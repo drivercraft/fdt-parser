@@ -124,7 +124,7 @@ impl Fdt {
         }
 
         // 递归处理子节点
-        for child in &node.children {
+        for child in node.children() {
             let child_name = child.name();
             let child_path = if current_path == "/" {
                 format!("/{}", child_name)
@@ -211,7 +211,7 @@ impl Fdt {
     /// ```
     pub fn apply_overlay(&mut self, overlay: &Fdt) -> Result<(), FdtError> {
         // 遍历 overlay 根节点的所有子节点
-        for child in &overlay.root.children {
+        for child in overlay.root.children() {
             if child.name().starts_with("fragment@") || child.name() == "fragment" {
                 // fragment 格式
                 self.apply_fragment(child)?;
@@ -515,7 +515,7 @@ impl core::fmt::Debug for Fdt {
                 .field("boot_cpuid_phys", &self.boot_cpuid_phys)
                 .field("memory_reservations_count", &self.memory_reservations.len())
                 .field("root_node_name", &self.root.name)
-                .field("total_nodes", &self.root.children.len())
+                .field("total_nodes", &self.root.children().len())
                 .field("phandle_cache_size", &self.phandle_cache.len())
                 .finish()
         }

@@ -41,8 +41,8 @@ pub struct Node {
     pub(crate) properties: Vec<Property>,
     /// 属性名到索引的映射（用于快速查找）
     pub(crate) prop_cache: BTreeMap<String, usize>,
-    pub(crate) children: Vec<Node>,
-    pub(crate) name_cache: BTreeMap<String, usize>,
+    children: Vec<Node>,
+    name_cache: BTreeMap<String, usize>,
 }
 
 impl Node {
@@ -64,8 +64,8 @@ impl Node {
         self.properties.iter()
     }
 
-    pub fn children(&self) -> impl Iterator<Item = &Node> {
-        self.children.iter()
+    pub fn children(&self) -> &[Node] {
+        &self.children
     }
 
     pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Node> {
@@ -87,27 +87,41 @@ impl Node {
 
     pub fn get_child(&self, name: &str) -> Option<&Node> {
         if let Some(&index) = self.name_cache.get(name) {
-            self.children.get(index)
-        } else {
-            None
+            if let Some(child) = self.children.get(index) {
+                return Some(child);
+            }
         }
+
+        // Fallback if the cache is stale
+        self.children.iter().find(|c| c.name == name)
     }
 
     pub fn get_child_mut(&mut self, name: &str) -> Option<&mut Node> {
         if let Some(&index) = self.name_cache.get(name) {
-            self.children.get_mut(index)
-        } else {
-            None
+            if index < self.children.len() && self.children[index].name == name {
+                return self.children.get_mut(index);
+            }
         }
+
+        // Cache miss or mismatch: search and rebuild cache to keep indices in sync
+        let pos = self.children.iter().position(|c| c.name == name)?;
+        self.rebuild_name_cache();
+        self.children.get_mut(pos)
     }
 
     pub fn remove_child(&mut self, name: &str) -> Option<Node> {
-        if let Some(&index) = self.name_cache.get(name) {
-            self.name_cache.remove(name);
-            Some(self.children.remove(index))
-        } else {
-            None
-        }
+        let index = self
+            .name_cache
+            .get(name)
+            .copied()
+            .filter(|&idx| self.children.get(idx).map(|c| c.name.as_str()) == Some(name))
+            .or_else(|| self.children.iter().position(|c| c.name == name));
+
+        let Some(idx) = index else { return None };
+
+        let removed = self.children.remove(idx);
+        self.rebuild_name_cache();
+        Some(removed)
     }
 
     pub fn set_property(&mut self, prop: Property) {
@@ -208,6 +222,13 @@ impl Node {
         Some(entries)
     }
 
+    fn rebuild_name_cache(&mut self) {
+        self.name_cache.clear();
+        for (idx, child) in self.children.iter().enumerate() {
+            self.name_cache.insert(child.name.clone(), idx);
+        }
+    }
+
     pub fn compatible(&self) -> Option<StrIter<'_>> {
         let prop = self.get_property("compatible")?;
         Some(prop.as_str_iter())
@@ -259,11 +280,10 @@ impl Node {
         if parts.is_empty() {
             return Err(fdt_raw::FdtError::InvalidInput);
         }
-
         if parts.len() == 1 {
             // 删除直接子节点（精确匹配）
             let child_name = parts[0];
-            Ok(self.remove_child_exact(child_name))
+            Ok(self.remove_child(child_name))
         } else {
             // 需要递归到父节点进行删除
             self.remove_child_recursive(&parts, 0)
@@ -280,7 +300,7 @@ impl Node {
         if index >= parts.len() - 1 {
             // 已经到达要删除节点的父级
             let child_name_to_remove = parts[index];
-            Ok(self.remove_child_exact(child_name_to_remove))
+            Ok(self.remove_child(child_name_to_remove))
         } else {
             // 继续向下递归
             let current_part = parts[index];
@@ -292,17 +312,6 @@ impl Node {
                 // 路径不存在
                 Ok(None)
             }
-        }
-    }
-
-    /// 精确删除子节点，不支持部分匹配
-    fn remove_child_exact(&mut self, name: &str) -> Option<Node> {
-        if let Some(&index) = self.name_cache.get(name) {
-            let child = self.children.remove(index);
-            self.name_cache.remove(name);
-            Some(child)
-        } else {
-            None
         }
     }
 }

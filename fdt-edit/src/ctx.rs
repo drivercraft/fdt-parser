@@ -134,7 +134,7 @@ impl<'a> Context<'a> {
         if let Some(phandle) = node.phandle() {
             map.insert(phandle, node);
         }
-        for child in &node.children {
+        for child in node.children() {
             Self::build_phandle_map_from_node(child, map);
         }
     }

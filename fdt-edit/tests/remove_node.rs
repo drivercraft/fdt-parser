@@ -1,10 +1,23 @@
 #[cfg(test)]
 mod tests {
+    use std::sync::Once;
+
     use dtb_file::fdt_qemu;
     use fdt_edit::*;
 
+    fn init_logging() {
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            let _ = env_logger::builder()
+                .is_test(true)
+                .filter_level(log::LevelFilter::Trace)
+                .try_init();
+        });
+    }
+
     #[test]
     fn test_remove_node_exact_path() {
+        init_logging();
         // 解析原始 DTB
         let raw_data = fdt_qemu();
         let mut fdt = Fdt::from_bytes(&raw_data).unwrap();
@@ -21,6 +34,39 @@ mod tests {
         // 验证节点已被删除
         let node_after = fdt.get_by_path("/psci");
         assert!(node_after.is_none(), "psci 节点应该已被删除");
+    }
+
+    #[test]
+    fn test_remove_node_exact_path_parts() {
+        init_logging();
+        // 解析原始 DTB
+        let raw_data = fdt_qemu();
+        let mut fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+        let memory = fdt.find_by_path("/memory").next().unwrap();
+        fdt.remove_node(&memory.path()).unwrap();
+
+        let cpus = fdt.find_by_path("/cpus/cpu").collect::<Vec<_>>();
+        let path = cpus[0].path();
+        println!("Removing node at path: {}", path);
+        // drop(node);
+
+        // 删除节点
+        let removed = fdt.remove_node(&path);
+        assert!(removed.is_ok(), "删除应该成功");
+        assert!(removed.unwrap().is_some(), "应该返回被删除的节点");
+
+        // 验证节点已被删除
+        let node_after = fdt.get_by_path("/cpus/cpu@0");
+        assert!(node_after.is_none(), "cpu 节点应该已被删除");
+
+        let raw = fdt.encode();
+        let fdt2 = Fdt::from_bytes(&raw).unwrap();
+        let node_after_reload = fdt2.get_by_path("/cpus/cpu@0");
+        assert!(
+            node_after_reload.is_none(),
+            "重新加载后 cpu 节点应该已被删除"
+        );
     }
 
     #[test]
