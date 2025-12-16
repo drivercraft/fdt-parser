@@ -8,32 +8,33 @@ fdt-edit is a high-level Rust library for creating, editing, and encoding Flatte
 
 - **Project Name**: fdt-edit
 - **Version**: 0.1.1
-- **Language**: Rust (edition 2024)
+- **Language**: Rust (edition 2021)
 - **License**: MIT OR Apache-2.0
 - **Repository**: https://github.com/drivercraft/fdt-parser
 - **Dependencies**: fdt-raw (low-level parsing), log, enum_dispatch
 - **Target**: Embedded and no_std environments
 - **Features**: Complete device tree parsing, editing, and encoding
 
-## Complete Architecture
+## Architecture
 
-### Main Components
+### Core Components
 
 1. **Fdt Structure** (`src/fdt.rs`) - Main device tree container
-   - Parses from raw DTB bytes using `fdt_raw::Fdt`
-   - Encodes back to DTB format via `FdtEncoder`
+   - Creates empty device trees: `Fdt::new()`
+   - Parses from raw DTB bytes: `Fdt::from_bytes(&dtb_data)`
+   - Parses from raw pointer: `unsafe { Fdt::from_ptr(ptr) }`
+   - Encodes back to DTB format: `fdt.encode()`
    - Manages node tree, memory reservations, and phandle cache
    - Provides Display trait for complete DTS output
-   - Support for overlay application (`apply_overlay`, `apply_overlay_with_delete`)
-   - Alias resolution (`resolve_alias`, `aliases`)
-   - phandle-based node lookup (`find_by_phandle`)
+   - Overlay application support
+   - Alias resolution and phandle-based node lookup
 
-2. **Node System** (`src/node/`) - Hierarchical node structure
-   - **mod.rs**: Core `Node` struct with property and child management
-   - **iter.rs**: Node iteration and references (`NodeRef`, `NodeMut`, `NodeKind`)
-   - **gerneric.rs**: Generic node operations and context handling
-   - **display.rs**: Formatted node display with configurable options
-   - Specialized modules: memory.rs, clock.rs, pci.rs, interrupt_controller.rs
+2. **Node System** (`src/node/mod.rs`) - Hierarchical node structure
+   - Core `Node` struct with property and child management
+   - Node iteration and references (`NodeRef`, `NodeMut`, `NodeKind`)
+   - Generic node operations and context handling
+   - Formatted node display with configurable options
+   - Specialized node types: memory, clock, pci, interrupt controller
 
 3. **Property System** (`src/prop/mod.rs`) - Device tree properties
    - Type-safe property access (u32, u64, strings, byte arrays)
@@ -49,7 +50,7 @@ fdt-edit is a high-level Rust library for creating, editing, and encoding Flatte
    - Manages `#address-cells`, `#size-cells` propagation
    - Tracks interrupt parent relationships
 
-### Key Data Types and Enums
+## Key Data Types and Enums
 
 ```rust
 // Core types
@@ -57,22 +58,28 @@ pub struct Fdt { /* device tree container */ }
 pub struct Node { /* tree node with properties and children */ }
 pub struct Property { /* device tree property */ }
 
-// Node references (mutable and immutable)
+// Node references (immutable)
 pub enum NodeRef<'a> {
-    Clock(NodeRefClock<'a>),
+    Generic(NodeRefGen<'a>),
     Pci(NodeRefPci<'a>),
+    Clock(NodeRefClock<'a>),
     InterruptController(NodeRefInterruptController<'a>),
     Memory(NodeRefMemory<'a>),
-    Generic(NodeRefGen<'a>),
 }
 
-pub enum NodeMut<'a> { /* mutable variants */ }
+// Node references (mutable)
+pub enum NodeMut<'a> {
+    Generic(NodeMutGen<'a>),
+}
 
-// Specialized node types
-pub struct NodeRefMemory<'a> { /* memory-specific operations */ }
-pub struct NodeRefClock<'a> { /* clock-specific operations */ }
-pub struct NodeRefPci<'a> { /* PCI-specific operations */ }
-pub struct NodeRefInterruptController<'a> { /* interrupt controller operations */ }
+// Node kind for pattern matching
+pub enum NodeKind<'a> {
+    Generic(NodeRefGen<'a>),
+    Pci(NodeRefPci<'a>),
+    Clock(NodeRefClock<'a>),
+    InterruptController(NodeRefInterruptController<'a>),
+    Memory(NodeRefMemory<'a>),
+}
 
 // Supporting types
 pub struct MemoryReservation { /* memory reservation entry */ }
@@ -85,21 +92,30 @@ pub enum Status { /* node status (okay/disabled) */ }
 ## Complete API Reference
 
 ### Fdt Operations
+
+#### Creation and Parsing
 ```rust
-// Creation and parsing
-let fdt = Fdt::new();  // Create empty device tree
-let fdt = Fdt::from_bytes(&dtb_data)?;  // Parse from DTB
-let fdt = unsafe { Fdt::from_ptr(ptr)? };  // Parse from pointer
+// Create empty device tree
+let fdt = Fdt::new();
 
-// Access and modification
-let root = fdt.root();  // Get root node
-let mut root_mut = fdt.root_mut();  // Get mutable root
-let fdt_data = fdt.encode();  // Encode to DTB format
-println!("{}", fdt);  // Display as DTS
+// Parse from DTB data
+let fdt = Fdt::from_bytes(&dtb_data)?;
 
-// Overlay support
-fdt.apply_overlay(&overlay_fdt)?;  // Apply overlay
-fdt.apply_overlay_with_delete(&overlay, Some(delete_fdt))?;  // Apply with delete
+// Parse from pointer (unsafe)
+let fdt = unsafe { Fdt::from_ptr(ptr)? };
+```
+
+#### Access and Modification
+```rust
+// Access root node
+let root = fdt.root();
+let mut root_mut = fdt.root_mut();
+
+// Encode to DTB format
+let fdt_data = fdt.encode();
+
+// Display as DTS
+println!("{}", fdt);
 
 // Memory reservations
 for reservation in &fdt.memory_reservations {
@@ -107,7 +123,36 @@ for reservation in &fdt.memory_reservations {
 }
 ```
 
-### Node Navigation and Search
+#### Overlay Support
+```rust
+// Basic overlay application
+fdt.apply_overlay(&overlay_fdt)?;
+
+// Overlay with delete support
+fdt.apply_overlay_with_delete(&overlay, Some(delete_fdt))?;
+```
+
+#### Alias Resolution and phandle Management
+```rust
+// Get all aliases
+for (alias, target) in fdt.aliases() {
+    println!("Alias: {} -> {}", alias, target);
+}
+
+// Resolve specific alias
+if let Some(target) = fdt.resolve_alias("serial0") {
+    let node = fdt.get_by_path(target);
+}
+
+// Find nodes by phandle
+let node = fdt.find_by_phandle(phandle)?;
+let mut node_mut = fdt.find_by_phandle_mut(phandle)?;
+
+// Rebuild phandle cache
+fdt.rebuild_phandle_cache();
+```
+
+#### Node Navigation and Search
 ```rust
 // Path-based access
 let node = fdt.get_by_path("/chosen");  // Exact path match
@@ -120,30 +165,19 @@ let compatible_nodes = fdt.find_compatible(&["vendor,device"]);
 // Global iteration
 for node in fdt.all_nodes() { /* iterate all nodes */ }
 for node in fdt.all_nodes_mut() { /* mutable iteration */ }
-
-// phandle-based lookup
-let node = fdt.find_by_phandle(phandle)?;  // Find by phandle
-let mut node_mut = fdt.find_by_phandle_mut(phandle)?;  // Mutable version
 ```
 
 ### Node Manipulation
+
+#### Creation and Structure
 ```rust
 // Create nodes
 let mut node = Node::new("test-device@12340000");
 let node = Node::new("soc");  // Creates empty node
 
-// Property management
-node.set_property(Property::new("compatible", b"vendor,test\0"));
-node.set_property(Property::new("reg", &[0x12340000u32, 0x1000u32]));
-
 // Tree structure
 node.add_child(child_node);
 let removed_child = node.remove_child("child-name");
-
-// Property access
-let prop = node.get_property("compatible");
-let mut prop_mut = node.get_property_mut("reg");
-let removed_prop = node.remove_property("status");
 
 // Node hierarchy
 let child = node.get_child("child-name");
@@ -152,7 +186,21 @@ for child in node.children() { /* iterate children */ }
 for child in node.children_mut() { /* mutable iteration */ }
 ```
 
+#### Property Management
+```rust
+// Property access
+let prop = node.get_property("compatible");
+let mut prop_mut = node.get_property_mut("reg");
+let removed_prop = node.remove_property("status");
+
+// Node properties
+node.set_property(Property::new("compatible", b"vendor,test\0"));
+node.set_property(Property::new("reg", &[0x12340000u32, 0x1000u32]));
+```
+
 ### Property Operations
+
+#### Creation and Access
 ```rust
 // Create properties
 let prop = Property::new("reg", data);  // From raw bytes
@@ -165,8 +213,11 @@ let value = prop.get_u64()?;  // Get 64-bit value
 let string = prop.as_str()?;  // Get string
 let strings = prop.as_str_iter().collect::<Vec<_>>();  // Multiple strings
 let reader = prop.as_reader();  // Raw data access
+```
 
-// Property modification
+#### Property Modification
+```rust
+// Set property values
 prop.set_u32_ls(&[0x12345678]);  // Set multiple u32 values (little-endian)
 prop.set_u64(0x123456789abcdef0);
 prop.set_string("test-value");
@@ -206,13 +257,6 @@ for node in fdt.all_nodes() {
         for clock_ref in clock.clocks() {
             println!("  Clock ref: phandle={}, cells={}", clock_ref.phandle, clock_ref.cells);
         }
-
-        // Clock type
-        match &clock.kind {
-            ClockType::Fixed(fixed) => {
-                println!("  Fixed clock: {}", fixed.clock_output_names.first().unwrap_or(&""));
-            }
-        }
     }
 }
 ```
@@ -240,11 +284,6 @@ for node in fdt.all_nodes() {
             for entry in interrupt_map {
                 println!("  Interrupt map: {:x?}", entry);
             }
-        }
-
-        // Child interrupts
-        for child_irq in pci.child_interrupts() {
-            println!("  Child interrupt: {:x?}", child_irq);
         }
     }
 }
@@ -304,7 +343,6 @@ for node in fdt.all_nodes() {
 println!("{}", fdt);
 
 // Node display with options
-use fdt_edit::NodeDisplay;
 let display = NodeDisplay::new(&node)
     .indent(4)
     .show_address(true)
@@ -312,7 +350,6 @@ let display = NodeDisplay::new(&node)
 println!("{}", display);
 
 // NodeRef display
-use fdt_edit::NodeRefDisplay;
 let ref_display = NodeRefDisplay::new(&node_ref)
     .indent(2)
     .show_details(true);
@@ -344,101 +381,13 @@ println!("{}", ref_display);
 - Property value validation
 - Tree structure integrity checks
 
-## Advanced Features
+## Error Handling
 
-### Overlay Support
-```rust
-// Basic overlay application
-let mut base_fdt = Fdt::from_bytes(&base_dtb)?;
-let overlay_fdt = Fdt::from_bytes(&overlay_dtb)?;
-base_fdt.apply_overlay(&overlay_fdt)?;
-
-// Overlay with delete support
-base_fdt.apply_overlay_with_delete(&overlay, Some(delete_fdt))?;
-```
-
-### phandle Management
-```rust
-// Rebuild phandle cache after modifications
-fdt.rebuild_phandle_cache();
-
-// Find nodes by phandle
-let node = fdt.find_by_phandle(phandle)?;
-let mut node_mut = fdt.find_by_phandle_mut(phandle)?;
-
-// Node phandle access
-if let Some(phandle) = node.phandle() {
-    println!("Node phandle: {}", phandle);
-}
-```
-
-### Alias Resolution
-```rust
-// Get all aliases
-for (alias, target) in fdt.aliases() {
-    println!("Alias: {} -> {}", alias, target);
-}
-
-// Resolve specific alias
-if let Some(target) = fdt.resolve_alias("serial0") {
-    let node = fdt.get_by_path(target);
-}
-```
-
-## Performance Characteristics
-
-### Memory Usage
-- Efficient node storage with property caching
-- Lazy iterator patterns for large trees
-- Minimal allocation during traversal
-
-### Parsing Performance
-- Direct conversion from fdt_raw structures
-- Zero-copy property access where possible
-- Optimized tree reconstruction algorithms
-
-### Encoding Performance
-- Efficient DTB structure generation
-- Proper alignment and padding handling
-- Optimized property serialization
-
-## Integration Examples
-
-### Complete Device Tree Processing
-```rust
-use fdt_edit::*;
-
-// Load and parse
-let dtb_data = std::fs::read("device.dtb")?;
-let mut fdt = Fdt::from_bytes(&dtb_data)?;
-
-// Find and modify memory nodes
-for node in fdt.all_nodes_mut() {
-    if let NodeMut::Memory(mut mem) = node {
-        // Modify memory regions
-        for region in mem.regions() {
-            // Access or modify regions
-        }
-    }
-}
-
-// Add new node
-let mut new_node = Node::new("test-device");
-new_node.set_property(Property::new("compatible", b"vendor,test\0"));
-new_node.set_property(Property::new("reg", &[0x12340000u32, 0x1000u32]));
-fdt.root_mut().add_child(new_node);
-
-// Apply overlay
-let overlay_fdt = Fdt::from_bytes(&overlay_data)?;
-fdt.apply_overlay(&overlay_fdt)?;
-
-// Save modified device tree
-let modified_dtb = fdt.encode();
-std::fs::write("modified.dtb", modified_dtb.as_bytes())?;
-
-// Export as DTS
-std::fs::write("modified.dts", format!("{}", fdt));
-```
+The library uses `FdtError` for comprehensive error reporting:
+- Parse errors from invalid DTB data
+- Node path resolution failures
+- Property access errors
+- Encoding validation errors
 
 ## Development and Testing
 
@@ -469,13 +418,45 @@ RUST_LOG=debug cargo test -p fdt-edit
 cargo test -p fdt-edit test_parse_and_rebuild
 ```
 
-## Error Handling
+## Integration Examples
 
-The library uses `FdtError` for comprehensive error reporting:
-- Parse errors from invalid DTB data
-- Node path resolution failures
-- Property access errors
-- Encoding validation errors
+### Complete Device Tree Processing
+```rust
+use fdt_edit::*;
+
+// Load and parse
+let dtb_data = std::fs::read("device.dtb")?;
+let mut fdt = Fdt::from_bytes(&dtb_data)?;
+
+// Find and modify memory nodes
+for node in fdt.all_nodes_mut() {
+    if let NodeMut::Generic(mut node) = node {
+        // Check if this is a memory node
+        if let Some(device_type) = node.get_property("device_type") {
+            if let Some("memory") = device_type.as_str() {
+                // Modify memory properties
+            }
+        }
+    }
+}
+
+// Add new node
+let mut new_node = Node::new("test-device");
+new_node.set_property(Property::new("compatible", b"vendor,test\0"));
+new_node.set_property(Property::new("reg", &[0x12340000u32, 0x1000u32]));
+fdt.root_mut().add_child(new_node);
+
+// Apply overlay
+let overlay_fdt = Fdt::from_bytes(&overlay_data)?;
+fdt.apply_overlay(&overlay_fdt)?;
+
+// Save modified device tree
+let modified_dtb = fdt.encode();
+std::fs::write("modified.dtb", modified_dtb.as_bytes())?;
+
+// Export as DTS
+std::fs::write("modified.dts", format!("{}", fdt));
+```
 
 ## Limitations and Constraints
 
@@ -498,8 +479,3 @@ The library uses `FdtError` for comprehensive error reporting:
 - Performance optimizations for large trees
 - Streaming parsing support for very large device trees
 - Validation and linting tools
-
-### Integration Opportunities
-- Device tree validation tools
-- Configuration generation utilities
-- Hardware abstraction layer generators
