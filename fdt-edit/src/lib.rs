@@ -4,14 +4,13 @@
 extern crate alloc;
 
 mod ctx;
-// mod display;
 mod encode;
 mod fdt;
 mod node;
 mod prop;
 
 pub use ctx::Context;
-// pub use display::FmtLevel;
+pub use encode::FdtData;
 pub use fdt::{Fdt, MemoryReservation};
 pub use node::NodeKind;
 pub use node::*;
