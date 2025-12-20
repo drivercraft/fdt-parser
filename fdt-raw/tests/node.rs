@@ -506,10 +506,6 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                 node.name(),
                 node.level()
             );
-            info!(
-                "[{}]   parent_address_cells={}, parent_size_cells={}",
-                name, node.context.parent_address_cells, node.context.parent_size_cells
-            );
 
             // 验证节点级别 - 内存节点应该在级别 1
             assert_eq!(
@@ -547,11 +543,6 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                 "Memory node should have device_type property"
             );
 
-            // 输出 reg 信息并验证
-            info!(
-                "[{}]   address_cells={}, size_cells={}",
-                name, node.context.parent_address_cells, node.context.parent_size_cells
-            );
             info!("[{}]   reg entries: {}", name, reg_infos.len());
 
             for (i, reg_info) in reg_infos.iter().enumerate() {

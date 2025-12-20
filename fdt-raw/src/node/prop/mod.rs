@@ -1,5 +1,6 @@
 //! 属性相关类型和迭代器
 
+mod ranges;
 mod reg;
 
 use core::ffi::CStr;
@@ -7,6 +8,7 @@ use core::fmt;
 
 use log::error;
 
+pub use ranges::*;
 pub use reg::{RegInfo, RegIter};
 
 use crate::{

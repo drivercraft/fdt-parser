@@ -97,6 +97,30 @@ impl<'a> Fdt<'a> {
         FdtIter::new(self.clone())
     }
 
+    pub fn find_by_path(&self, path: &str) -> Option<Node<'a>> {
+        let split = path.trim_matches('/').split('/');
+
+        let mut current_iter = self.all_nodes();
+        let mut found_node: Option<Node<'a>> = None;
+
+        for part in split {
+            let mut found = false;
+            for node in current_iter.by_ref() {
+                let node_name = node.name();
+                if node_name == part {
+                    found = true;
+                    found_node = Some(node);
+                    break;
+                }
+            }
+            if !found {
+                return None;
+            }
+        }
+
+        found_node
+    }
+
     /// Get an iterator over memory reservation entries
     pub fn memory_reservations(&self) -> MemoryReservationIter<'a> {
         MemoryReservationIter {

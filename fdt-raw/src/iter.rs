@@ -1,9 +1,9 @@
 use log::error;
 
 use crate::{
-    Fdt, FdtError, Node, Token,
+    Fdt, FdtError, Node, NodeContext, Token,
     data::{Bytes, Reader},
-    node::{NodeContext, OneNodeIter, OneNodeState},
+    node::{OneNodeIter, OneNodeState},
 };
 
 pub struct FdtIter<'a> {
@@ -17,7 +17,7 @@ pub struct FdtIter<'a> {
     /// 当前层级深度
     level: usize,
     /// 上下文栈，栈顶为当前上下文
-    context_stack: heapless::Vec<NodeContext, 32>,
+    context_stack: heapless::Vec<NodeContext, 16>,
 }
 
 impl<'a> FdtIter<'a> {
@@ -129,7 +129,10 @@ impl<'a> Iterator for FdtIter<'a> {
                                     match state {
                                         OneNodeState::ChildBegin => {
                                             // 有子节点，压入子节点上下文
-                                            let child_context = node.create_child_context();
+                                            let child_context = NodeContext {
+                                                address_cells: node.address_cells,
+                                                size_cells: node.size_cells,
+                                            };
                                             let _ = self.context_stack.push(child_context);
 
                                             // 有子节点，更新 reader 位置

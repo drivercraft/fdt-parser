@@ -13,23 +13,22 @@ mod prop;
 
 pub use chosen::Chosen;
 pub use memory::{Memory, MemoryRegion};
-pub use prop::{PropIter, Property, RegInfo, RegIter};
+pub use prop::{PropIter, Property, RangeInfo, RegInfo, RegIter, VecRange};
 
 /// 节点上下文，保存从父节点继承的信息
-#[derive(Debug, Clone)]
-pub struct NodeContext {
+#[derive(Clone)]
+pub(crate) struct NodeContext {
     /// 父节点的 #address-cells (用于解析当前节点的 reg)
-    pub parent_address_cells: u8,
+    pub address_cells: u8,
     /// 父节点的 #size-cells (用于解析当前节点的 reg)
-    pub parent_size_cells: u8,
+    pub size_cells: u8,
 }
 
 impl Default for NodeContext {
     fn default() -> Self {
-        Self {
-            // 默认值根据 DTSpec: 2 for address, 1 for size
-            parent_address_cells: 2,
-            parent_size_cells: 1,
+        NodeContext {
+            address_cells: 2,
+            size_cells: 1,
         }
     }
 }
@@ -58,14 +57,6 @@ impl<'a> NodeBase<'a> {
         self.level
     }
 
-    /// 为子节点创建上下文
-    pub(crate) fn create_child_context(&self) -> NodeContext {
-        NodeContext {
-            parent_address_cells: self.address_cells,
-            parent_size_cells: self.size_cells,
-        }
-    }
-
     /// 获取节点属性迭代器
     pub fn properties(&self) -> PropIter<'a> {
         PropIter::new(self.data.reader(), self.strings.clone())
@@ -89,8 +80,8 @@ impl<'a> NodeBase<'a> {
         let prop = self.find_property("reg")?;
         Some(RegIter::new(
             prop.data().reader(),
-            self.context.parent_address_cells,
-            self.context.parent_size_cells,
+            self.context.address_cells,
+            self.context.size_cells,
         ))
     }
 
@@ -115,6 +106,16 @@ impl<'a> NodeBase<'a> {
     /// 检查是否是 memory 节点
     fn is_memory(&self) -> bool {
         self.name.starts_with("memory")
+    }
+
+    pub fn ranges(&self) -> Option<VecRange<'a>> {
+        let prop = self.find_property("ranges")?;
+        Some(VecRange::new(
+            self.address_cells as usize,
+            self.context.address_cells as usize,
+            self.context.size_cells as usize,
+            prop.data(),
+        ))
     }
 }
 
