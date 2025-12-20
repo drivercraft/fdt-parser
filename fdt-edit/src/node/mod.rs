@@ -86,10 +86,10 @@ impl Node {
     }
 
     pub fn get_child(&self, name: &str) -> Option<&Node> {
-        if let Some(&index) = self.name_cache.get(name) {
-            if let Some(child) = self.children.get(index) {
-                return Some(child);
-            }
+        if let Some(&index) = self.name_cache.get(name)
+            && let Some(child) = self.children.get(index)
+        {
+            return Some(child);
         }
 
         // Fallback if the cache is stale
@@ -97,10 +97,11 @@ impl Node {
     }
 
     pub fn get_child_mut(&mut self, name: &str) -> Option<&mut Node> {
-        if let Some(&index) = self.name_cache.get(name) {
-            if index < self.children.len() && self.children[index].name == name {
-                return self.children.get_mut(index);
-            }
+        if let Some(&index) = self.name_cache.get(name)
+            && index < self.children.len()
+            && self.children[index].name == name
+        {
+            return self.children.get_mut(index);
         }
 
         // Cache miss or mismatch: search and rebuild cache to keep indices in sync
@@ -117,7 +118,7 @@ impl Node {
             .filter(|&idx| self.children.get(idx).map(|c| c.name.as_str()) == Some(name))
             .or_else(|| self.children.iter().position(|c| c.name == name));
 
-        let Some(idx) = index else { return None };
+        let idx = index?;
 
         let removed = self.children.remove(idx);
         self.rebuild_name_cache();

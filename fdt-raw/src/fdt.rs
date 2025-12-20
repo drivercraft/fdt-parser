@@ -135,15 +135,94 @@ impl<'a> Fdt<'a> {
         }
     }
 
+    /// Translate device address to CPU physical address.
+    ///
+    /// This function implements address translation similar to Linux's of_translate_address.
+    /// It walks up the device tree hierarchy, applying each parent's ranges property to
+    /// translate the child address space to parent address space, ultimately obtaining
+    /// the CPU physical address.
+    ///
+    /// # Arguments
+    /// * `path` - Node path (absolute path starting with '/' or alias name)
+    /// * `address` - Device address from the node's reg property
+    ///
+    /// # Returns
+    /// The translated CPU physical address. If translation fails, returns the original address.
     pub fn translate_address(&self, path: &'a str, address: u64) -> u64 {
         let path = match self.normalize_path(path) {
             Some(p) => p,
             None => return address,
         };
-        let split = path.trim_matches('/').split('/');
+
+        // 分割路径为各级节点名称
+        let path_parts: heapless::Vec<&str, 16> = path
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if path_parts.is_empty() {
+            return address;
+        }
+
         let mut current_address = address;
-        
-        
+
+        // 从最深层的节点向上遍历，对每一层应用 ranges 转换
+        // 注意：我们需要从倒数第二层开始（因为最后一层是目标节点本身）
+        for depth in (0..path_parts.len()).rev() {
+            // 构建到当前层的路径
+            let parent_parts = &path_parts[..depth];
+            if parent_parts.is_empty() {
+                // 已经到达根节点，不需要继续转换
+                break;
+            }
+
+            // 查找父节点
+            let mut parent_path = heapless::String::<256>::new();
+            parent_path.push('/').ok();
+            for (i, part) in parent_parts.iter().enumerate() {
+                if i > 0 {
+                    parent_path.push('/').ok();
+                }
+                parent_path.push_str(part).ok();
+            }
+
+            let parent_node = match self.find_by_path(parent_path.as_str()) {
+                Some(node) => node,
+                None => continue,
+            };
+
+            // 获取父节点的 ranges 属性
+            let ranges = match parent_node.ranges() {
+                Some(r) => r,
+                None => {
+                    // 没有 ranges 属性，停止转换
+                    break;
+                }
+            };
+
+            // 在 ranges 中查找匹配的转换规则
+            let mut found = false;
+            for range in ranges.iter() {
+                // 检查地址是否在当前 range 的范围内
+                if current_address >= range.child_address
+                    && current_address < range.child_address + range.length
+                {
+                    // 计算在 child address space 中的偏移
+                    let offset = current_address - range.child_address;
+                    // 转换到 parent address space
+                    current_address = range.parent_address + offset;
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                // 如果在 ranges 中没有找到匹配项，保持当前地址不变
+                // 这通常意味着地址转换失败，但我们继续尝试上层
+            }
+        }
+
         current_address
     }
 

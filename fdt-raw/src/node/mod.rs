@@ -41,7 +41,7 @@ pub struct NodeBase<'a> {
     data: Bytes<'a>,
     strings: Bytes<'a>,
     level: usize,
-    fdt: Fdt<'a>,
+    _fdt: Fdt<'a>,
     /// 当前节点的 #address-cells（用于子节点）
     pub address_cells: u8,
     /// 当前节点的 #size-cells（用于子节点）
@@ -275,7 +275,7 @@ impl<'a> OneNodeIter<'a> {
             address_cells: 2,
             size_cells: 1,
             context: self.context.clone(),
-            fdt: self.fdt.clone(),
+            _fdt: self.fdt.clone(),
         })
     }
 
