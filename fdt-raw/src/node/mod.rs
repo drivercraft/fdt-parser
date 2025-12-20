@@ -2,6 +2,7 @@ use core::fmt;
 use core::ops::Deref;
 use core::{ffi::CStr, fmt::Debug};
 
+use crate::Fdt;
 use crate::{
     FdtError, Token,
     data::{Bytes, Reader},
@@ -40,12 +41,13 @@ pub struct NodeBase<'a> {
     data: Bytes<'a>,
     strings: Bytes<'a>,
     level: usize,
+    fdt: Fdt<'a>,
     /// 当前节点的 #address-cells（用于子节点）
     pub address_cells: u8,
     /// 当前节点的 #size-cells（用于子节点）
     pub size_cells: u8,
     /// 继承的上下文（包含父节点的 cells 和累积的 ranges）
-    pub context: NodeContext,
+    context: NodeContext,
 }
 
 impl<'a> NodeBase<'a> {
@@ -224,10 +226,17 @@ pub(crate) struct OneNodeIter<'a> {
     level: usize,
     context: NodeContext,
     parsed_props: ParsedProps,
+    fdt: Fdt<'a>,
 }
 
 impl<'a> OneNodeIter<'a> {
-    pub fn new(reader: Reader<'a>, strings: Bytes<'a>, level: usize, context: NodeContext) -> Self {
+    pub fn new(
+        reader: Reader<'a>,
+        strings: Bytes<'a>,
+        level: usize,
+        context: NodeContext,
+        fdt: Fdt<'a>,
+    ) -> Self {
         Self {
             reader,
             strings,
@@ -235,6 +244,7 @@ impl<'a> OneNodeIter<'a> {
             level,
             context,
             parsed_props: ParsedProps::default(),
+            fdt,
         }
     }
 
@@ -265,6 +275,7 @@ impl<'a> OneNodeIter<'a> {
             address_cells: 2,
             size_cells: 1,
             context: self.context.clone(),
+            fdt: self.fdt.clone(),
         })
     }
 

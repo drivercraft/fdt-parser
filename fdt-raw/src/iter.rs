@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub struct FdtIter<'a> {
-    _fdt: Fdt<'a>,
+    fdt: Fdt<'a>,
     reader: Reader<'a>,
     strings: Bytes<'a>,
     /// 当前正在处理的节点迭代器
@@ -37,7 +37,7 @@ impl<'a> FdtIter<'a> {
         let _ = context_stack.push(NodeContext::default());
 
         Self {
-            _fdt: fdt,
+            fdt,
             reader,
             strings,
             node_iter: None,
@@ -111,6 +111,7 @@ impl<'a> Iterator for FdtIter<'a> {
                         self.strings.clone(),
                         self.level,
                         self.current_context().clone(),
+                        self.fdt.clone(),
                     );
 
                     // 读取节点名称

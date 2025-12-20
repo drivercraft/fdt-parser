@@ -98,6 +98,7 @@ impl<'a> Fdt<'a> {
     }
 
     pub fn find_by_path(&self, path: &str) -> Option<Node<'a>> {
+        let path = self.normalize_path(path)?;
         let split = path.trim_matches('/').split('/');
 
         let mut current_iter = self.all_nodes();
@@ -119,6 +120,31 @@ impl<'a> Fdt<'a> {
         }
 
         found_node
+    }
+
+    fn resolve_alias(&self, alias: &str) -> Option<&'a str> {
+        let aliases_node = self.find_by_path("/aliases")?;
+        aliases_node.find_property_str(alias)
+    }
+
+    fn normalize_path(&self, path: &'a str) -> Option<&'a str> {
+        if path.starts_with('/') {
+            Some(path)
+        } else {
+            self.resolve_alias(path)
+        }
+    }
+
+    pub fn translate_address(&self, path: &'a str, address: u64) -> u64 {
+        let path = match self.normalize_path(path) {
+            Some(p) => p,
+            None => return address,
+        };
+        let split = path.trim_matches('/').split('/');
+        let mut current_address = address;
+        
+        
+        current_address
     }
 
     /// Get an iterator over memory reservation entries
