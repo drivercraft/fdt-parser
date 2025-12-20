@@ -600,3 +600,15 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
     );
     info!("[{}] Found {} memory node(s)", name, memory_nodes_found);
 }
+
+
+#[test]
+fn test_compatibles() {
+    init_logging();
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+    let node = fdt.find_by_path("/pl061@9030000").unwrap();
+    for compatible in node.compatibles() {
+        info!("compatible: {}", compatible);
+    }
+}

@@ -119,6 +119,12 @@ impl<'a> NodeBase<'a> {
             prop.data(),
         ))
     }
+
+    pub fn compatibles(&self) -> impl Iterator<Item = &'a str> {
+        self.find_property("compatible")
+            .into_iter()
+            .flat_map(|p| p.as_str_iter())
+    }
 }
 
 /// 写入缩进
