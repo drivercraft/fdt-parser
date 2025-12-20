@@ -1,6 +1,8 @@
 use core::fmt;
 
-use crate::{FdtError, MemoryReservation, data::Bytes, header::Header, iter::FdtIter};
+use crate::{
+    Chosen, FdtError, Memory, MemoryReservation, Node, data::Bytes, header::Header, iter::FdtIter,
+};
 
 /// Memory reservation block iterator
 pub struct MemoryReservationIter<'a> {
@@ -101,6 +103,24 @@ impl<'a> Fdt<'a> {
             data: self.data.as_slice(),
             offset: self.header.off_mem_rsvmap as usize,
         }
+    }
+
+    pub fn chosen(&self) -> Option<Chosen<'a>> {
+        for node in self.all_nodes() {
+            if let Node::Chosen(c) = node {
+                return Some(c);
+            }
+        }
+        None
+    }
+
+    pub fn memory(&self) -> Option<Memory<'a>> {
+        for node in self.all_nodes() {
+            if let Node::Memory(m) = node {
+                return Some(m);
+            }
+        }
+        None
     }
 }
 

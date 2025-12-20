@@ -1,6 +1,6 @@
-use core::ffi::CStr;
 use core::fmt;
 use core::ops::Deref;
+use core::{ffi::CStr, fmt::Debug};
 
 use crate::{
     FdtError, Token,
@@ -156,31 +156,6 @@ pub enum Node<'a> {
     Memory(Memory<'a>),
 }
 
-impl<'a> Node<'a> {
-    /// 获取底层的 NodeBase 引用
-    pub fn as_base(&self) -> &NodeBase<'a> {
-        self.deref()
-    }
-
-    /// 尝试转换为 Chosen 节点
-    pub fn as_chosen(&self) -> Option<&Chosen<'a>> {
-        if let Node::Chosen(c) = self {
-            Some(c)
-        } else {
-            None
-        }
-    }
-
-    /// 尝试转换为 Memory 节点
-    pub fn as_memory(&self) -> Option<&Memory<'a>> {
-        if let Node::Memory(m) = self {
-            Some(m)
-        } else {
-            None
-        }
-    }
-}
-
 impl<'a> From<NodeBase<'a>> for Node<'a> {
     fn from(node: NodeBase<'a>) -> Self {
         if node.is_chosen() {
@@ -207,7 +182,7 @@ impl<'a> Deref for Node<'a> {
 
 impl fmt::Display for Node<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_base().fmt(f)
+        Debug::fmt(self, f)
     }
 }
 
