@@ -27,6 +27,6 @@ fn test_memory() {
     init_logging();
     let raw = fdt_qemu();
     let fdt = Fdt::from_bytes(&raw).unwrap();
-    let memory = fdt.memory().unwrap();
+    let memory = fdt.memory().next().unwrap();
     println!("Memory node: {:#x?}", memory);
 }

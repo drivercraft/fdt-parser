@@ -243,13 +243,14 @@ impl<'a> Fdt<'a> {
         None
     }
 
-    pub fn memory(&self) -> Option<Memory<'a>> {
-        for node in self.all_nodes() {
-            if let Node::Memory(m) = node {
-                return Some(m);
+    pub fn memory(&self) -> impl Iterator<Item = Memory<'a>> + 'a {
+        self.all_nodes().filter_map(|node| {
+            if let Node::Memory(mem) = node {
+                Some(mem)
+            } else {
+                None
             }
-        }
-        None
+        })
     }
 }
 
