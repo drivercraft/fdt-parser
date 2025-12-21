@@ -252,6 +252,45 @@ impl<'a> Fdt<'a> {
             }
         })
     }
+
+    pub fn reserved_memory(&self) -> impl Iterator<Item = Node<'a>> + 'a {
+        ReservedMemoryIter {
+            node_iter: self.all_nodes(),
+            in_reserved_memory: false,
+            reserved_level: 0,
+        }
+    }
+}
+
+struct ReservedMemoryIter<'a> {
+    node_iter: FdtIter<'a>,
+    in_reserved_memory: bool,
+    reserved_level: usize,
+}
+
+impl<'a> Iterator for ReservedMemoryIter<'a> {
+    type Item = Node<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(node) = self.node_iter.next() {
+            if node.name() == "reserved-memory" {
+                self.in_reserved_memory = true;
+                self.reserved_level = node.level();
+                continue;
+            }
+
+            if self.in_reserved_memory {
+                if node.level() <= self.reserved_level {
+                    // 已经离开 reserved-memory 节点
+                    self.in_reserved_memory = false;
+                    return None;
+                } else {
+                    return Some(node);
+                }
+            }
+        }
+        None
+    }
 }
 
 impl fmt::Display for Fdt<'_> {
