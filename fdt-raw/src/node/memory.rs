@@ -1,30 +1,44 @@
+//! Memory node type for physical memory layout.
+//!
+//! This module provides the `Memory` type which represents memory nodes
+//! in the device tree, describing the physical memory layout of the system.
+
 use core::ops::Deref;
 
 use super::NodeBase;
 
-/// 内存区域信息
+/// Memory region information.
+///
+/// Represents a contiguous region of physical memory with its base address
+/// and size.
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryRegion {
-    /// 起始地址
+    /// Base address of the memory region
     pub address: u64,
-    /// 区域大小
+    /// Size of the memory region in bytes
     pub size: u64,
 }
 
-/// Memory 节点，描述物理内存布局
+/// Memory node describing physical memory layout.
+///
+/// This node type represents memory nodes in the device tree, which describe
+/// the physical memory layout available to the system. The `reg` property
+/// contains one or more memory regions.
 #[derive(Clone)]
 pub struct Memory<'a> {
     node: NodeBase<'a>,
 }
 
 impl<'a> Memory<'a> {
+    /// Creates a new Memory wrapper from a NodeBase.
     pub(crate) fn new(node: NodeBase<'a>) -> Self {
         Self { node }
     }
 
-    /// 获取内存区域迭代器
+    /// Returns an iterator over memory regions.
     ///
-    /// Memory 节点的 reg 属性描述了物理内存的布局
+    /// The `reg` property of a memory node describes the physical memory
+    /// layout, with each entry specifying a base address and size.
     pub fn regions(&self) -> impl Iterator<Item = MemoryRegion> + 'a {
         self.node.reg().into_iter().flat_map(|reg| {
             reg.map(|info| MemoryRegion {
@@ -34,7 +48,10 @@ impl<'a> Memory<'a> {
         })
     }
 
-    /// 获取所有内存区域（使用固定大小数组）
+    /// Returns all memory regions as a fixed-size array.
+    ///
+    /// This is useful for no_std environments where heap allocation is not
+    /// available. Returns a `heapless::Vec` with at most N entries.
     pub fn regions_array<const N: usize>(&self) -> heapless::Vec<MemoryRegion, N> {
         let mut result = heapless::Vec::new();
         for region in self.regions() {
@@ -45,7 +62,7 @@ impl<'a> Memory<'a> {
         result
     }
 
-    /// 计算总内存大小
+    /// Returns the total memory size across all regions.
     pub fn total_size(&self) -> u64 {
         self.regions().map(|r| r.size).sum()
     }

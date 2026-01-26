@@ -1,19 +1,32 @@
+//! Chosen node type for boot parameters.
+//!
+//! This module provides the `Chosen` type for the /chosen node which contains
+//! system configuration parameters passed by the bootloader.
+
 use core::{fmt::Debug, ops::Deref};
 
 use crate::{base::NodeBase, FdtError};
 
+/// Result of debug console lookup.
 #[derive(Clone, Debug)]
 pub enum DebugCon<'a> {
-    /// 找到了对应的设备树节点
+    /// Found the corresponding device tree node
     Node(NodeBase<'a>),
-    /// 仅在bootargs中找到earlycon参数，包含解析出的信息
+    /// Found earlycon parameter only in bootargs, with parsed information
     EarlyConInfo {
+        /// The name of the early console device (e.g., "uart8250")
         name: &'a str,
+        /// The MMIO address of the device
         mmio: u64,
+        /// Additional parameters for the early console
         params: Option<&'a str>,
     },
 }
 
+/// The /chosen node containing boot parameters.
+///
+/// The chosen node doesn't represent any actual hardware device but serves
+/// as a place to pass parameters to the operating system or bootloader.
 #[derive(Clone)]
 pub struct Chosen<'a> {
     node: NodeBase<'a>,
@@ -24,14 +37,16 @@ impl<'a> Chosen<'a> {
         Chosen { node }
     }
 
-    /// Contains the bootargs, if they exist
+    /// Get the bootargs from the bootargs property, if it exists.
     pub fn bootargs(&self) -> Result<&'a str, FdtError> {
         let prop = self.node.find_property("bootargs")?;
         prop.str()
     }
 
-    /// Searches for the node representing `stdout`, if the property exists,
-    /// attempting to resolve aliases if the node name doesn't exist as-is
+    /// Get the stdout node specified by the stdout-path property.
+    ///
+    /// Searches for the node representing stdout, attempting to resolve
+    /// aliases if the node name doesn't exist as-is.
     pub fn stdout(&self) -> Result<Stdout<'a>, FdtError> {
         let prop = self.node.find_property("stdout-path")?;
 
@@ -55,6 +70,10 @@ impl<'a> Chosen<'a> {
         })
     }
 
+    /// Get the debug console information.
+    ///
+    /// First tries to find the stdout node. If that fails, parses the
+    /// bootargs for earlycon configuration.
     pub fn debugcon(&self) -> Result<DebugCon<'a>, FdtError> {
         match self.stdout() {
             Ok(stdout) => Ok(DebugCon::Node(stdout.node.clone())),
@@ -76,7 +95,7 @@ impl<'a> Chosen<'a> {
         let _ = none_ok!(tmp.next(), FdtError::NotFound);
         let values = none_ok!(tmp.next(), FdtError::NotFound);
 
-        // 解析所有参数
+        // Parse all parameters
         let mut params_iter = values.split(',');
         let name = none_ok!(params_iter.next(), FdtError::NotFound);
 
@@ -95,7 +114,7 @@ impl<'a> Chosen<'a> {
         let mmio = u64::from_str_radix(addr_str.trim_start_matches("0x"), 16)
             .map_err(|_| FdtError::Utf8Parse)?;
 
-        // 先尝试在设备树中查找对应节点
+        // Try to find the corresponding node in the device tree first
         for node_result in self.node.fdt.all_nodes() {
             let node = node_result?;
             match node.reg() {
@@ -111,13 +130,13 @@ impl<'a> Chosen<'a> {
             }
         }
 
-        // 如果找不到对应节点，返回解析出的earlycon信息
-        // 重新分割字符串以获取剩余参数
+        // If no matching node is found, return the parsed earlycon information
+        // Re-split the string to get remaining parameters
         let mut parts = values.split(',');
-        let _name = parts.next(); // 跳过name
-        let _addr_part = parts.next(); // 跳过地址部分
+        let _name = parts.next(); // skip name
+        let _addr_part = parts.next(); // skip address part
         let params = if let Some(param) = parts.next() {
-            // 获取第一个剩余参数的位置，然后取剩余所有内容
+            // Get the position of the first remaining parameter, then take all remaining content
             let param_start = values.find(param).unwrap_or(0);
             if param_start > 0 {
                 Some(&values[param_start..])
@@ -149,9 +168,15 @@ impl<'a> Deref for Chosen<'a> {
     }
 }
 
+/// The stdout device specified by the chosen node.
+///
+/// Contains the node reference and optional parameters (typically specifying
+/// the baud rate or other console configuration).
 #[derive(Clone)]
 pub struct Stdout<'a> {
+    /// Optional parameters for the stdout device (e.g., baud rate)
     pub params: Option<&'a str>,
+    /// The device tree node for the stdout device
     pub node: NodeBase<'a>,
 }
 

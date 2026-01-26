@@ -1,6 +1,7 @@
-//! FDT 编码模块
+//! FDT encoding module.
 //!
-//! 将 Fdt 结构序列化为 DTB 二进制格式
+//! This module handles serialization of the `Fdt` structure into the
+//! DTB (Device Tree Blob) binary format.
 
 use alloc::{string::String, vec::Vec};
 use core::ops::Deref;
@@ -8,17 +9,19 @@ use fdt_raw::{FDT_MAGIC, Token};
 
 use crate::{Fdt, Node};
 
-/// FDT 二进制数据
+/// FDT binary data container.
+///
+/// Wraps the encoded DTB data and provides access to the underlying bytes.
 #[derive(Clone, Debug)]
 pub struct FdtData(Vec<u32>);
 
 impl FdtData {
-    /// 获取数据长度（字节）
+    /// Returns the data length in bytes.
     pub fn len(&self) -> usize {
         self.0.len() * 4
     }
 
-    /// 数据是否为空
+    /// Returns true if the data is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -43,7 +46,10 @@ impl AsRef<[u8]> for FdtData {
     }
 }
 
-/// FDT 编码器
+/// FDT encoder for serializing to DTB format.
+///
+/// This encoder walks the node tree and generates the binary DTB format
+/// according to the Device Tree Specification.
 pub struct FdtEncoder<'a> {
     fdt: &'a Fdt,
     struct_data: Vec<u32>,
@@ -52,7 +58,7 @@ pub struct FdtEncoder<'a> {
 }
 
 impl<'a> FdtEncoder<'a> {
-    /// 创建新的编码器
+    /// Creates a new encoder for the given FDT.
     pub fn new(fdt: &'a Fdt) -> Self {
         Self {
             fdt,
@@ -62,7 +68,7 @@ impl<'a> FdtEncoder<'a> {
         }
     }
 
-    /// 获取或添加字符串，返回偏移量
+    /// Gets or adds a string to the strings block, returning its offset.
     fn get_or_add_string(&mut self, s: &str) -> u32 {
         for (existing, offset) in &self.string_offsets {
             if existing == s {
@@ -77,7 +83,7 @@ impl<'a> FdtEncoder<'a> {
         offset
     }
 
-    /// 写入 BEGIN_NODE token 和节点名
+    /// Writes a BEGIN_NODE token and node name.
     fn write_begin_node(&mut self, name: &str) {
         let begin_token: u32 = Token::BeginNode.into();
         self.struct_data.push(begin_token.to_be());
@@ -95,13 +101,13 @@ impl<'a> FdtEncoder<'a> {
         }
     }
 
-    /// 写入 END_NODE token
+    /// Writes an END_NODE token.
     fn write_end_node(&mut self) {
         let end_token: u32 = Token::EndNode.into();
         self.struct_data.push(end_token.to_be());
     }
 
-    /// 写入属性
+    /// Writes a property to the structure block.
     fn write_property(&mut self, name: &str, data: &[u8]) {
         let prop_token: u32 = Token::Prop.into();
         self.struct_data.push(prop_token.to_be());
@@ -123,38 +129,38 @@ impl<'a> FdtEncoder<'a> {
         }
     }
 
-    /// 执行编码
+    /// Performs the encoding and returns the binary DTB data.
     pub fn encode(mut self) -> FdtData {
-        // 递归编码节点树
+        // Recursively encode node tree
         self.encode_node(&self.fdt.root.clone());
 
-        // 添加 END token
+        // Add END token
         let token: u32 = Token::End.into();
         self.struct_data.push(token.to_be());
 
         self.finalize()
     }
 
-    /// 递归编码节点及其子节点
+    /// Recursively encodes a node and its children.
     fn encode_node(&mut self, node: &Node) {
-        // 写入 BEGIN_NODE 和节点名
+        // Write BEGIN_NODE and node name
         self.write_begin_node(node.name());
 
-        // 写入所有属性（直接使用原始数据）
+        // Write all properties (using raw data directly)
         for prop in node.properties() {
             self.write_property(prop.name(), &prop.data);
         }
 
-        // 递归编码子节点
+        // Recursively encode child nodes
         for child in node.children() {
             self.encode_node(child);
         }
 
-        // 写入 END_NODE
+        // Write END_NODE
         self.write_end_node();
     }
 
-    /// 生成最终 FDT 数据
+    /// Generates the final FDT binary data.
     fn finalize(self) -> FdtData {
         let memory_reservations = &self.fdt.memory_reservations;
         let boot_cpuid_phys = self.fdt.boot_cpuid_phys;

@@ -1,4 +1,8 @@
-//! 属性相关类型和迭代器
+//! Device tree property types and iterators.
+//!
+//! This module provides types for representing and iterating over device tree
+//! properties, including the generic `Property` type and specialized parsers
+//! for common property formats like `reg` and `ranges`.
 
 mod ranges;
 mod reg;
@@ -16,7 +20,11 @@ use crate::{
     data::{Bytes, Reader, StrIter, U32Iter},
 };
 
-/// 通用属性，包含名称和原始数据
+/// A generic device tree property containing name and raw data.
+///
+/// Represents a property with a name and associated data. Provides methods
+/// for accessing and interpreting the data in various formats (u32, u64,
+/// strings, etc.).
 #[derive(Clone)]
 pub struct Property<'a> {
     name: &'a str,
@@ -24,42 +32,51 @@ pub struct Property<'a> {
 }
 
 impl<'a> Property<'a> {
+    /// Creates a new property from a name and data bytes.
     pub fn new(name: &'a str, data: Bytes<'a>) -> Self {
         Self { name, data }
     }
 
+    /// Returns the property name.
     pub fn name(&self) -> &'a str {
         self.name
     }
 
+    /// Returns the property data.
     pub fn data(&self) -> Bytes<'a> {
         self.data.clone()
     }
 
+    /// Returns true if the property has no data.
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
+    /// Returns the length of the property data in bytes.
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
-    /// 作为 u32 迭代器
+    /// Returns an iterator over u32 values in the property data.
     pub fn as_u32_iter(&self) -> U32Iter<'a> {
         self.data.as_u32_iter()
     }
 
-    /// 作为字符串迭代器（用于 compatible 等属性）
+    /// Returns an iterator over null-terminated strings in the property data.
+    ///
+    /// Used for properties like `compatible` that contain multiple strings.
     pub fn as_str_iter(&self) -> StrIter<'a> {
         self.data.as_str_iter()
     }
 
-    /// 获取数据作为字节切片
+    /// Returns the property data as a byte slice.
     pub fn as_slice(&self) -> &[u8] {
         self.data.as_slice()
     }
 
-    /// 作为单个 u64 值
+    /// Returns the data as a single u64 value.
+    ///
+    /// Returns None if the data is not exactly 8 bytes.
     pub fn as_u64(&self) -> Option<u64> {
         let mut iter = self.as_u32_iter();
         let high = iter.next()? as u64;
@@ -70,7 +87,9 @@ impl<'a> Property<'a> {
         Some((high << 32) | low)
     }
 
-    /// 作为单个 u32 值
+    /// Returns the data as a single u32 value.
+    ///
+    /// Returns None if the data is not exactly 4 bytes.
     pub fn as_u32(&self) -> Option<u32> {
         let mut iter = self.as_u32_iter();
         let value = iter.next()?;
@@ -80,14 +99,16 @@ impl<'a> Property<'a> {
         Some(value)
     }
 
-    /// 作为字符串
+    /// Returns the data as a null-terminated string.
     pub fn as_str(&self) -> Option<&'a str> {
         let bytes = self.data.as_slice();
         let cstr = CStr::from_bytes_until_nul(bytes).ok()?;
         cstr.to_str().ok()
     }
 
-    /// 获取为 #address-cells 值
+    /// Returns the property value as #address-cells.
+    ///
+    /// Only returns a value if the property name is "#address-cells".
     pub fn as_address_cells(&self) -> Option<u8> {
         if self.name == "#address-cells" {
             self.as_u32().map(|v| v as u8)
@@ -96,7 +117,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 #size-cells 值
+    /// Returns the property value as #size-cells.
+    ///
+    /// Only returns a value if the property name is "#size-cells".
     pub fn as_size_cells(&self) -> Option<u8> {
         if self.name == "#size-cells" {
             self.as_u32().map(|v| v as u8)
@@ -105,7 +128,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 #interrupt-cells 值
+    /// Returns the property value as #interrupt-cells.
+    ///
+    /// Only returns a value if the property name is "#interrupt-cells".
     pub fn as_interrupt_cells(&self) -> Option<u8> {
         if self.name == "#interrupt-cells" {
             self.as_u32().map(|v| v as u8)
@@ -114,7 +139,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 status 枚举
+    /// Returns the property value as a Status enum.
+    ///
+    /// Only returns a value if the property name is "status".
     pub fn as_status(&self) -> Option<Status> {
         let v = self.as_str()?;
         if self.name == "status" {
@@ -128,7 +155,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 phandle
+    /// Returns the property value as a phandle.
+    ///
+    /// Only returns a value if the property name is "phandle".
     pub fn as_phandle(&self) -> Option<Phandle> {
         if self.name == "phandle" {
             self.as_u32().map(Phandle::from)
@@ -137,7 +166,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 device_type 字符串
+    /// Returns the property value as device_type string.
+    ///
+    /// Only returns a value if the property name is "device_type".
     pub fn as_device_type(&self) -> Option<&'a str> {
         if self.name == "device_type" {
             self.as_str()
@@ -146,7 +177,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 interrupt-parent
+    /// Returns the property value as interrupt-parent phandle.
+    ///
+    /// Only returns a value if the property name is "interrupt-parent".
     pub fn as_interrupt_parent(&self) -> Option<Phandle> {
         if self.name == "interrupt-parent" {
             self.as_u32().map(Phandle::from)
@@ -155,7 +188,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 clock-names 字符串列表
+    /// Returns the property value as clock-names string list.
+    ///
+    /// Only returns a value if the property name is "clock-names".
     pub fn as_clock_names(&self) -> Option<StrIter<'a>> {
         if self.name == "clock-names" {
             Some(self.as_str_iter())
@@ -164,7 +199,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 获取为 compatible 字符串列表
+    /// Returns the property value as compatible string list.
+    ///
+    /// Only returns a value if the property name is "compatible".
     pub fn as_compatible(&self) -> Option<StrIter<'a>> {
         if self.name == "compatible" {
             Some(self.as_str_iter())
@@ -173,7 +210,9 @@ impl<'a> Property<'a> {
         }
     }
 
-    /// 是否为 dma-coherent 属性
+    /// Returns true if this is a dma-coherent property.
+    ///
+    /// A dma-coherent property has no data and indicates DMA coherence.
     pub fn is_dma_coherent(&self) -> bool {
         self.name == "dma-coherent" && self.data.is_empty()
     }
@@ -190,8 +229,8 @@ impl fmt::Display for Property<'_> {
         } else if let Some(v) = self.as_interrupt_cells() {
             write!(f, "#interrupt-cells = <{:#x}>", v)
         } else if self.name() == "reg" {
-            // reg 属性需要特殊处理，但我们没有 context 信息
-            // 直接显示原始数据
+            // reg property needs special handling, but we lack context info
+            // Display raw data
             write!(f, "reg = ")?;
             format_bytes(f, &self.data())
         } else if let Some(s) = self.as_status() {
@@ -227,7 +266,7 @@ impl fmt::Display for Property<'_> {
         } else if self.is_dma_coherent() {
             write!(f, "dma-coherent")
         } else if let Some(s) = self.as_str() {
-            // 检查是否有多个字符串
+            // Check if there are multiple strings
             if self.data().iter().filter(|&&b| b == 0).count() > 1 {
                 write!(f, "{} = ", self.name())?;
                 let mut first = true;
@@ -243,21 +282,21 @@ impl fmt::Display for Property<'_> {
                 write!(f, "{} = \"{}\"", self.name(), s)
             }
         } else if self.len() == 4 {
-            // 单个 u32
+            // Single u32
             let v = u32::from_be_bytes(self.data().as_slice().try_into().unwrap());
             write!(f, "{} = <{:#x}>", self.name(), v)
         } else {
-            // 原始字节
+            // Raw bytes
             write!(f, "{} = ", self.name())?;
             format_bytes(f, &self.data())
         }
     }
 }
 
-/// 格式化字节数组为 DTS 格式
+/// Formats a byte array as DTS format.
 fn format_bytes(f: &mut fmt::Formatter<'_>, data: &[u8]) -> fmt::Result {
     if data.len().is_multiple_of(4) {
-        // 按 u32 格式化
+        // Format as u32 values
         write!(f, "<")?;
         let mut first = true;
         for chunk in data.chunks(4) {
@@ -270,7 +309,7 @@ fn format_bytes(f: &mut fmt::Formatter<'_>, data: &[u8]) -> fmt::Result {
         }
         write!(f, ">")
     } else {
-        // 按字节格式化
+        // Format as bytes
         write!(f, "[")?;
         for (i, b) in data.iter().enumerate() {
             if i > 0 {
@@ -282,7 +321,10 @@ fn format_bytes(f: &mut fmt::Formatter<'_>, data: &[u8]) -> fmt::Result {
     }
 }
 
-/// 属性迭代器
+/// Property iterator.
+///
+/// Iterates over properties within a node, parsing each property from the
+/// device tree structure block.
 pub struct PropIter<'a> {
     reader: Reader<'a>,
     strings: Bytes<'a>,
@@ -290,6 +332,7 @@ pub struct PropIter<'a> {
 }
 
 impl<'a> PropIter<'a> {
+    /// Creates a new property iterator.
     pub(crate) fn new(reader: Reader<'a>, strings: Bytes<'a>) -> Self {
         Self {
             reader,
@@ -299,13 +342,13 @@ impl<'a> PropIter<'a> {
         }
     }
 
-    /// 处理错误：输出错误日志并终止迭代
+    /// Handles errors: logs error and terminates iteration.
     fn handle_error(&mut self, err: FdtError) {
         error!("Property parse error: {}", err);
         self.finished = true;
     }
 
-    /// 从 strings block 读取属性名
+    /// Reads a property name from the strings block.
     fn read_prop_name(&self, nameoff: u32) -> Result<&'a str, FdtError> {
         if nameoff as usize >= self.strings.len() {
             return Err(FdtError::BufferTooSmall {
@@ -317,6 +360,7 @@ impl<'a> PropIter<'a> {
         Ok(cstr.to_str()?)
     }
 
+    /// Aligns the reader to a 4-byte boundary.
     fn align4(&mut self) {
         let pos = self.reader.position();
         let aligned = (pos + 3) & !3;
@@ -346,7 +390,7 @@ impl<'a> Iterator for PropIter<'a> {
 
             match token {
                 Token::Prop => {
-                    // 读取属性长度
+                    // Read property length
                     let len = match self.reader.read_u32() {
                         Some(b) => b,
                         None => {
@@ -357,7 +401,7 @@ impl<'a> Iterator for PropIter<'a> {
                         }
                     };
 
-                    // 读取属性名偏移
+                    // Read property name offset
                     let nameoff = match self.reader.read_u32() {
                         Some(b) => b,
                         None => {
@@ -368,7 +412,7 @@ impl<'a> Iterator for PropIter<'a> {
                         }
                     };
 
-                    // 读取属性数据
+                    // Read property data
                     let prop_data = if len > 0 {
                         match self.reader.read_bytes(len as _) {
                             Some(b) => b,
@@ -383,7 +427,7 @@ impl<'a> Iterator for PropIter<'a> {
                         Bytes::new(&[])
                     };
 
-                    // 读取属性名
+                    // Read property name
                     let name = match self.read_prop_name(nameoff) {
                         Ok(n) => n,
                         Err(e) => {
@@ -392,23 +436,23 @@ impl<'a> Iterator for PropIter<'a> {
                         }
                     };
 
-                    // 对齐到 4 字节边界
+                    // Align to 4-byte boundary
                     self.align4();
 
                     return Some(Property::new(name, prop_data));
                 }
                 Token::BeginNode | Token::EndNode | Token::End => {
-                    // 遇到节点边界，回溯并终止属性迭代
+                    // Encountered node boundary, backtrack and terminate property iteration
                     self.reader.backtrack(4);
                     self.finished = true;
                     return None;
                 }
                 Token::Nop => {
-                    // 忽略 NOP，继续
+                    // Ignore NOP and continue
                     continue;
                 }
                 Token::Data(_) => {
-                    // 非法 token
+                    // Invalid token
                     self.handle_error(FdtError::BufferTooSmall {
                         pos: self.reader.position(),
                     });

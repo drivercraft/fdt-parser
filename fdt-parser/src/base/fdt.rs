@@ -1,3 +1,9 @@
+//! Core FDT parser with direct structure walking.
+//!
+//! This module provides the main `Fdt` type for parsing Device Tree Blobs.
+//! The parser walks the structure directly, providing zero-copy access to
+//! the device tree data.
+
 use core::iter;
 
 use super::node::*;
@@ -6,6 +12,22 @@ use crate::{
     FdtError, FdtRangeSilce, Header, MemoryRegion, Phandle, Property, Token,
 };
 
+/// Type alias for the result of scanning node properties.
+///
+/// This type is returned by `scan_node_properties` and contains the
+/// #address-cells, #size-cells, interrupt-parent, and ranges property values.
+type ScannedProperties<'a> = (
+    Option<u8>,
+    Option<u8>,
+    Option<Phandle>,
+    Option<Property<'a>>,
+);
+
+/// A Flattened Device Tree (FDT) parser.
+///
+/// `Fdt` provides direct access to device tree data by walking the structure
+/// without building an in-memory index. This is memory-efficient but may be
+/// slower for repeated lookups compared to the cached parser.
 #[derive(Clone)]
 pub struct Fdt<'a> {
     header: Header,
@@ -43,6 +65,7 @@ impl<'a> Fdt<'a> {
         Ok(Fdt { header, raw })
     }
 
+    /// Returns a slice of the underlying FDT data.
     pub fn as_slice(&self) -> &'a [u8] {
         self.raw.value()
     }
@@ -52,12 +75,14 @@ impl<'a> Fdt<'a> {
         &self.header
     }
 
+    /// Returns the total size of the FDT in bytes.
     pub fn total_size(&self) -> usize {
         self.header.totalsize as usize
     }
 
-    /// This field shall contain the physical ID of the system's boot CPU. It shall be identical to the physical ID given in the
-    /// reg property of that CPU node within the devicetree.
+    /// This field shall contain the physical ID of the system's boot CPU.
+    /// It shall be identical to the physical ID given in the reg property of
+    /// that CPU node within the devicetree.
     pub fn boot_cpuid_phys(&self) -> u32 {
         self.header.boot_cpuid_phys
     }
@@ -72,6 +97,7 @@ impl<'a> Fdt<'a> {
         self.header.version
     }
 
+    /// Returns an iterator over memory reservation blocks.
     pub fn memory_reservation_blocks(&self) -> impl Iterator<Item = MemoryRegion> + 'a {
         let mut buffer = self
             .raw
@@ -99,11 +125,14 @@ impl<'a> Fdt<'a> {
         buffer.take_str()
     }
 
+    /// Returns an iterator over all nodes in the device tree.
     pub fn all_nodes(&self) -> NodeIter<'a, 16> {
         NodeIter::new(self.clone())
     }
 
-    /// if path start with '/' then search by path, else search by aliases
+    /// Find nodes by path or alias.
+    ///
+    /// If path starts with '/' then search by path, else search by aliases.
     pub fn find_nodes(
         &self,
         path: &'a str,
@@ -117,6 +146,7 @@ impl<'a> Fdt<'a> {
         IterFindNode::new(self.all_nodes(), path)
     }
 
+    /// Find an alias by name and return its path.
     pub fn find_aliase(&self, name: &str) -> Result<&'a str, FdtError> {
         let aliases = self
             .find_nodes("/aliases")
@@ -131,6 +161,7 @@ impl<'a> Fdt<'a> {
         Err(FdtError::NoAlias)
     }
 
+    /// Find nodes with compatible strings matching the given list.
     pub fn find_compatible<'b, 'c: 'b>(
         &'b self,
         with: &'c [&'c str],
@@ -168,6 +199,7 @@ impl<'a> Fdt<'a> {
         })
     }
 
+    /// Get the /chosen node.
     pub fn chosen(&self) -> Result<Chosen<'a>, FdtError> {
         let node = self
             .find_nodes("/chosen")
@@ -180,6 +212,7 @@ impl<'a> Fdt<'a> {
         Ok(node)
     }
 
+    /// Find a node by its phandle.
     pub fn get_node_by_phandle(&self, phandle: Phandle) -> Result<Node<'a>, FdtError> {
         for node in self.all_nodes() {
             let node = node?;
@@ -193,6 +226,7 @@ impl<'a> Fdt<'a> {
         Err(FdtError::NotFound)
     }
 
+    /// Find a node by its name.
     pub fn get_node_by_name(&'a self, name: &str) -> Result<Node<'a>, FdtError> {
         for node in self.all_nodes() {
             let node = node?;
@@ -203,6 +237,7 @@ impl<'a> Fdt<'a> {
         Err(FdtError::NotFound)
     }
 
+    /// Get memory nodes from the /memory node.
     pub fn memory(&'a self) -> impl Iterator<Item = Result<Memory<'a>, FdtError>> + 'a {
         self.find_nodes("/memory").map(|o| {
             o.map(|o| match o {
@@ -221,7 +256,7 @@ impl<'a> Fdt<'a> {
         node
     }
 
-    /// Get all reserved-memory child nodes (memory regions)
+    /// Get all reserved-memory child nodes (memory regions).
     pub fn reserved_memory_regions(&self) -> Result<ReservedMemoryRegionsIter<'a>, FdtError> {
         match self.reserved_memory_node() {
             Ok(reserved_memory_node) => Ok(ReservedMemoryRegionsIter::new(reserved_memory_node)),
@@ -231,25 +266,25 @@ impl<'a> Fdt<'a> {
     }
 }
 
-/// Iterator for reserved memory regions (child nodes of reserved-memory)
+/// Iterator for reserved memory regions (child nodes of reserved-memory).
 pub struct ReservedMemoryRegionsIter<'a> {
     child_iter: Option<NodeChildIter<'a>>,
 }
 
 impl<'a> ReservedMemoryRegionsIter<'a> {
-    /// Create a new iterator for reserved memory regions
+    /// Create a new iterator for reserved memory regions.
     fn new(reserved_memory_node: Node<'a>) -> Self {
         ReservedMemoryRegionsIter {
             child_iter: Some(reserved_memory_node.children()),
         }
     }
 
-    /// Create an empty iterator
+    /// Create an empty iterator.
     fn empty() -> Self {
         ReservedMemoryRegionsIter { child_iter: None }
     }
 
-    /// Find a reserved memory region by name
+    /// Find a reserved memory region by name.
     pub fn find_by_name(self, name: &str) -> Result<Node<'a>, FdtError> {
         for region_result in self {
             let region = region_result?;
@@ -260,7 +295,7 @@ impl<'a> ReservedMemoryRegionsIter<'a> {
         Err(FdtError::NotFound)
     }
 
-    /// Find reserved memory regions by compatible string
+    /// Find reserved memory regions by compatible string.
     pub fn find_by_compatible(
         self,
         compatible: &str,
@@ -295,7 +330,7 @@ impl<'a> Iterator for ReservedMemoryRegionsIter<'a> {
     }
 }
 
-/// Stack frame for tracking node context during iteration
+/// Stack frame for tracking node context during iteration.
 #[derive(Clone)]
 struct NodeStackFrame<'a> {
     level: usize,
@@ -306,6 +341,10 @@ struct NodeStackFrame<'a> {
     interrupt_parent: Option<Phandle>,
 }
 
+/// Iterator over all nodes in the device tree.
+///
+/// The iterator maintains a stack to track the node hierarchy and
+/// provide context for address translation and interrupt routing.
 pub struct NodeIter<'a, const MAX_DEPTH: usize = 16> {
     buffer: Buffer<'a>,
     fdt: Fdt<'a>,
@@ -316,7 +355,7 @@ pub struct NodeIter<'a, const MAX_DEPTH: usize = 16> {
 }
 
 impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
-    /// Create a new NodeIter with the given FDT
+    /// Create a new NodeIter with the given FDT.
     pub fn new(fdt: Fdt<'a>) -> Self {
         NodeIter {
             buffer: fdt.raw.begin_at(fdt.header.off_dt_struct as usize).buffer(),
@@ -327,12 +366,12 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         }
     }
 
-    /// Get the current node from stack (parent of the node being created)
+    /// Get the current node from stack (parent of the node being created).
     fn current_parent(&self) -> Option<&NodeBase<'a>> {
         self.node_stack.last().map(|frame| &frame.node)
     }
 
-    /// Get the current effective interrupt parent phandle from the stack
+    /// Get the current effective interrupt parent phandle from the stack.
     fn current_interrupt_parent(&self) -> Option<Phandle> {
         // Search from the top of the stack downward for the first interrupt parent
         for frame in self.node_stack.iter().rev() {
@@ -343,7 +382,7 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         None
     }
 
-    /// Get address_cells and size_cells from parent frame
+    /// Get address_cells and size_cells from parent frame.
     fn current_cells(&self) -> (u8, u8) {
         self.node_stack
             .last()
@@ -351,7 +390,7 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
             .unwrap_or((2, 1))
     }
 
-    /// Push a new node onto the stack
+    /// Push a new node onto the stack.
     fn push_node(&mut self, frame: NodeStackFrame<'a>) -> Result<(), FdtError> {
         self.node_stack
             .push(frame)
@@ -360,7 +399,7 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
             })
     }
 
-    /// Pop nodes from stack when exiting to a certain level
+    /// Pop nodes from stack when exiting to a certain level.
     fn pop_to_level(&mut self, target_level: isize) {
         while let Some(frame) = self.node_stack.last() {
             if frame.level as isize > target_level {
@@ -371,18 +410,8 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         }
     }
 
-    /// Scan ahead to find node properties (#address-cells, #size-cells, interrupt-parent, ranges)
-    fn scan_node_properties(
-        &self,
-    ) -> Result<
-        (
-            Option<u8>,
-            Option<u8>,
-            Option<Phandle>,
-            Option<Property<'a>>,
-        ),
-        FdtError,
-    > {
+    /// Scan ahead to find node properties (#address-cells, #size-cells, interrupt-parent, ranges).
+    fn scan_node_properties(&self) -> Result<ScannedProperties<'a>, FdtError> {
         let mut address_cells = None;
         let mut size_cells = None;
         let mut interrupt_parent = self.current_interrupt_parent();
@@ -428,7 +457,7 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         Ok((address_cells, size_cells, interrupt_parent, ranges))
     }
 
-    /// Handle BeginNode token and create a new node
+    /// Handle BeginNode token and create a new node.
     fn handle_begin_node(&mut self) -> Result<Option<NodeBase<'a>>, FdtError> {
         self.level += 1;
 
@@ -476,16 +505,19 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         };
 
         // Create the new node with parent info from stack
+        use crate::base::node::ParentInfoBuilder;
         let node = NodeBase::new_with_parent_info(
             name,
             self.fdt.clone(),
             self.buffer.remain(),
             self.level as _,
             parent,
-            parent_address_cells,
-            parent_size_cells,
-            parent_ranges,
-            interrupt_parent,
+            ParentInfoBuilder {
+                parent_address_cells,
+                parent_size_cells,
+                parent_ranges,
+                interrupt_parent,
+            },
         );
         // Push this node onto the stack for its children
         let frame = NodeStackFrame {
@@ -502,7 +534,7 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         Ok(Some(node))
     }
 
-    /// Handle EndNode token - just pop from stack
+    /// Handle EndNode token - just pop from stack.
     fn handle_end_node(&mut self) -> Option<NodeBase<'a>> {
         self.level -= 1;
 
@@ -513,7 +545,7 @@ impl<'a, const MAX_DEPTH: usize> NodeIter<'a, MAX_DEPTH> {
         None
     }
 
-    /// Handle Prop token
+    /// Handle Prop token.
     fn handle_prop(&mut self) -> Result<(), FdtError> {
         let _prop = self.buffer.take_prop(&self.fdt)?;
         // Property handling is now done in BeginNode scanning

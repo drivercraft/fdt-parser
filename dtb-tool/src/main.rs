@@ -1,16 +1,22 @@
+//! Command-line tool for inspecting and converting Device Tree Blob (DTB) files.
+//!
+//! This tool reads a DTB file, parses it using the `fdt_parser` library,
+//! and outputs a human-readable text representation showing the device tree
+//! structure including nodes, compatible strings, and memory reservations.
+
 use clap::Parser;
 use fdt_parser::Fdt;
 use std::io::Write;
 
-/// Simple DTB parser
+/// Command-line arguments for the DTB parser tool.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// dtb file path
+    /// Path to the input DTB file
     #[arg(short, long)]
     input: String,
 
-    /// output file path
+    /// Path to the output text file
     #[arg(short, long)]
     output: String,
 }

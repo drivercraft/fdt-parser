@@ -17,13 +17,16 @@ pub enum ClockType {
     Normal,
 }
 
-/// 固定时钟
+/// Fixed clock provider.
+///
+/// Represents a fixed-rate clock that always operates at a constant frequency.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FixedClock {
+    /// Optional name for the clock
     pub name: Option<String>,
-    /// 时钟频率 (Hz)
+    /// Clock frequency in Hz
     pub frequency: u32,
-    /// 时钟精度
+    /// Clock accuracy in ppb (parts per billion)
     pub accuracy: Option<u32>,
 }
 
@@ -86,16 +89,25 @@ impl ClockRef {
     }
 }
 
-/// 时钟提供者节点引用
+/// Clock provider node reference.
+///
+/// Provides specialized access to clock provider nodes and their properties.
 #[derive(Clone)]
 pub struct NodeRefClock<'a> {
+    /// The underlying generic node reference
     pub node: NodeRefGen<'a>,
+    /// Names of clock outputs from this provider
     pub clock_output_names: Vec<String>,
+    /// Value of the `#clock-cells` property
     pub clock_cells: u32,
+    /// The type of clock provider
     pub kind: ClockType,
 }
 
 impl<'a> NodeRefClock<'a> {
+    /// Attempts to create a clock provider reference from a generic node.
+    ///
+    /// Returns `Err` with the original node if it doesn't have a `#clock-cells` property.
     pub fn try_from(node: NodeRefGen<'a>) -> Result<Self, NodeRefGen<'a>> {
         // 检查是否有时钟提供者属性
         if node.find_property("#clock-cells").is_none() {

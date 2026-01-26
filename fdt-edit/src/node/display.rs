@@ -7,7 +7,7 @@ use crate::{
     NodeRefMemory, Property,
 };
 
-/// Node 的 DTS 显示格式化器
+/// Formatter for displaying nodes in DTS (device tree source) format.
 pub struct NodeDisplay<'a> {
     node: &'a Node,
     indent: usize,
@@ -16,6 +16,7 @@ pub struct NodeDisplay<'a> {
 }
 
 impl<'a> NodeDisplay<'a> {
+    /// Creates a new display formatter for the given node.
     pub fn new(node: &'a Node) -> Self {
         Self {
             node,
@@ -25,16 +26,19 @@ impl<'a> NodeDisplay<'a> {
         }
     }
 
+    /// Sets the indentation level for nested nodes.
     pub fn indent(mut self, indent: usize) -> Self {
         self.indent = indent;
         self
     }
 
+    /// Sets whether to show address values in properties.
     pub fn show_address(mut self, show: bool) -> Self {
         self.show_address = show;
         self
     }
 
+    /// Sets whether to show size values in properties.
     pub fn show_size(mut self, show: bool) -> Self {
         self.show_size = show;
         self
@@ -224,7 +228,9 @@ impl fmt::Debug for Node {
     }
 }
 
-/// NodeRef 的显示格式化器
+/// Display formatter for node references.
+///
+/// Formats specialized node references with type-specific information.
 pub struct NodeRefDisplay<'a> {
     node_ref: &'a NodeRef<'a>,
     indent: usize,
@@ -232,6 +238,7 @@ pub struct NodeRefDisplay<'a> {
 }
 
 impl<'a> NodeRefDisplay<'a> {
+    /// Creates a new display formatter for the given node reference.
     pub fn new(node_ref: &'a NodeRef<'a>) -> Self {
         Self {
             node_ref,
@@ -240,11 +247,13 @@ impl<'a> NodeRefDisplay<'a> {
         }
     }
 
+    /// Sets the indentation level for nested nodes.
     pub fn indent(mut self, indent: usize) -> Self {
         self.indent = indent;
         self
     }
 
+    /// Sets whether to show detailed type information.
     pub fn show_details(mut self, show: bool) -> Self {
         self.show_details = show;
         self

@@ -1,3 +1,8 @@
+//! FDT header structure parsing.
+//!
+//! This module handles parsing the Device Tree Blob header, which contains
+//! metadata about the structure and layout of the device tree data.
+
 use core::ptr::NonNull;
 
 use crate::FdtError;
@@ -5,9 +10,14 @@ use crate::FdtError;
 #[repr(align(4))]
 struct AlignedHeader([u8; size_of::<Header>()]);
 
+/// The FDT header structure.
+///
+/// The header is located at the start of any Device Tree Blob and contains
+/// information about the layout and version of the device tree. All multi-byte
+/// fields are stored in big-endian byte order.
 #[derive(Debug, Clone)]
 pub struct Header {
-    /// FDT header magic
+    /// FDT header magic number (0xd00dfeed)
     pub magic: u32,
     /// Total size in bytes of the FDT structure
     pub totalsize: u32,
@@ -15,8 +25,7 @@ pub struct Header {
     pub off_dt_struct: u32,
     /// Offset in bytes from the start of the header to the strings block
     pub off_dt_strings: u32,
-    /// Offset in bytes from the start of the header to the memory reservation
-    /// block
+    /// Offset in bytes from the start of the header to the memory reservation block
     pub off_mem_rsvmap: u32,
     /// FDT version
     pub version: u32,
@@ -33,6 +42,11 @@ pub struct Header {
 impl Header {
     /// Read a header from a byte slice and return an owned `Header` whose
     /// fields are converted from big-endian (on-disk) to host order.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FdtError::BufferTooSmall` if the slice is too small.
+    /// Returns `FdtError::InvalidMagic` if the magic number is incorrect.
     pub fn from_bytes(data: &[u8]) -> Result<Self, FdtError> {
         if data.len() < core::mem::size_of::<Header>() {
             return Err(FdtError::BufferTooSmall {

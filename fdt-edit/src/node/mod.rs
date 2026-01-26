@@ -1,3 +1,8 @@
+//! Device tree node representation and manipulation.
+//!
+//! This module provides the `Node` type which represents a mutable device tree node
+//! with properties, child nodes, and methods for traversal and modification.
+
 use core::fmt::Debug;
 
 use alloc::{
@@ -24,28 +29,45 @@ pub use iter::*;
 pub use memory::*;
 pub use pci::*;
 
-/// 节点类型枚举，用于模式匹配
+/// Node type enum for pattern matching.
+///
+/// Represents different specialized node types that can be identified
+/// by their compatible strings and properties.
 #[derive(Clone, Debug)]
 pub enum NodeKind<'a> {
+    /// Clock provider node
     Clock(NodeRefClock<'a>),
+    /// PCI bridge node
     Pci(NodeRefPci<'a>),
+    /// Interrupt controller node
     InterruptController(NodeRefInterruptController<'a>),
+    /// Memory reservation node
     Memory(NodeRefMemory<'a>),
+    /// Generic node (no specialized type)
     Generic(NodeRefGen<'a>),
 }
 
+/// A mutable device tree node.
+///
+/// Represents a node in the device tree with a name, properties, and child nodes.
+/// Provides efficient property and child lookup through cached indices while
+/// maintaining insertion order.
 #[derive(Clone)]
 pub struct Node {
+    /// Node name (without path)
     pub name: String,
-    /// 属性列表（保持原始顺序）
+    /// Property list (maintains original order)
     pub(crate) properties: Vec<Property>,
-    /// 属性名到索引的映射（用于快速查找）
+    /// Property name to index mapping (for fast lookup)
     pub(crate) prop_cache: BTreeMap<String, usize>,
+    /// Child nodes
     children: Vec<Node>,
+    /// Child name to index mapping (for fast lookup)
     name_cache: BTreeMap<String, usize>,
 }
 
 impl Node {
+    /// Creates a new node with the given name.
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -56,28 +78,38 @@ impl Node {
         }
     }
 
+    /// Returns the node's name.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns an iterator over the node's properties.
     pub fn properties(&self) -> impl Iterator<Item = &Property> {
         self.properties.iter()
     }
 
+    /// Returns a slice of the node's children.
     pub fn children(&self) -> &[Node] {
         &self.children
     }
 
+    /// Returns a mutable iterator over the node's children.
     pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Node> {
         self.children.iter_mut()
     }
 
+    /// Adds a child node to this node.
+    ///
+    /// Updates the name cache for fast lookups.
     pub fn add_child(&mut self, child: Node) {
         let index = self.children.len();
         self.name_cache.insert(child.name.clone(), index);
         self.children.push(child);
     }
 
+    /// Adds a property to this node.
+    ///
+    /// Updates the property cache for fast lookups.
     pub fn add_property(&mut self, prop: Property) {
         let name = prop.name.clone();
         let index = self.properties.len();
@@ -85,6 +117,9 @@ impl Node {
         self.properties.push(prop);
     }
 
+    /// Gets a child node by name.
+    ///
+    /// Uses the cache for fast lookup, with a fallback to linear search.
     pub fn get_child(&self, name: &str) -> Option<&Node> {
         if let Some(&index) = self.name_cache.get(name)
             && let Some(child) = self.children.get(index)
@@ -96,6 +131,9 @@ impl Node {
         self.children.iter().find(|c| c.name == name)
     }
 
+    /// Gets a mutable reference to a child node by name.
+    ///
+    /// Rebuilds the cache on mismatch to keep indices synchronized.
     pub fn get_child_mut(&mut self, name: &str) -> Option<&mut Node> {
         if let Some(&index) = self.name_cache.get(name)
             && index < self.children.len()
@@ -110,6 +148,9 @@ impl Node {
         self.children.get_mut(pos)
     }
 
+    /// Removes a child node by name.
+    ///
+    /// Rebuilds the name cache after removal.
     pub fn remove_child(&mut self, name: &str) -> Option<Node> {
         let index = self
             .name_cache
@@ -125,33 +166,39 @@ impl Node {
         Some(removed)
     }
 
+    /// Sets a property, adding it if it doesn't exist or updating if it does.
     pub fn set_property(&mut self, prop: Property) {
         let name = prop.name.clone();
         if let Some(&idx) = self.prop_cache.get(&name) {
-            // 更新已存在的属性
+            // Update existing property
             self.properties[idx] = prop;
         } else {
-            // 添加新属性
+            // Add new property
             let idx = self.properties.len();
             self.prop_cache.insert(name, idx);
             self.properties.push(prop);
         }
     }
 
+    /// Gets a property by name.
     pub fn get_property(&self, name: &str) -> Option<&Property> {
         self.prop_cache.get(name).map(|&idx| &self.properties[idx])
     }
 
+    /// Gets a mutable reference to a property by name.
     pub fn get_property_mut(&mut self, name: &str) -> Option<&mut Property> {
         self.prop_cache
             .get(name)
             .map(|&idx| &mut self.properties[idx])
     }
 
+    /// Removes a property by name.
+    ///
+    /// Updates indices after removal to keep the cache consistent.
     pub fn remove_property(&mut self, name: &str) -> Option<Property> {
         if let Some(&idx) = self.prop_cache.get(name) {
             self.prop_cache.remove(name);
-            // 重建索引（移除元素后需要更新后续索引）
+            // Rebuild indices (need to update subsequent indices after removal)
             let prop = self.properties.remove(idx);
             for (_, v) in self.prop_cache.iter_mut() {
                 if *v > idx {
@@ -164,28 +211,33 @@ impl Node {
         }
     }
 
+    /// Returns the `#address-cells` property value.
     pub fn address_cells(&self) -> Option<u32> {
         self.get_property("#address-cells")
             .and_then(|prop| prop.get_u32())
     }
 
+    /// Returns the `#size-cells` property value.
     pub fn size_cells(&self) -> Option<u32> {
         self.get_property("#size-cells")
             .and_then(|prop| prop.get_u32())
     }
 
+    /// Returns the `phandle` property value.
     pub fn phandle(&self) -> Option<Phandle> {
         self.get_property("phandle")
             .and_then(|prop| prop.get_u32())
             .map(Phandle::from)
     }
 
+    /// Returns the `interrupt-parent` property value.
     pub fn interrupt_parent(&self) -> Option<Phandle> {
         self.get_property("interrupt-parent")
             .and_then(|prop| prop.get_u32())
             .map(Phandle::from)
     }
 
+    /// Returns the `status` property value.
     pub fn status(&self) -> Option<Status> {
         let prop = self.get_property("status")?;
         let s = prop.as_str()?;
@@ -196,16 +248,19 @@ impl Node {
         }
     }
 
+    /// Parses the `ranges` property for address translation.
+    ///
+    /// Returns a vector of range entries mapping child bus addresses to parent bus addresses.
     pub fn ranges(&self, parent_address_cells: u32) -> Option<Vec<RangesEntry>> {
         let prop = self.get_property("ranges")?;
         let mut entries = Vec::new();
         let mut reader = prop.as_reader();
 
-        // 当前节点的 #address-cells 用于子节点地址
+        // Current node's #address-cells for child node addresses
         let child_address_cells = self.address_cells().unwrap_or(2) as usize;
-        // 父节点的 #address-cells 用于父总线地址
+        // Parent node's #address-cells for parent bus addresses
         let parent_addr_cells = parent_address_cells as usize;
-        // 当前节点的 #size-cells
+        // Current node's #size-cells
         let size_cells = self.size_cells().unwrap_or(1) as usize;
 
         while let (Some(child_addr), Some(parent_addr), Some(size)) = (
@@ -223,6 +278,7 @@ impl Node {
         Some(entries)
     }
 
+    /// Rebuilds the name cache from the current children list.
     fn rebuild_name_cache(&mut self) {
         self.name_cache.clear();
         for (idx, child) in self.children.iter().enumerate() {
@@ -230,11 +286,13 @@ impl Node {
         }
     }
 
+    /// Returns the `compatible` property as a string iterator.
     pub fn compatible(&self) -> Option<StrIter<'_>> {
         let prop = self.get_property("compatible")?;
         Some(prop.as_str_iter())
     }
 
+    /// Returns an iterator over all compatible strings.
     pub fn compatibles(&self) -> impl Iterator<Item = &str> {
         self.get_property("compatible")
             .map(|prop| prop.as_str_iter())
@@ -242,31 +300,36 @@ impl Node {
             .flatten()
     }
 
+    /// Returns the `device_type` property value.
     pub fn device_type(&self) -> Option<&str> {
         let prop = self.get_property("device_type")?;
         prop.as_str()
     }
 
-    /// 通过精确路径删除子节点及其子树
-    /// 只支持精确路径匹配，不支持模糊匹配
+    /// Removes a child node and its subtree by exact path.
     ///
-    /// # 参数
-    /// - `path`: 删除路径，格式如 "soc/gpio@1000" 或 "/soc/gpio@1000"
+    /// Only supports exact path matching, not wildcard matching.
     ///
-    /// # 返回值
-    /// `Ok(Option<Node>)`: 如果找到并删除了节点，返回被删除的节点；如果路径不存在，返回 None
-    /// `Err(FdtError)`: 如果路径格式无效
+    /// # Arguments
     ///
-    /// # 示例
+    /// * `path` - The removal path, format: "soc/gpio@1000" or "/soc/gpio@1000"
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Option<Node>)` - The removed node if found, None if path doesn't exist
+    /// * `Err(FdtError)` - If the path format is invalid
+    ///
+    /// # Example
+    ///
     /// ```rust
     /// # use fdt_edit::Node;
     /// let mut root = Node::new("");
-    /// // 添加测试节点
+    /// // Add test nodes
     /// let mut soc = Node::new("soc");
     /// soc.add_child(Node::new("gpio@1000"));
     /// root.add_child(soc);
     ///
-    /// // 精确删除节点
+    /// // Remove node by exact path
     /// let removed = root.remove_by_path("soc/gpio@1000")?;
     /// assert!(removed.is_some());
     /// # Ok::<(), fdt_raw::FdtError>(())
@@ -282,35 +345,37 @@ impl Node {
             return Err(fdt_raw::FdtError::InvalidInput);
         }
         if parts.len() == 1 {
-            // 删除直接子节点（精确匹配）
+            // Remove direct child (exact match)
             let child_name = parts[0];
             Ok(self.remove_child(child_name))
         } else {
-            // 需要递归到父节点进行删除
+            // Need to recurse to parent node for removal
             self.remove_child_recursive(&parts, 0)
         }
     }
 
-    /// 递归删除子节点的实现
-    /// 找到要删除节点的父节点，然后从父节点中删除目标子节点
+    /// Recursive implementation for removing child nodes.
+    ///
+    /// Finds the parent of the node to remove, then removes the target child
+    /// from that parent node.
     fn remove_child_recursive(
         &mut self,
         parts: &[&str],
         index: usize,
     ) -> Result<Option<Node>, fdt_raw::FdtError> {
         if index >= parts.len() - 1 {
-            // 已经到达要删除节点的父级
+            // Already at the parent level of the node to remove
             let child_name_to_remove = parts[index];
             Ok(self.remove_child(child_name_to_remove))
         } else {
-            // 继续向下递归
+            // Continue recursing down
             let current_part = parts[index];
 
-            // 中间级别只支持精确匹配（使用缓存）
+            // Intermediate levels only support exact matching (using cache)
             if let Some(&child_index) = self.name_cache.get(current_part) {
                 self.children[child_index].remove_child_recursive(parts, index + 1)
             } else {
-                // 路径不存在
+                // Path doesn't exist
                 Ok(None)
             }
         }
@@ -320,7 +385,7 @@ impl Node {
 impl From<&fdt_raw::Node<'_>> for Node {
     fn from(raw: &fdt_raw::Node<'_>) -> Self {
         let mut new_node = Node::new(raw.name());
-        // 复制属性
+        // Copy properties
         for raw_prop in raw.properties() {
             let prop = Property::from(&raw_prop);
             new_node.set_property(prop);

@@ -4,13 +4,19 @@ use alloc::vec::Vec;
 
 use crate::node::gerneric::NodeRefGen;
 
-/// 中断控制器节点引用
+/// Interrupt controller node reference.
+///
+/// Provides specialized access to interrupt controller nodes and their properties.
 #[derive(Clone)]
 pub struct NodeRefInterruptController<'a> {
+    /// The underlying generic node reference
     pub node: NodeRefGen<'a>,
 }
 
 impl<'a> NodeRefInterruptController<'a> {
+    /// Attempts to create an interrupt controller reference from a generic node.
+    ///
+    /// Returns `Err` with the original node if it's not an interrupt controller.
     pub fn try_from(node: NodeRefGen<'a>) -> Result<Self, NodeRefGen<'a>> {
         if !is_interrupt_controller_node(&node) {
             return Err(node);

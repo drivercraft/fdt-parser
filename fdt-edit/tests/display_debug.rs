@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_create_simple_fdt() {
-        let mut fdt = Fdt::new();
+        let fdt = Fdt::new();
 
         // 测试基本 Display 功能
         let dts_output = format!("{}", fdt);
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_manual_node_display() {
-        let mut node = Node::new("test-node");
+        let node = Node::new("test-node");
 
         // 测试基本 Display 功能
         let display_output = format!("{}", node);

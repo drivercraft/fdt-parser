@@ -31,7 +31,7 @@ fn test_fdt_display() {
     let output = format!("{}", fdt);
     info!("FDT Display:\n{}", output);
 
-    // 验证基本 DTS 结构
+    // Verify basic DTS structure
     let basic_checks = [
         ("/dts-v1/;", "DTS version header"),
         ("/ {", "root node opening"),
@@ -41,7 +41,7 @@ fn test_fdt_display() {
         assert!(output.contains(pattern), "Output should contain {desc}");
     }
 
-    // 验证根节点属性
+    // Verify root node properties
     let root_props = [
         ("interrupt-parent = <0x8002>", "interrupt-parent property"),
         ("model = \"linux,dummy-virt\"", "model property"),
@@ -53,7 +53,7 @@ fn test_fdt_display() {
         assert!(output.contains(pattern), "Should contain {desc}");
     }
 
-    // 验证重要节点存在
+    // Verify important nodes exist
     let important_nodes = [
         ("psci {", "psci node opening"),
         ("memory@40000000 {", "memory node"),
@@ -71,7 +71,7 @@ fn test_fdt_display() {
         assert!(output.contains(pattern), "Should contain {desc}");
     }
 
-    // 验证重要属性
+    // Verify important properties
     let important_props = [
         ("device_type = \"memory\"", "memory device_type"),
         ("dma-coherent", "dma-coherent property"),
@@ -82,7 +82,7 @@ fn test_fdt_display() {
         assert!(output.contains(pattern), "Should contain {desc}");
     }
 
-    // 验证格式规范
+    // Verify format specifications
     let format_checks = [
         ("= <", "use '< >' for cell values"),
         ("= \"", "use '\" \"' for string values"),
@@ -104,7 +104,7 @@ fn test_fdt_debug() {
     let output = format!("{:?}", fdt);
     info!("FDT Debug:\n{}", output);
 
-    // 验证基本 Debug 结构
+    // Verify basic Debug structure
     let struct_checks = [
         ("Fdt {", "Fdt struct opening"),
         ("header: Header", "header field"),
@@ -117,7 +117,7 @@ fn test_fdt_debug() {
         );
     }
 
-    // 验证 header 字段
+    // Verify header fields
     let header_fields = [
         ("magic:", "magic field"),
         ("totalsize:", "totalsize field"),
@@ -134,7 +134,7 @@ fn test_fdt_debug() {
         assert!(output.contains(pattern), "Should contain header {desc}");
     }
 
-    // 验证根节点信息
+    // Verify root node information
     let root_node_checks = [
         ("[/]", "root node"),
         ("address_cells=", "address_cells field"),
@@ -149,7 +149,7 @@ fn test_fdt_debug() {
         assert!(output.contains(pattern), "Should contain {desc}");
     }
 
-    // 验证数据格式
+    // Verify data format
     let format_checks = [
         ("0x", "hexadecimal numbers"),
         ("\"", "quoted strings"),
@@ -160,7 +160,7 @@ fn test_fdt_debug() {
         assert!(output.contains(pattern), "Should contain {desc}");
     }
 
-    // 验证特定节点
+    // Verify specific nodes
     let specific_checks = [
         ("memory@", "memory node"),
         ("soc", "soc node"),
@@ -257,7 +257,7 @@ fn test_node_properties() {
                 );
             } else if let Some(s) = prop.as_status() {
                 info!("  status = {:?}", s);
-                // 验证状态值的有效性
+                // Verify status value validity
                 match s {
                     Status::Okay | Status::Disabled => {}
                 }
@@ -283,10 +283,10 @@ fn test_node_properties() {
                 found_dma_coherent = true;
                 info!("  dma-coherent (empty)");
             } else {
-                // 处理未知属性
+                // Handle unknown properties
                 if let Some(s) = prop.as_str() {
                     info!("  {} = \"{}\"", prop.name(), s);
-                    // 验证字符串长度合理
+                    // Verify string length is reasonable
                     assert!(
                         s.len() <= 256,
                         "String property too long: {} bytes",
@@ -299,7 +299,7 @@ fn test_node_properties() {
                     info!("  {} (empty)", prop.name());
                 } else {
                     info!("  {} ({} bytes)", prop.name(), prop.len());
-                    // 验证属性长度合理
+                    // Verify property length is reasonable
                     assert!(
                         prop.len() <= 1024,
                         "Property too large: {} bytes",
@@ -307,7 +307,7 @@ fn test_node_properties() {
                     );
                 }
 
-                // 验证属性名称
+                // Verify property name
                 assert!(!prop.name().is_empty(), "Property name should not be empty");
                 assert!(
                     prop.name().len() <= 31,
@@ -318,14 +318,14 @@ fn test_node_properties() {
         }
     }
 
-    // 验证找到了基本属性
+    // Verify found basic properties
     assert!(found_address_cells, "Should find #address-cells property");
     assert!(found_size_cells, "Should find #size-cells property");
     assert!(found_compatible, "Should find compatible property");
     assert!(found_device_type, "Should find device_type property");
     assert!(found_reg, "Should find reg property");
 
-    // 验证找到了其他重要属性
+    // Verify found other important properties
     assert!(found_phandle, "Should find phandle property");
     assert!(
         found_interrupt_parent,
@@ -360,7 +360,7 @@ fn test_reg_parsing() {
 
             let reg_infos: Vec<_> = reg.collect();
 
-            // 验证特定节点的 reg 属性
+            // Verify reg property for specific nodes
             if node.name().starts_with("memory@") {
                 found_memory_reg = true;
 
@@ -370,7 +370,7 @@ fn test_reg_parsing() {
                 );
 
                 let reg_info = &reg_infos[0];
-                // QEMU 内存地址验证
+                // QEMU memory address verification
                 assert_eq!(
                     reg_info.address, 0x40000000,
                     "Memory base address should be 0x40000000"
@@ -400,14 +400,14 @@ fn test_reg_parsing() {
                     reg_info.size
                 );
 
-                // 验证地址在预期范围内 (0xa000000 到 0xa003e00)
+                // Verify address is within expected range (0xa000000 to 0xa003e00)
                 assert!(
                     reg_info.address <= 0xa003e00,
                     "Virtio MMIO address should be <= 0xa003e00, got {:#x}",
                     reg_info.address
                 );
 
-                // 验证地址是 0x200 对齐的（每个设备占用 0x200 空间）
+                // Verify address is 0x200 aligned (each device occupies 0x200 space)
                 assert_eq!(
                     reg_info.address % 0x200,
                     0x0,
@@ -454,7 +454,7 @@ fn test_reg_parsing() {
         }
     }
 
-    // 验证找到了所有预期的 reg 节点
+    // Verify found all expected reg nodes
     assert!(
         found_memory_reg,
         "Should find memory node with reg property"
@@ -477,12 +477,12 @@ fn test_reg_parsing() {
 fn test_memory_node() {
     init_logging();
 
-    // 测试 RPi 4B DTB
+    // Test RPi 4B DTB
     info!("=== Testing RPi 4B DTB ===");
     let raw = fdt_rpi_4b();
     test_memory_in_fdt(&raw, "RPi 4B");
 
-    // 测试 QEMU DTB
+    // Test QEMU DTB
     info!("\n=== Testing QEMU DTB ===");
     let raw = fdt_qemu();
     test_memory_in_fdt(&raw, "QEMU");
@@ -507,7 +507,7 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                 node.level()
             );
 
-            // 验证节点级别 - 内存节点应该在级别 1
+            // Verify node level - memory node should be at level 1
             assert_eq!(
                 node.level(),
                 1,
@@ -515,7 +515,7 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                 node.level()
             );
 
-            // 验证并解析 reg 属性
+            // Verify and parse reg property
             let mut found_device_type = false;
 
             for prop in node.properties() {
@@ -537,7 +537,7 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                 }
             }
 
-            // 验证必要的属性
+            // Verify required properties
             assert!(
                 found_device_type,
                 "Memory node should have device_type property"
@@ -551,17 +551,17 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                     name, i, reg_info.address, reg_info.size
                 );
 
-                // 基本验证：地址应该是有效的
-                if reg_info.size.is_some() && reg_info.size.unwrap() > 0 {
+                // Basic verification: address should be valid
+                if let Some(size) = reg_info.size {
                     assert!(
-                        reg_info.size.unwrap() > 0,
+                        size > 0,
                         "Memory size should be positive, got {:?}",
                         reg_info.size
                     );
                 }
             }
 
-            // 平台特定验证
+            // Platform-specific verification
             if name == "QEMU" && !reg_infos.is_empty() {
                 assert_eq!(
                     reg_infos.len(),
@@ -600,7 +600,6 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
     );
     info!("[{}] Found {} memory node(s)", name, memory_nodes_found);
 }
-
 
 #[test]
 fn test_compatibles() {

@@ -1,58 +1,58 @@
 # fdt-raw
 
-用于解析设备树二进制文件（DTB）的低级 Rust 库。
+A low-level Rust library for parsing Device Tree Blob (DTB) files.
 
-## 概述
+## Overview
 
-`fdt-raw` 是一个基于 [Device Tree Specification v0.4](https://www.devicetree.org/specifications/) 实现的纯 Rust、`#![no_std]` 兼容的设备树解析库。该库提供了对扁平设备树（FDT）结构的底层访问接口，适用于嵌入式系统和裸机开发环境。
+`fdt-raw` is a pure Rust, `#![no_std]` compatible device tree parsing library based on the [Device Tree Specification v0.4](https://www.devicetree.org/specifications/). This library provides low-level access interfaces to the Flattened Device Tree (FDT) structure, suitable for embedded systems and bare-metal development environments.
 
-## 特性
+## Features
 
-- **纯 Rust 实现**：无需 C 语言依赖
-- **`no_std` 兼容**：适用于裸机和嵌入式环境
-- **基于规范**：严格遵循 Device Tree Specification v0.4
-- **零拷贝解析**：直接在原始数据上操作，避免不必要的内存分配
-- **类型安全**：提供强类型的 API 接口
-- **内存高效**：使用 `heapless` 进行无分配器集合操作
+- **Pure Rust Implementation**: No C language dependencies
+- **`no_std` Compatible**: Suitable for bare-metal and embedded environments
+- **Specification Based**: Strictly follows Device Tree Specification v0.4
+- **Zero-Copy Parsing**: Operates directly on raw data, avoiding unnecessary memory allocations
+- **Type Safe**: Provides strongly typed API interfaces
+- **Memory Efficient**: Uses `heapless` for allocator-free collections
 
-## 核心组件
+## Core Components
 
-### Fdt 结构
-主要的 FDT 解析器，提供对设备树结构的访问：
-- 头部信息解析
-- 内存保留块遍历
-- 节点树遍历
-- 属性访问
+### Fdt Structure
+The main FDT parser providing access to the device tree structure:
+- Header information parsing
+- Memory reservation block traversal
+- Node tree traversal
+- Property access
 
-### 支持的节点类型
-- **内存节点**：解析内存区域信息
-- **chosen 节点**：访问启动参数
-- **通用节点**：处理其他所有节点类型
+### Supported Node Types
+- **Memory Nodes**: Parse memory region information
+- **Chosen Nodes**: Access boot parameters
+- **General Nodes**: Handle all other node types
 
-### 属性解析
-- **reg 属性**：地址范围解析，支持 `#address-cells` 和 `#size-cells`
-- **属性迭代器**：高效的属性遍历
-- **属性值访问**：提供各种数据类型的访问方法
+### Property Parsing
+- **reg Property**: Address range parsing with `#address-cells` and `#size-cells` support
+- **Property Iterators**: Efficient property traversal
+- **Property Value Access**: Provides various data type access methods
 
-## 快速开始
+## Quick Start
 
 ```rust
 use fdt_raw::Fdt;
 
-// 从字节数据解析 FDT
+// Parse FDT from byte data
 let fdt = Fdt::from_bytes(&dtb_data)?;
 
-// 遍历根节点的子节点
+// Iterate through root node's children
 for node in fdt.root().children() {
     println!("Node name: {}", node.name()?);
 
-    // 遍历节点属性
+    // Iterate through node properties
     for prop in node.properties() {
         println!("  Property: {}", prop.name()?);
     }
 }
 
-// 访问内存保留块
+// Access memory reservation block
 for reservation in fdt.memory_reservations() {
     println!("Reserved: 0x{:x} - 0x{:x}",
              reservation.address,
@@ -60,32 +60,32 @@ for reservation in fdt.memory_reservations() {
 }
 ```
 
-## 依赖
+## Dependencies
 
-- `heapless = "0.9"` - 无分配器集合
-- `log = "0.4"` - 日志记录
-- `thiserror = {version = "2", default-features = false}` - 错误处理
+- `heapless = "0.9"` - Allocator-free collections
+- `log = "0.4"` - Logging
+- `thiserror = {version = "2", default-features = false}` - Error handling
 
-## 开发依赖
+## Dev Dependencies
 
-- `dtb-file` - 测试数据
-- `env_logger = "0.11"` - 日志实现
+- `dtb-file` - Test data
+- `env_logger = "0.11"` - Logging implementation
 
-## 许可证
+## License
 
-本项目采用开源许可证，具体许可证类型请查看项目根目录的 LICENSE 文件。
+This project is open source. Please see the LICENSE file in the project root directory for specific license details.
 
-## 贡献
+## Contributing
 
-欢迎提交 Issue 和 Pull Request。请确保：
+Issues and Pull Requests are welcome. Please ensure:
 
-1. 代码遵循项目的格式规范（`cargo fmt`）
-2. 通过所有测试（`cargo test`）
-3. 通过 Clippy 检查（`cargo clippy`）
+1. Code follows project formatting standards (`cargo fmt`)
+2. All tests pass (`cargo test`)
+3. Clippy checks pass (`cargo clippy`)
 
-## 相关项目
+## Related Projects
 
-- [fdt-parser](../fdt-parser/) - 更高级的缓存式 FDT 解析器
-- [fdt-edit](../fdt-edit/) - FDT 编辑和操作库
-- [dtb-tool](../dtb-tool/) - DTB 文件检查工具
-- [dtb-file](../dtb-file/) - 测试数据包
+- [fdt-parser](../fdt-parser/) - Higher-level cached FDT parser
+- [fdt-edit](../fdt-edit/) - FDT editing and manipulation library
+- [dtb-tool](../dtb-tool/) - DTB file inspection tool
+- [dtb-file](../dtb-file/) - Test data package

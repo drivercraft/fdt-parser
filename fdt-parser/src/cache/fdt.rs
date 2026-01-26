@@ -1,3 +1,8 @@
+//! Cached FDT parser with indexed lookups.
+//!
+//! This module provides the `Fdt` type for the cached parser, which builds
+//! internal indices for fast path-based and phandle-based node lookups.
+
 use alloc::{
     collections::{btree_map::BTreeMap, btree_set::BTreeSet},
     string::{String, ToString},
@@ -8,6 +13,11 @@ use alloc::{
 use super::{Align4Vec, Node};
 use crate::{base, cache::NodeMeta, data::Raw, FdtError, Header, Phandle};
 
+/// Cached Flattened Device Tree parser.
+///
+/// This parser builds internal indices (path cache, phandle cache, compatible cache)
+/// during construction, providing O(1) lookup time for subsequent queries.
+/// It uses more memory than the base parser but is much faster for repeated lookups.
 #[derive(Clone)]
 pub struct Fdt {
     pub(super) inner: Arc<Inner>,
@@ -15,6 +25,8 @@ pub struct Fdt {
 
 impl Fdt {
     /// Create a new `Fdt` from byte slice.
+    ///
+    /// This will parse the entire device tree and build internal indices.
     pub fn from_bytes(data: &[u8]) -> Result<Fdt, FdtError> {
         let inner = Inner::new(data)?;
         Ok(Self {
@@ -22,6 +34,7 @@ impl Fdt {
         })
     }
 
+    /// Returns a slice of the underlying FDT data.
     pub fn as_slice(&self) -> &[u8] {
         &self.inner.raw
     }
@@ -42,14 +55,17 @@ impl Fdt {
         base::Fdt::from_bytes(&self.inner.raw).unwrap()
     }
 
+    /// Get the FDT version.
     pub fn version(&self) -> u32 {
         self.fdt_base().version()
     }
 
+    /// Get the FDT header.
     pub fn header(&self) -> Header {
         self.fdt_base().header().clone()
     }
 
+    /// Get all nodes in the device tree.
     pub fn all_nodes(&self) -> Vec<Node> {
         self.inner
             .all_nodes
@@ -58,7 +74,9 @@ impl Fdt {
             .collect()
     }
 
-    /// if path start with '/' then search by path, else search by aliases
+    /// Find nodes by path or alias.
+    ///
+    /// If path starts with '/' then search by path, else search by aliases.
     pub fn find_nodes(&self, path: impl AsRef<str>) -> Vec<Node> {
         let path = path.as_ref();
         let path = if path.starts_with("/") {
@@ -79,17 +97,20 @@ impl Fdt {
         out
     }
 
+    /// Find an alias by name.
     pub fn find_aliase(&self, name: impl AsRef<str>) -> Option<String> {
         let fdt = self.fdt_base();
         let s = fdt.find_aliase(name.as_ref()).ok()?;
         Some(s.into())
     }
 
+    /// Get a node by its phandle (O(1) lookup).
     pub fn get_node_by_phandle(&self, phandle: Phandle) -> Option<Node> {
         let meta = self.inner.get_node_by_phandle(phandle)?;
         Some(Node::new(self, &meta))
     }
 
+    /// Find nodes with compatible strings matching the given list.
     pub fn find_compatible(&self, with: &[&str]) -> Vec<Node> {
         let mut ids = BTreeSet::new();
         for &c in with {
@@ -109,21 +130,24 @@ impl Fdt {
         out
     }
 
+    /// Get all memory reservation blocks.
     pub fn memory_reservation_blocks(&self) -> Vec<crate::MemoryRegion> {
         let fdt = self.fdt_base();
         fdt.memory_reservation_blocks().collect()
     }
 
+    /// Get raw access to the FDT data.
     pub fn raw<'a>(&'a self) -> Raw<'a> {
         Raw::new(&self.inner.raw)
     }
 
-    /// Get a node by its path in the device tree
+    /// Get a node by its path in the device tree (O(1) lookup).
     pub fn get_node_by_path(&self, path: &str) -> Option<Node> {
         let meta = self.inner.get_node_by_path(path)?;
         Some(Node::new(self, &meta))
     }
 
+    /// Get all memory nodes.
     pub fn memory(&self) -> Result<Vec<super::node::Memory>, FdtError> {
         let nodes = self.find_nodes("/memory");
         let mut out = Vec::new();
@@ -137,6 +161,9 @@ impl Fdt {
     }
 }
 
+/// Internal cached representation of the FDT.
+///
+/// Contains the raw FDT data plus various indices for fast lookups.
 pub(super) struct Inner {
     raw: Align4Vec,
     phandle_cache: BTreeMap<Phandle, usize>,
@@ -151,6 +178,7 @@ unsafe impl Send for Inner {}
 unsafe impl Sync for Inner {}
 
 impl Inner {
+    /// Build the cached representation from raw FDT data.
     fn new(data: &[u8]) -> Result<Self, FdtError> {
         let b = base::Fdt::from_bytes(data)?;
         let mut inner = Inner {

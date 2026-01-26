@@ -1,3 +1,10 @@
+//! Device tree node types and parsing.
+//!
+//! This module provides types for representing device tree nodes,
+//! including the base node type and specialized variants like Chosen
+//! and Memory nodes. It also contains the iterator logic for parsing
+//! nodes from the FDT structure block.
+
 use core::fmt;
 use core::ops::Deref;
 use core::{ffi::CStr, fmt::Debug};
@@ -16,12 +23,15 @@ pub use chosen::Chosen;
 pub use memory::{Memory, MemoryRegion};
 pub use prop::{PropIter, Property, RangeInfo, RegInfo, RegIter, VecRange};
 
-/// 节点上下文，保存从父节点继承的信息
+/// Context inherited from a node's parent.
+///
+/// Contains the `#address-cells` and `#size-cells` values that should
+/// be used when parsing properties of the current node.
 #[derive(Clone)]
 pub(crate) struct NodeContext {
-    /// 父节点的 #address-cells (用于解析当前节点的 reg)
+    /// Parent node's #address-cells (used for parsing current node's reg)
     pub address_cells: u8,
-    /// 父节点的 #size-cells (用于解析当前节点的 reg)
+    /// Parent node's #size-cells (used for parsing current node's reg)
     pub size_cells: u8,
 }
 
@@ -34,7 +44,10 @@ impl Default for NodeContext {
     }
 }
 
-/// 基础节点结构
+/// Base device tree node structure.
+///
+/// Contains the common data and methods available on all nodes,
+/// including name, level, properties, and cell values.
 #[derive(Clone)]
 pub struct NodeBase<'a> {
     name: &'a str,
@@ -42,42 +55,42 @@ pub struct NodeBase<'a> {
     strings: Bytes<'a>,
     level: usize,
     _fdt: Fdt<'a>,
-    /// 当前节点的 #address-cells（用于子节点）
+    /// Current node's #address-cells (used for child nodes)
     pub address_cells: u8,
-    /// 当前节点的 #size-cells（用于子节点）
+    /// Current node's #size-cells (used for child nodes)
     pub size_cells: u8,
-    /// 继承的上下文（包含父节点的 cells 和累积的 ranges）
+    /// Inherited context (contains parent's cells)
     context: NodeContext,
 }
 
 impl<'a> NodeBase<'a> {
+    /// Returns the node's name.
     pub fn name(&self) -> &'a str {
         self.name
     }
 
+    /// Returns the depth/level of this node in the tree.
     pub fn level(&self) -> usize {
         self.level
     }
 
-    /// 获取节点属性迭代器
+    /// Returns an iterator over this node's properties.
     pub fn properties(&self) -> PropIter<'a> {
         PropIter::new(self.data.reader(), self.strings.clone())
     }
 
-    /// 查找指定名称的属性
+    /// Finds a property by name.
     pub fn find_property(&self, name: &str) -> Option<Property<'a>> {
         self.properties().find(|p| p.name() == name)
     }
 
-    /// 查找指定名称的字符串属性
+    /// Finds a string property by name.
     pub fn find_property_str(&self, name: &str) -> Option<&'a str> {
         let prop = self.find_property(name)?;
-
-        // 否则作为普通字符串处理
         prop.as_str()
     }
 
-    /// 查找并解析 reg 属性，返回 Reg 迭代器
+    /// Finds and parses the `reg` property, returning a Reg iterator.
     pub fn reg(&self) -> Option<RegIter<'a>> {
         let prop = self.find_property("reg")?;
         Some(RegIter::new(
@@ -87,29 +100,30 @@ impl<'a> NodeBase<'a> {
         ))
     }
 
-    /// 查找并解析 reg 属性，返回所有 RegInfo 条目
+    /// Finds and parses the `reg` property, returning all RegInfo entries.
     pub fn reg_array<const N: usize>(&self) -> heapless::Vec<RegInfo, N> {
         let mut result = heapless::Vec::new();
         if let Some(reg) = self.reg() {
             for info in reg {
                 if result.push(info).is_err() {
-                    break; // 数组已满
+                    break; // Array is full
                 }
             }
         }
         result
     }
 
-    /// 检查是否是 chosen 节点
+    /// Checks if this is the chosen node.
     fn is_chosen(&self) -> bool {
         self.name == "chosen"
     }
 
-    /// 检查是否是 memory 节点
+    /// Checks if this is a memory node.
     fn is_memory(&self) -> bool {
         self.name.starts_with("memory")
     }
 
+    /// Returns the `ranges` property if present.
     pub fn ranges(&self) -> Option<VecRange<'a>> {
         let prop = self.find_property("ranges")?;
         Some(VecRange::new(
@@ -120,6 +134,7 @@ impl<'a> NodeBase<'a> {
         ))
     }
 
+    /// Returns an iterator over compatible strings.
     pub fn compatibles(&self) -> impl Iterator<Item = &'a str> {
         self.find_property("compatible")
             .into_iter()
@@ -127,7 +142,7 @@ impl<'a> NodeBase<'a> {
     }
 }
 
-/// 写入缩进
+/// Helper function for writing indentation during formatting.
 fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Result {
     for _ in 0..count {
         write!(f, "{}", ch)?;
@@ -151,17 +166,20 @@ impl fmt::Display for NodeBase<'_> {
 }
 
 // ============================================================================
-// Node 枚举：支持特化节点类型
+// Node enum: supports specialized node types
 // ============================================================================
 
-/// 节点枚举，支持 General、Chosen、Memory 等特化类型
+/// Device tree node enum supporting specialized node types.
+///
+/// Nodes are automatically classified into General, Chosen, or Memory
+/// variants based on their name and properties.
 #[derive(Clone)]
 pub enum Node<'a> {
-    /// 通用节点
+    /// A general-purpose node without special handling
     General(NodeBase<'a>),
-    /// Chosen 节点，包含启动参数
+    /// The /chosen node containing boot parameters
     Chosen(Chosen<'a>),
-    /// Memory 节点，描述物理内存布局
+    /// A memory node describing physical memory layout
     Memory(Memory<'a>),
 }
 
@@ -205,26 +223,29 @@ impl fmt::Debug for Node<'_> {
     }
 }
 
-/// 解析属性时提取的关键信息
+/// Key information extracted when parsing properties.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ParsedProps {
     pub address_cells: Option<u8>,
     pub size_cells: Option<u8>,
 }
 
-/// 单节点迭代状态
+/// State of a single node iteration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OneNodeState {
-    /// 正在处理当前节点
+    /// Currently processing the node
     Processing,
-    /// 遇到子节点的 BeginNode，需要回溯
+    /// Encountered a child's BeginNode, needs to backtrack
     ChildBegin,
-    /// 遇到 EndNode，当前节点处理完成
+    /// Encountered EndNode, current node processing complete
     End,
 }
 
 /// An iterator over a single node's content.
-/// When encountering a child's BeginNode, it backtracks and signals FdtIter to handle it.
+///
+/// When encountering a child's BeginNode token, it backtracks and signals
+/// FdtIter to handle the child node. This allows FdtIter to maintain
+/// proper tree traversal state.
 pub(crate) struct OneNodeIter<'a> {
     reader: Reader<'a>,
     strings: Bytes<'a>,
@@ -236,6 +257,7 @@ pub(crate) struct OneNodeIter<'a> {
 }
 
 impl<'a> OneNodeIter<'a> {
+    /// Creates a new single node iterator.
     pub fn new(
         reader: Reader<'a>,
         strings: Bytes<'a>,
@@ -254,20 +276,22 @@ impl<'a> OneNodeIter<'a> {
         }
     }
 
+    /// Returns a reference to the reader.
     pub fn reader(&self) -> &Reader<'a> {
         &self.reader
     }
 
+    /// Returns the parsed properties.
     pub fn parsed_props(&self) -> &ParsedProps {
         &self.parsed_props
     }
 
-    /// 读取节点名称（在 BeginNode token 之后调用）
+    /// Reads the node name (called after BeginNode token).
     pub fn read_node_name(&mut self) -> Result<NodeBase<'a>, FdtError> {
-        // 读取以 null 结尾的名称字符串
+        // Read null-terminated name string
         let name = self.read_cstr()?;
 
-        // 对齐到 4 字节边界
+        // Align to 4-byte boundary
         self.align4();
 
         let data = self.reader.remain();
@@ -277,7 +301,7 @@ impl<'a> OneNodeIter<'a> {
             data,
             strings: self.strings.clone(),
             level: self.level,
-            // 默认值，会在 process() 中更新
+            // Default values, will be updated in process()
             address_cells: 2,
             size_cells: 1,
             context: self.context.clone(),
@@ -285,15 +309,17 @@ impl<'a> OneNodeIter<'a> {
         })
     }
 
+    /// Reads a null-terminated string.
     fn read_cstr(&mut self) -> Result<&'a str, FdtError> {
         let bytes = self.reader.remain();
         let cstr = CStr::from_bytes_until_nul(bytes.as_slice())?;
         let s = cstr.to_str()?;
-        // 跳过字符串内容 + null 终止符
+        // Skip string content + null terminator
         let _ = self.reader.read_bytes(s.len() + 1);
         Ok(s)
     }
 
+    /// Aligns the reader to a 4-byte boundary.
     fn align4(&mut self) {
         let pos = self.reader.position();
         let aligned = (pos + 3) & !3;
@@ -303,25 +329,25 @@ impl<'a> OneNodeIter<'a> {
         }
     }
 
-    /// 从 strings block 读取属性名
+    /// Reads a property name from the strings block.
     fn read_prop_name(&self, nameoff: u32) -> Result<&'a str, FdtError> {
         let bytes = self.strings.slice(nameoff as usize..self.strings.len());
         let cstr = CStr::from_bytes_until_nul(bytes.as_slice())?;
         Ok(cstr.to_str()?)
     }
 
-    /// 读取 u32 从大端字节
+    /// Reads a u32 from big-endian bytes.
     fn read_u32_be(data: &[u8], offset: usize) -> u64 {
         u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as u64
     }
 
-    /// 处理节点内容，解析关键属性，遇到子节点或结束时返回
+    /// Processes node content, parsing key properties until child node or end.
     pub fn process(&mut self) -> Result<OneNodeState, FdtError> {
         loop {
             let token = self.reader.read_token()?;
             match token {
                 Token::BeginNode => {
-                    // 遇到子节点，回溯 token 并返回
+                    // Child node encountered, backtrack token and return
                     self.reader.backtrack(4);
                     self.state = OneNodeState::ChildBegin;
                     return Ok(OneNodeState::ChildBegin);
@@ -331,7 +357,7 @@ impl<'a> OneNodeIter<'a> {
                     return Ok(OneNodeState::End);
                 }
                 Token::Prop => {
-                    // 读取属性：len 和 nameoff
+                    // Read property: len and nameoff
                     let len = self.reader.read_u32().ok_or(FdtError::BufferTooSmall {
                         pos: self.reader.position(),
                     })? as usize;
@@ -340,7 +366,7 @@ impl<'a> OneNodeIter<'a> {
                         pos: self.reader.position(),
                     })?;
 
-                    // 读取属性数据
+                    // Read property data
                     let prop_data = if len > 0 {
                         self.reader
                             .read_bytes(len)
@@ -351,7 +377,7 @@ impl<'a> OneNodeIter<'a> {
                         Bytes::new(&[])
                     };
 
-                    // 解析关键属性
+                    // Parse key properties
                     if let Ok(prop_name) = self.read_prop_name(nameoff) {
                         match prop_name {
                             "#address-cells" if len == 4 => {
@@ -366,19 +392,19 @@ impl<'a> OneNodeIter<'a> {
                         }
                     }
 
-                    // 对齐到 4 字节边界
+                    // Align to 4-byte boundary
                     self.align4();
                 }
                 Token::Nop => {
-                    // 忽略 NOP
+                    // Ignore NOP tokens
                 }
                 Token::End => {
-                    // 结构块结束
+                    // Structure block ended
                     self.state = OneNodeState::End;
                     return Ok(OneNodeState::End);
                 }
                 Token::Data(_) => {
-                    // 非法 token
+                    // Invalid token
                     return Err(FdtError::BufferTooSmall {
                         pos: self.reader.position(),
                     });

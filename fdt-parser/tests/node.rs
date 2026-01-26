@@ -112,7 +112,7 @@ mod test {
         }
     }
 
-    fn test_node<'a>() -> Option<Node> {
+    fn test_node() -> Option<Node> {
         let raw = fdt_rpi_4b();
         let fdt = unsafe { Fdt::from_ptr(raw.ptr()).unwrap() };
         fdt.all_nodes().into_iter().next()
@@ -231,7 +231,7 @@ mod test {
 
         let node = fdt.find_nodes("/soc/serial@7e215040")[0].clone();
 
-        let reg = node.reg().unwrap()[0].clone();
+        let reg = node.reg().unwrap()[0];
 
         let parent = node.parent().unwrap();
         if let Some(addr_cells_prop) = parent.find_property("#address-cells") {

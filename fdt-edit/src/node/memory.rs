@@ -8,13 +8,15 @@ use fdt_raw::MemoryRegion;
 
 use crate::node::gerneric::NodeRefGen;
 
-/// Memory 节点，描述物理内存布局
+/// Memory node describing physical memory layout.
 #[derive(Clone, Debug)]
 pub struct NodeMemory {
+    /// Node name
     pub name: String,
 }
 
 impl NodeMemory {
+    /// Creates a new memory node with the given name.
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -40,13 +42,19 @@ impl NodeMemory {
     }
 }
 
-/// Memory 节点引用
+/// Memory node reference.
+///
+/// Provides specialized access to memory nodes and their regions.
 #[derive(Clone)]
 pub struct NodeRefMemory<'a> {
+    /// The underlying generic node reference
     pub node: NodeRefGen<'a>,
 }
 
 impl<'a> NodeRefMemory<'a> {
+    /// Attempts to create a memory node reference from a generic node.
+    ///
+    /// Returns `Err` with the original node if it's not a memory node.
     pub fn try_from(node: NodeRefGen<'a>) -> Result<Self, NodeRefGen<'a>> {
         if !is_memory_node(&node) {
             return Err(node);

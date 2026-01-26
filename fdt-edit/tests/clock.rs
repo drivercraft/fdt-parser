@@ -68,19 +68,19 @@ mod tests {
         // 查找固定时钟
         let mut found_with_freq = false;
         for node in fdt.all_nodes() {
-            if let NodeKind::Clock(clock) = node.as_ref() {
-                if let ClockType::Fixed(fixed) = &clock.kind {
-                    // 打印固定时钟信息
-                    println!(
-                        "Fixed clock found: {} freq={}Hz accuracy={:?}",
-                        clock.name(),
-                        fixed.frequency,
-                        fixed.accuracy
-                    );
-                    // 有些固定时钟（如 cam1_clk, cam0_clk）没有 clock-frequency 属性
-                    if fixed.frequency > 0 {
-                        found_with_freq = true;
-                    }
+            if let NodeKind::Clock(clock) = node.as_ref()
+                && let ClockType::Fixed(fixed) = &clock.kind
+            {
+                // 打印固定时钟信息
+                println!(
+                    "Fixed clock found: {} freq={}Hz accuracy={:?}",
+                    clock.name(),
+                    fixed.frequency,
+                    fixed.accuracy
+                );
+                // 有些固定时钟（如 cam1_clk, cam0_clk）没有 clock-frequency 属性
+                if fixed.frequency > 0 {
+                    found_with_freq = true;
                 }
             }
         }

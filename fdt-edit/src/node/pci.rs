@@ -6,42 +6,71 @@ use log::debug;
 
 use crate::node::gerneric::NodeRefGen;
 
+/// PCI address space types.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PciSpace {
+    /// I/O space
     IO,
+    /// 32-bit memory space
     Memory32,
+    /// 64-bit memory space
     Memory64,
 }
 
+/// PCI address range entry.
+///
+/// Represents a range of addresses in PCI address space with mapping to CPU address space.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PciRange {
+    /// The PCI address space type
     pub space: PciSpace,
+    /// Address on the PCI bus
     pub bus_address: u64,
+    /// Address in CPU physical address space
     pub cpu_address: u64,
+    /// Size of the range in bytes
     pub size: u64,
+    /// Whether the memory region is prefetchable
     pub prefetchable: bool,
 }
 
+/// PCI interrupt mapping entry.
+///
+/// Represents a mapping from PCI device interrupts to parent interrupt controller inputs.
 #[derive(Clone, Debug)]
 pub struct PciInterruptMap {
+    /// Child device address (masked)
     pub child_address: Vec<u32>,
+    /// Child device IRQ (masked)
     pub child_irq: Vec<u32>,
+    /// Phandle of the interrupt parent controller
     pub interrupt_parent: Phandle,
+    /// Parent controller IRQ inputs
     pub parent_irq: Vec<u32>,
 }
 
+/// PCI interrupt information.
+///
+/// Contains the resolved interrupt information for a PCI device.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PciInterruptInfo {
+    /// List of IRQ numbers
     pub irqs: Vec<u32>,
 }
 
+/// PCI node reference.
+///
+/// Provides specialized access to PCI bridge nodes and their properties.
 #[derive(Clone, Debug)]
 pub struct NodeRefPci<'a> {
+    /// The underlying generic node reference
     pub node: NodeRefGen<'a>,
 }
 
 impl<'a> NodeRefPci<'a> {
-    // 在这里添加 PCI 相关的方法
+    /// Attempts to create a PCI node reference from a generic node.
+    ///
+    /// Returns `Err` with the original node if it's not a PCI node.
     pub fn try_from(node: NodeRefGen<'a>) -> Result<Self, NodeRefGen<'a>> {
         if node.device_type() == Some("pci") {
             Ok(Self { node })
@@ -50,6 +79,9 @@ impl<'a> NodeRefPci<'a> {
         }
     }
 
+    /// Returns the `#interrupt-cells` property value.
+    ///
+    /// Defaults to 1 for PCI devices if not specified.
     pub fn interrupt_cells(&self) -> u32 {
         self.find_property("#interrupt-cells")
             .and_then(|prop| prop.get_u32())

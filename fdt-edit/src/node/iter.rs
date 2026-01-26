@@ -11,16 +11,29 @@ use crate::{
     node::gerneric::{NodeMutGen, NodeRefGen},
 };
 
+/// Enum representing a reference to a specialized node type.
+///
+/// This enum provides automatic type detection and dispatch for different
+/// node types based on their properties and compatible strings.
 #[derive(Clone)]
 pub enum NodeRef<'a> {
+    /// Generic node without specific type
     Gerneric(NodeRefGen<'a>),
+    /// PCI bridge node
     Pci(NodeRefPci<'a>),
+    /// Clock provider node
     Clock(NodeRefClock<'a>),
+    /// Interrupt controller node
     InterruptController(NodeRefInterruptController<'a>),
+    /// Memory reservation node
     Memory(NodeRefMemory<'a>),
 }
 
 impl<'a> NodeRef<'a> {
+    /// Creates a new node reference with automatic type detection.
+    ///
+    /// Attempts to create specialized references (PCI, Clock, etc.) based on
+    /// the node's properties and compatible strings.
     pub fn new(node: &'a Node, ctx: Context<'a>) -> Self {
         let mut g = NodeRefGen { node, ctx };
 
@@ -77,11 +90,16 @@ impl<'a> Deref for NodeRef<'a> {
     }
 }
 
+/// Enum representing a mutable reference to a node.
+///
+/// Currently only generic mutable nodes are supported.
 pub enum NodeMut<'a> {
+    /// Generic mutable node reference
     Gerneric(NodeMutGen<'a>),
 }
 
 impl<'a> NodeMut<'a> {
+    /// Creates a new mutable node reference.
     pub fn new(node: &'a mut Node, ctx: Context<'a>) -> Self {
         Self::Gerneric(NodeMutGen { node, ctx })
     }
@@ -105,6 +123,9 @@ impl<'a> DerefMut for NodeMut<'a> {
     }
 }
 
+/// Iterator over nodes in a device tree.
+///
+/// Provides depth-first traversal with automatic type detection for each node.
 pub struct NodeIter<'a> {
     ctx: Context<'a>,
     node: Option<&'a Node>,
@@ -112,6 +133,7 @@ pub struct NodeIter<'a> {
 }
 
 impl<'a> NodeIter<'a> {
+    /// Creates a new node iterator starting from the root node.
     pub fn new(root: &'a Node) -> Self {
         let mut ctx = Context::new();
         // 预先构建整棵树的 phandle_map
@@ -155,6 +177,9 @@ impl<'a> Iterator for NodeIter<'a> {
     }
 }
 
+/// Mutable iterator over nodes in a device tree.
+///
+/// Provides depth-first traversal with mutable access to nodes.
 pub struct NodeIterMut<'a> {
     ctx: Context<'a>,
     node: Option<NonNull<Node>>,
@@ -162,7 +187,9 @@ pub struct NodeIterMut<'a> {
     _marker: core::marker::PhantomData<&'a mut Node>,
 }
 
-/// 原始指针子节点迭代器
+/// Raw pointer-based child node iterator.
+///
+/// Used internally by `NodeIterMut` to avoid borrow conflicts.
 struct RawChildIter {
     ptr: *mut Node,
     end: *mut Node,
@@ -187,6 +214,7 @@ impl RawChildIter {
 }
 
 impl<'a> NodeIterMut<'a> {
+    /// Creates a new mutable node iterator starting from the root node.
     pub fn new(root: &'a mut Node) -> Self {
         let mut ctx = Context::new();
         // 预先构建整棵树的 phandle_map

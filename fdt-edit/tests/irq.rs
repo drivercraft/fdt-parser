@@ -156,16 +156,16 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            if let NodeKind::InterruptController(ic) = node.as_ref() {
-                if let Some(cells) = ic.interrupt_cells() {
-                    // 常见的 interrupt-cells 值：1, 2, 3
-                    assert!(
-                        cells >= 1 && cells <= 4,
-                        "Unusual #interrupt-cells value: {} for {}",
-                        cells,
-                        ic.name()
-                    );
-                }
+            if let NodeKind::InterruptController(ic) = node.as_ref()
+                && let Some(cells) = ic.interrupt_cells()
+            {
+                // 常见的 interrupt-cells 值：1, 2, 3
+                assert!(
+                    (1..=4).contains(&cells),
+                    "Unusual #interrupt-cells value: {} for {}",
+                    cells,
+                    ic.name()
+                );
             }
         }
     }

@@ -1,29 +1,48 @@
+//! Chosen node type for boot parameters.
+//!
+//! This module provides the `Chosen` type which represents the /chosen node
+//! in the device tree, containing boot parameters and system configuration.
+
 use core::ops::Deref;
 
 use super::NodeBase;
 
-/// Chosen 节点，包含启动参数等信息
+/// The /chosen node containing boot parameters.
+///
+/// This node contains system configuration parameters chosen by the firmware
+/// or bootloader, such as boot arguments, console paths, and other boot-time
+/// settings.
 #[derive(Clone)]
 pub struct Chosen<'a> {
     node: NodeBase<'a>,
 }
 
 impl<'a> Chosen<'a> {
+    /// Creates a new Chosen wrapper from a NodeBase.
     pub(crate) fn new(node: NodeBase<'a>) -> Self {
         Self { node }
     }
 
-    /// 获取 bootargs 属性
+    /// Returns the bootargs property value.
+    ///
+    /// This property contains command-line arguments to be passed to the
+    /// operating system kernel.
     pub fn bootargs(&self) -> Option<&'a str> {
         self.node.find_property_str("bootargs")
     }
 
-    /// 获取 stdout-path 属性
+    /// Returns the stdout-path property value.
+    ///
+    /// This property specifies the path to the device to be used for
+    /// standard output (console).
     pub fn stdout_path(&self) -> Option<&'a str> {
         self.node.find_property_str("stdout-path")
     }
 
-    /// 获取 stdin-path 属性
+    /// Returns the stdin-path property value.
+    ///
+    /// This property specifies the path to the device to be used for
+    /// standard input.
     pub fn stdin_path(&self) -> Option<&'a str> {
         self.node.find_property_str("stdin-path")
     }
