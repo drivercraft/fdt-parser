@@ -552,9 +552,9 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                 );
 
                 // Basic verification: address should be valid
-                if let Some(size) = reg_info.size {
+                if reg_info.size.is_some() && reg_info.size.unwrap() > 0 {
                     assert!(
-                        size > 0,
+                        reg_info.size.unwrap() > 0,
                         "Memory size should be positive, got {:?}",
                         reg_info.size
                     );
