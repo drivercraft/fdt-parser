@@ -151,7 +151,7 @@ pub enum FdtError {
     #[error("buffer too small at position {pos}")]
     BufferTooSmall {
         /// The position at which the buffer was too small
-        pos: usize
+        pos: usize,
     },
     /// The FDT magic number doesn't match the expected value
     #[error("invalid magic number {0:#x} != {FDT_MAGIC:#x}")]
