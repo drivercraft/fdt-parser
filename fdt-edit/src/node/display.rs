@@ -91,10 +91,10 @@ impl<'a> NodeDisplay<'a> {
         let mut first = true;
         write!(f, "<")?;
 
-        // 获取 parent 的 address-cells 和 size-cells
-        // 这里需要从上下文获取，暂时使用默认值
-        let address_cells = 2; // 默认值
-        let size_cells = 1; // 默认值
+        // Get parent's address-cells and size-cells
+        // Need to get from context, using default values for now
+        let address_cells = 2; // Default value
+        let size_cells = 1; // Default value
 
         while let (Some(addr), Some(size)) = (
             reader.read_cells(address_cells),
@@ -141,7 +141,7 @@ impl<'a> NodeDisplay<'a> {
         } else if let Some(u64_val) = prop.get_u64() {
             write!(f, "<0x{:x}>;", u64_val)
         } else {
-            // 尝试格式化为字节数组
+            // Try to format as byte array
             let mut reader = prop.as_reader();
             let mut first = true;
             write!(f, "<")?;
@@ -162,13 +162,13 @@ impl<'a> fmt::Display for NodeDisplay<'a> {
         self.format_indent(f)?;
 
         if self.node.name.is_empty() {
-            // 根节点
+            // Root node
             writeln!(f, "/ {{")?;
         } else {
-            // 普通节点
+            // Regular node
             write!(f, "{}", self.node.name)?;
 
-            // 检查是否有地址和大小属性需要显示
+            // Check if there are address and size properties to display
             let mut props = Vec::new();
             for prop in self.node.properties() {
                 if prop.name() != "reg" {
@@ -184,14 +184,14 @@ impl<'a> fmt::Display for NodeDisplay<'a> {
             }
         }
 
-        // 输出属性
+        // Output properties
         for prop in self.node.properties() {
             if prop.name() != "reg" || self.show_address || self.show_size {
                 self.format_property(prop, f)?;
             }
         }
 
-        // 输出子节点
+        // Output child nodes
         for child in self.node.children() {
             let child_display = NodeDisplay::new(child)
                 .indent(self.indent + 1)
@@ -200,7 +200,7 @@ impl<'a> fmt::Display for NodeDisplay<'a> {
             write!(f, "{}", child_display)?;
         }
 
-        // 关闭节点
+        // Close node
         self.format_indent(f)?;
         writeln!(f, "}};")?;
 
@@ -332,7 +332,7 @@ impl<'a> fmt::Display for NodeRefDisplay<'a> {
             self.format_type_info(f)?;
             writeln!(f)?;
 
-            // 添加缩进并显示 DTS
+            // Add indentation and display DTS
             let dts_display = NodeDisplay::new(self.node_ref).indent(self.indent + 1);
             write!(f, "{}", dts_display)?;
         } else {

@@ -10,11 +10,11 @@ mod tests {
 
     #[test]
     fn test_memory_node_detection() {
-        // 使用 phytium DTB 测试 memory 节点检测
+        // Test memory node detection using phytium DTB
         let raw_data = fdt_phytium();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 遍历查找 memory 节点
+        // Traverse to find memory nodes
         let mut found_memory = false;
         for node in fdt.all_nodes() {
             if let NodeKind::Memory(mem) = node.as_ref() {
@@ -30,11 +30,11 @@ mod tests {
         let raw_data = fdt_phytium();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 查找 memory 节点并获取区域信息
+        // Find memory nodes and get region information
         for node in fdt.all_nodes() {
             if let NodeKind::Memory(mem) = node.as_ref() {
                 let regions = mem.regions();
-                // memory 节点应该有至少一个区域
+                // Memory node should have at least one region
                 if !regions.is_empty() {
                     for region in regions {
                         println!(
@@ -54,13 +54,13 @@ mod tests {
 
         for node in fdt.all_nodes() {
             if let NodeKind::Memory(mem) = node.as_ref() {
-                // memory 节点应该有 device_type 属性
+                // Memory node should have device_type property
                 let dt = mem.device_type();
                 if let Some(device_type) = dt {
                     assert_eq!(device_type, "memory", "device_type should be 'memory'");
                 }
 
-                // 获取节点名称
+                // Get node name
                 let name = mem.name();
                 assert!(
                     name.starts_with("memory"),
@@ -72,11 +72,11 @@ mod tests {
 
     #[test]
     fn test_create_memory_node() {
-        // 手动创建一个 memory 节点
+        // Manually create a memory node
         let mem = NodeMemory::new("memory@80000000");
         assert_eq!(mem.name(), "memory@80000000");
 
-        // 验证初始状态
+        // Verify initial state
         assert!(
             mem.regions().is_empty(),
             "New memory node should have no regions"

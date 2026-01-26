@@ -7,19 +7,19 @@ use std::process::Command;
 
 #[test]
 fn test_parse_and_rebuild() {
-    // 解析原始 DTB
+    // Parse original DTB
     let raw_data = fdt_qemu();
     let fdt = Fdt::from_bytes(&raw_data).unwrap();
     let fdt_data = fdt.encode();
 
-    // 创建临时文件
+    // Create temporary files
     let temp_dir = std::env::temp_dir();
     let original_dtb_path = temp_dir.join("original.dtb");
     let rebuilt_dtb_path = temp_dir.join("rebuilt.dtb");
     let original_dts_path = temp_dir.join("original.dts");
     let rebuilt_dts_path = temp_dir.join("rebuilt.dts");
 
-    // 清理函数
+    // Cleanup function
     let cleanup = || {
         let _ = fs::remove_file(&original_dtb_path);
         let _ = fs::remove_file(&rebuilt_dtb_path);
@@ -27,22 +27,22 @@ fn test_parse_and_rebuild() {
         let _ = fs::remove_file(&rebuilt_dts_path);
     };
 
-    // 确保清理临时文件
+    // Ensure cleanup of temporary files
     cleanup();
 
-    // 保存原始数据和重建数据到临时文件
-    fs::write(&original_dtb_path, &*raw_data).expect("无法写入原始DTB文件");
-    fs::write(&rebuilt_dtb_path, &fdt_data).expect("无法写入重建DTB文件");
+    // Save original and rebuilt data to temporary files
+    fs::write(&original_dtb_path, &*raw_data).expect("Failed to write original DTB file");
+    fs::write(&rebuilt_dtb_path, &fdt_data).expect("Failed to write rebuilt DTB file");
 
-    // 检查dtc命令是否可用
+    // Check if dtc command is available
     let dtc_check = Command::new("dtc").arg("--version").output();
 
     if dtc_check.is_err() {
         cleanup();
-        panic!("dtc命令不可用，请安装device-tree-compiler");
+        panic!("dtc command not available, please install device-tree-compiler");
     }
 
-    // 使用dtc将DTB文件转换为DTS文件
+    // Use dtc to convert DTB files to DTS files
     let original_output = Command::new("dtc")
         .args([
             "-I",
@@ -54,12 +54,12 @@ fn test_parse_and_rebuild() {
         ])
         .arg(original_dtb_path.to_str().unwrap())
         .output()
-        .expect("执行dtc命令失败（原始文件）");
+        .expect("Failed to execute dtc command (original file)");
 
     if !original_output.status.success() {
         cleanup();
         panic!(
-            "dtc转换原始DTB失败: {}",
+            "dtc conversion of original DTB failed: {}",
             String::from_utf8_lossy(&original_output.stderr)
         );
     }
@@ -75,26 +75,28 @@ fn test_parse_and_rebuild() {
         ])
         .arg(rebuilt_dtb_path.to_str().unwrap())
         .output()
-        .expect("执行dtc命令失败（重建文件）");
+        .expect("Failed to execute dtc command (rebuilt file)");
 
     if !rebuilt_output.status.success() {
         cleanup();
         panic!(
-            "dtc转换重建DTB失败: {}",
+            "dtc conversion of rebuilt DTB failed: {}",
             String::from_utf8_lossy(&rebuilt_output.stderr)
         );
     }
 
-    // 读取生成的DTS文件并进行逐字对比
-    let original_dts = fs::read_to_string(&original_dts_path).expect("无法读取原始DTS文件");
-    let rebuilt_dts = fs::read_to_string(&rebuilt_dts_path).expect("无法读取重建DTS文件");
+    // Read generated DTS files and perform byte-by-byte comparison
+    let original_dts =
+        fs::read_to_string(&original_dts_path).expect("Failed to read original DTS file");
+    let rebuilt_dts =
+        fs::read_to_string(&rebuilt_dts_path).expect("Failed to read rebuilt DTS file");
 
-    // 进行逐字对比
+    // Perform byte-by-byte comparison
     if original_dts != rebuilt_dts {
-        println!("原始DTS文件内容:\n{}", original_dts);
-        println!("\n重建DTS文件内容:\n{}", rebuilt_dts);
+        println!("Original DTS file content:\n{}", original_dts);
+        println!("\nRebuilt DTS file content:\n{}", rebuilt_dts);
 
-        // 找到第一个不同的位置
+        // Find first differing position
         let original_chars: Vec<char> = original_dts.chars().collect();
         let rebuilt_chars: Vec<char> = rebuilt_dts.chars().collect();
 
@@ -113,14 +115,14 @@ fn test_parse_and_rebuild() {
                 let context_start = pos.saturating_sub(50);
                 let context_end = (pos + 50).min(min_len);
 
-                println!("\n发现差异，位置: {}", pos);
+                println!("\nDifference found at position: {}", pos);
                 println!(
-                    "原始文件片段: {}>>>DIFF<<<{}",
+                    "Original file segment: {}>>>DIFF<<<{}",
                     &original_dts[context_start..pos],
                     &original_dts[pos..context_end]
                 );
                 println!(
-                    "重建文件片段: {}>>>DIFF<<<{}",
+                    "Rebuilt file segment: {}>>>DIFF<<<{}",
                     &rebuilt_dts[context_start..pos],
                     &rebuilt_dts[pos..context_end]
                 );
@@ -128,7 +130,7 @@ fn test_parse_and_rebuild() {
             None => {
                 if original_chars.len() != rebuilt_chars.len() {
                     println!(
-                        "文件长度不同: 原始={}, 重建={}",
+                        "File length differs: original={}, rebuilt={}",
                         original_chars.len(),
                         rebuilt_chars.len()
                     );
@@ -137,33 +139,33 @@ fn test_parse_and_rebuild() {
         }
 
         cleanup();
-        panic!("原始DTS和重建DTS不完全匹配");
+        panic!("Original DTS and rebuilt DTS do not match exactly");
     }
 
-    // 清理临时文件
+    // Cleanup temporary files
     cleanup();
 
-    println!("✅ 测试通过：原始DTB和重建DTB的DTS表示完全一致");
+    println!("✅ Test passed: Original DTB and rebuilt DTB DTS representations match exactly");
 }
 
-// TODO: 需要为 Fdt 实现 Display trait
+// TODO: Need to implement Display trait for Fdt
 // #[test]
 // fn test_display_dts() {
-//     // 解析 DTB
+//     // Parse DTB
 //     let raw_data = fdt_qemu();
 //     let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-//     // 使用 Display 输出 DTS
+//     // Use Display to output DTS
 //     let dts = format!("{}", fdt);
 
-//     // 验证输出格式
-//     assert!(dts.starts_with("/dts-v1/;"), "DTS 应该以 /dts-v1/; 开头");
-//     assert!(dts.contains("/ {"), "DTS 应该包含根节点");
-//     assert!(dts.contains("};"), "DTS 应该包含节点闭合");
+//     // Verify output format
+//     assert!(dts.starts_with("/dts-v1/;"), "DTS should start with /dts-v1/;");
+//     assert!(dts.contains("/ {"), "DTS should contain root node");
+//     assert!(dts.contains("};"), "DTS should contain node closing");
 
-//     // 验证包含一些常见节点
-//     assert!(dts.contains("compatible"), "DTS 应该包含 compatible 属性");
+//     // Verify it contains some common nodes
+//     assert!(dts.contains("compatible"), "DTS should contain compatible property");
 
-//     println!("✅ Display 测试通过");
-//     println!("DTS 输出前 500 字符:\n{}", &dts[..dts.len().min(500)]);
+//     println!("✅ Display test passed");
+//     println!("DTS output first 500 characters:\n{}", &dts[..dts.len().min(500)]);
 // }

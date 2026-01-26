@@ -23,20 +23,20 @@ impl NodeMemory {
         }
     }
 
-    /// 获取节点名称
+    /// Get node name
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// 获取内存区域列表
-    /// 注意：这是一个简单的实现，实际使用时需要从实际的 FDT 节点中解析
+    /// Get memory region list
+    /// Note: This is a simple implementation, in actual use needs to parse from real FDT nodes
     pub fn regions(&self) -> Vec<MemoryRegion> {
-        // 这个方法在测试中主要用来检查是否为空
+        // This method is mainly used in tests to check if empty
         Vec::new()
     }
 
-    /// 获取 device_type 属性
-    /// 注意：这是一个简单的实现，返回 "memory"
+    /// Get device_type property
+    /// Note: This is a simple implementation, returns "memory"
     pub fn device_type(&self) -> Option<&str> {
         Some("memory")
     }
@@ -62,13 +62,13 @@ impl<'a> NodeRefMemory<'a> {
         Ok(Self { node })
     }
 
-    /// 获取内存区域列表
+    /// Get memory region list
     pub fn regions(&self) -> Vec<MemoryRegion> {
         let mut regions = Vec::new();
         if let Some(reg_prop) = self.find_property("reg") {
             let mut reader = reg_prop.as_reader();
 
-            // 获取 parent 的 address-cells 和 size-cells
+            // Get parent's address-cells and size-cells
             let address_cells = self.ctx.parent_address_cells() as usize;
             let size_cells = self.ctx.parent_size_cells() as usize;
 
@@ -82,7 +82,7 @@ impl<'a> NodeRefMemory<'a> {
         regions
     }
 
-    /// 获取 device_type 属性
+    /// Get device_type property
     pub fn device_type(&self) -> Option<&str> {
         self.find_property("device_type")
             .and_then(|prop| prop.as_str())
@@ -97,15 +97,15 @@ impl<'a> Deref for NodeRefMemory<'a> {
     }
 }
 
-/// 检查节点是否是 memory 节点
+/// Check if node is a memory node
 fn is_memory_node(node: &NodeRefGen) -> bool {
-    // 检查 device_type 属性是否为 "memory"
+    // Check if device_type property is "memory"
     if let Some(device_type) = node.device_type()
         && device_type == "memory"
     {
         return true;
     }
 
-    // 或者节点名以 "memory" 开头
+    // Or node name starts with "memory"
     node.name().starts_with("memory")
 }

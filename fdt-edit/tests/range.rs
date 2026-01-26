@@ -61,28 +61,28 @@ mod tests {
         let original_reg = original_regs[0];
         info!("Original reg: {:#x?}", original_reg);
 
-        // 使用 CPU 地址设置 reg (0xfe215040 是 CPU 地址)
-        // set_regs 应该将其转换为 bus 地址 (0x7e215040) 后存储
-        let new_cpu_address = 0xfe215080u64; // 新的 CPU 地址
+        // Set regs using CPU address (0xfe215040 is CPU address)
+        // set_regs should convert it to bus address (0x7e215040) when storing
+        let new_cpu_address = 0xfe215080u64; // New CPU address
         let new_size = 0x80u64;
         node.set_regs(&[RegInfo {
             address: new_cpu_address,
             size: Some(new_size),
         }]);
 
-        // 重新读取验证
+        // Re-read to verify
         let updated_regs = node.regs().unwrap();
         let updated_reg = updated_regs[0];
         info!("Updated reg: {:#x?}", updated_reg);
 
-        // 验证：读取回来的 CPU 地址应该是我们设置的值
+        // Verify: CPU address read back should be what we set
         assert_eq!(
             updated_reg.address, new_cpu_address,
             "CPU address should be {:#x}, got {:#x}",
             new_cpu_address, updated_reg.address
         );
 
-        // 验证：bus 地址应该是转换后的值
+        // Verify: bus address should be the converted value
         // 0xfe215080 - 0xfe000000 + 0x7e000000 = 0x7e215080
         let expected_bus_address = 0x7e215080u64;
         assert_eq!(
@@ -106,23 +106,23 @@ mod tests {
         let raw = fdt_rpi_4b();
         let mut fdt = Fdt::from_bytes(&raw).unwrap();
 
-        // 获取原始 reg 信息
+        // Get original reg information
         let original_reg = {
             let node = fdt.get_by_path("/soc/serial@7e215040").unwrap();
             node.regs().unwrap()[0]
         };
         info!("Original reg: {:#x?}", original_reg);
 
-        // 使用相同的 CPU 地址重新设置 reg
+        // Set regs again using the same CPU address
         {
             let mut node = fdt.get_by_path_mut("/soc/serial@7e215040").unwrap();
             node.set_regs(&[RegInfo {
-                address: original_reg.address, // 使用 CPU 地址
+                address: original_reg.address, // Use CPU address
                 size: original_reg.size,
             }]);
         }
 
-        // 验证 roundtrip：读取回来应该和原来一样
+        // Verify roundtrip: reading back should be same as original
         let roundtrip_reg = {
             let node = fdt.get_by_path("/soc/serial@7e215040").unwrap();
             node.regs().unwrap()[0]

@@ -5,7 +5,7 @@ mod tests {
 
     #[test]
     fn test_get_method() {
-        // 解析原始 DTB
+        // Parse the original DTB
         let raw_data = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
@@ -16,7 +16,7 @@ mod tests {
 
     #[test]
     fn test_find_method() {
-        // 解析原始 DTB
+        // Parse the original DTB
         let raw_data = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
@@ -33,7 +33,7 @@ mod tests {
 
     #[test]
     fn test_all() {
-        // 解析原始 DTB
+        // Parse the original DTB
         let raw_data = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn test_all_mut() {
-        // 解析原始 DTB
+        // Parse the original DTB
         let raw_data = fdt_qemu();
         let mut fdt = Fdt::from_bytes(&raw_data).unwrap();
 

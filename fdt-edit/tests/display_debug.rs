@@ -9,17 +9,17 @@ mod tests {
 
     #[test]
     fn test_fdt_display() {
-        // 使用 RPI 4B DTB 测试 Display 功能
+        // Test Display functionality using RPI 4B DTB
         let raw_data = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 测试 Display 输出
+        // Test Display output
         let dts_output = format!("{}", fdt);
 
-        // 验证输出包含 DTS 头部
+        // Verify output contains DTS header
         assert!(dts_output.contains("/dts-v1/;"));
 
-        // 验证输出包含根节点
+        // Verify output contains root node
         assert!(dts_output.contains("/ {"));
 
         println!("FDT Display output:\n{}", dts_output);
@@ -30,10 +30,10 @@ mod tests {
         let raw_data = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 测试 Debug 输出
+        // Test Debug output
         let debug_output = format!("{:?}", fdt);
 
-        // 验证 Debug 输出包含结构体信息
+        // Verify Debug output contains struct information
         assert!(debug_output.contains("Fdt"));
         assert!(debug_output.contains("boot_cpuid_phys"));
 
@@ -45,12 +45,12 @@ mod tests {
         let raw_data = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 找到一个节点进行测试
+        // Find a node to test
         for node in fdt.all_nodes() {
             if node.name().contains("gpio") {
                 let dts_output = format!("{}", node);
 
-                // 验证输出包含节点名称
+                // Verify output contains node name
                 assert!(dts_output.contains("gpio"));
 
                 println!("Node Display output:\n{}", dts_output);
@@ -68,7 +68,7 @@ mod tests {
             if node.name().contains("gpio") {
                 let debug_output = format!("{:?}", node);
 
-                // 验证 Debug 输出包含 Node 结构体信息
+                // Verify Debug output contains Node struct information
                 assert!(debug_output.contains("NodeRef"));
                 assert!(debug_output.contains("name"));
 
@@ -91,10 +91,10 @@ mod tests {
                 println!("Clock Node Display:\n{}", display_output);
                 println!("Clock Node Debug:\n{}", debug_output);
 
-                // 验证输出包含时钟相关信息
+                // Verify output contains clock-related information
                 assert!(display_output.contains("Clock Node"));
 
-                // 验证 Debug 包含详细信息
+                // Verify Debug contains detailed information
                 assert!(debug_output.contains("NodeRefClock"));
                 assert!(debug_output.contains("clock_cells"));
 
@@ -116,10 +116,10 @@ mod tests {
                 println!("Interrupt Controller Display:\n{}", display_output);
                 println!("Interrupt Controller Debug:\n{}", debug_output);
 
-                // 验证输出包含中断控制器相关信息
+                // Verify output contains interrupt controller-related information
                 assert!(display_output.contains("Interrupt Controller"));
 
-                // 验证 Debug 包含详细信息
+                // Verify Debug contains detailed information
                 assert!(debug_output.contains("NodeRefInterruptController"));
                 assert!(debug_output.contains("interrupt_cells"));
 
@@ -141,10 +141,10 @@ mod tests {
                 println!("Memory Node Display:\n{}", display_output);
                 println!("Memory Node Debug:\n{}", debug_output);
 
-                // 验证输出包含内存相关信息
+                // Verify output contains memory-related information
                 assert!(display_output.contains("Memory Node"));
 
-                // 验证 Debug 包含详细信息
+                // Verify Debug contains detailed information
                 assert!(debug_output.contains("NodeRefMemory"));
                 assert!(debug_output.contains("regions_count"));
 
@@ -164,7 +164,7 @@ mod tests {
 
                 println!("NodeRef Display with details:\n{}", display_output);
 
-                // 验证输出包含类型信息
+                // Verify output contains type information
                 assert!(display_output.contains("Clock Node"));
 
                 break;
@@ -176,11 +176,11 @@ mod tests {
     fn test_create_simple_fdt() {
         let fdt = Fdt::new();
 
-        // 测试基本 Display 功能
+        // Test basic Display functionality
         let dts_output = format!("{}", fdt);
         println!("Created FDT Display:\n{}", dts_output);
 
-        // 验证输出包含基本头部
+        // Verify output contains basic header
         assert!(dts_output.contains("/dts-v1/;"));
         assert!(dts_output.contains("/ {"));
     }
@@ -189,14 +189,14 @@ mod tests {
     fn test_manual_node_display() {
         let node = Node::new("test-node");
 
-        // 测试基本 Display 功能
+        // Test basic Display functionality
         let display_output = format!("{}", node);
         println!("Manual Node Display:\n{}", display_output);
 
-        // 验证输出包含节点名称
+        // Verify output contains node name
         assert!(display_output.contains("test-node"));
 
-        // 测试 Debug
+        // Test Debug
         let debug_output = format!("{:?}", node);
         println!("Manual Node Debug:\n{}", debug_output);
 
@@ -209,24 +209,24 @@ mod tests {
         let raw_data = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 测试基本 Debug 格式
+        // Test basic Debug format
         let simple_debug = format!("{:?}", fdt);
         println!("FDT Simple Debug:\n{}", simple_debug);
 
-        // 验证基本格式包含基本信息
+        // Verify basic format contains basic information
         assert!(simple_debug.contains("Fdt"));
         assert!(simple_debug.contains("boot_cpuid_phys"));
 
-        // 测试深度 Debug 格式
+        // Test deep Debug format
         let deep_debug = format!("{:#?}", fdt);
         println!("FDT Deep Debug:\n{}", deep_debug);
 
-        // 验证深度格式包含节点信息
+        // Verify deep format contains node information
         assert!(deep_debug.contains("Fdt {"));
         assert!(deep_debug.contains("nodes:"));
         assert!(deep_debug.contains("[000]"));
 
-        // 验证包含特定节点类型
+        // Verify it contains specific node types
         assert!(
             deep_debug.contains("Clock")
                 || deep_debug.contains("InterruptController")
@@ -239,7 +239,7 @@ mod tests {
     fn test_fdt_deep_debug_with_simple_tree() {
         let mut fdt = Fdt::new();
 
-        // 创建一个简单的树结构进行测试
+        // Create a simple tree structure for testing
         let mut soc = Node::new("soc");
         soc.set_property(Property::new("#address-cells", vec![0x1, 0x0, 0x0, 0x0]));
         soc.set_property(Property::new("#size-cells", vec![0x1, 0x0, 0x0, 0x0]));
@@ -257,11 +257,11 @@ mod tests {
         soc.add_child(uart);
         fdt.root.add_child(soc);
 
-        // 测试深度调试输出
+        // Test deep debug output
         let deep_debug = format!("{:#?}", fdt);
         println!("Simple Tree Deep Debug:\n{}", deep_debug);
 
-        // 验证输出包含预期的节点信息
+        // Verify output contains expected node information
         assert!(deep_debug.contains("[000] : Generic"));
         assert!(deep_debug.contains("[001] soc: Generic"));
         assert!(deep_debug.contains("[002] uart@9000000: Generic"));
