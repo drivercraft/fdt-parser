@@ -10,11 +10,11 @@ mod tests {
 
     #[test]
     fn test_interrupt_controller_detection() {
-        // 使用 RPI 4B DTB 测试中断控制器节点检测
+        // Test interrupt controller node detection using RPI 4B DTB
         let raw_data = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 遍历查找中断控制器节点
+        // Traverse to find interrupt controller nodes
         let mut irq_count = 0;
         for node in fdt.all_nodes() {
             if let NodeKind::InterruptController(ic) = node.as_ref() {
@@ -40,23 +40,23 @@ mod tests {
 
         for node in fdt.all_nodes() {
             if let NodeKind::InterruptController(ic) = node.as_ref() {
-                // 获取 #interrupt-cells
+                // Get #interrupt-cells
                 let cells = ic.interrupt_cells();
                 println!("IRQ Controller: {} cells={:?}", ic.name(), cells);
 
-                // 获取 #address-cells (如果有)
+                // Get #address-cells (if present)
                 let addr_cells = ic.interrupt_address_cells();
                 if addr_cells.is_some() {
                     println!("  #address-cells: {:?}", addr_cells);
                 }
 
-                // 验证 is_interrupt_controller
+                // Verify is_interrupt_controller
                 assert!(
                     ic.is_interrupt_controller(),
                     "Should be marked as interrupt controller"
                 );
 
-                // 获取 compatible 列表
+                // Get compatible list
                 let compat = ic.compatibles();
                 if !compat.is_empty() {
                     println!("  compatible: {:?}", compat);
@@ -70,7 +70,7 @@ mod tests {
         let raw_data = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 查找 GIC (ARM Generic Interrupt Controller)
+        // Find GIC (ARM Generic Interrupt Controller)
         let mut found_gic = false;
         for node in fdt.all_nodes() {
             if let NodeKind::InterruptController(ic) = node.as_ref() {
@@ -79,13 +79,13 @@ mod tests {
                     found_gic = true;
                     println!("Found GIC: {}", ic.name());
 
-                    // GIC 通常有 3 个 interrupt-cells
+                    // GIC typically has 3 interrupt-cells
                     let cells = ic.interrupt_cells();
                     println!("  #interrupt-cells: {:?}", cells);
                 }
             }
         }
-        // 注意：并非所有 DTB 都有 GIC，这里只是示例
+        // Note: Not all DTBs have GIC, this is just an example
         if found_gic {
             println!("GIC found in this DTB");
         }
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_interrupt_controller_with_phytium() {
-        // Phytium DTB 应该有中断控制器
+        // Phytium DTB should have interrupt controllers
         let raw_data = fdt_phytium();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_interrupt_controller_detection_logic() {
-        // 测试节点是否正确被识别为中断控制器
+        // Test whether nodes are correctly identified as interrupt controllers
         let raw_data = fdt_qemu();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
@@ -132,7 +132,7 @@ mod tests {
             let name = node.name();
             let is_ic = matches!(node.as_ref(), NodeKind::InterruptController(_));
 
-            // 如果节点名以 interrupt-controller 开头，应该被识别
+            // If node name starts with interrupt-controller, it should be detected
             if name.starts_with("interrupt-controller") && !is_ic {
                 println!(
                     "Warning: {} might be an interrupt controller but not detected",
@@ -140,7 +140,7 @@ mod tests {
                 );
             }
 
-            // 如果有 interrupt-controller 属性，应该被识别
+            // If node has interrupt-controller property, it should be detected
             if node.find_property("interrupt-controller").is_some() && !is_ic {
                 println!(
                     "Warning: {} has interrupt-controller property but not detected",
@@ -156,16 +156,16 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            if let NodeKind::InterruptController(ic) = node.as_ref() {
-                if let Some(cells) = ic.interrupt_cells() {
-                    // 常见的 interrupt-cells 值：1, 2, 3
-                    assert!(
-                        cells >= 1 && cells <= 4,
-                        "Unusual #interrupt-cells value: {} for {}",
-                        cells,
-                        ic.name()
-                    );
-                }
+            if let NodeKind::InterruptController(ic) = node.as_ref()
+                && let Some(cells) = ic.interrupt_cells()
+            {
+                // Common interrupt-cells values: 1, 2, 3
+                assert!(
+                    (1..=4).contains(&cells),
+                    "Unusual #interrupt-cells value: {} for {}",
+                    cells,
+                    ic.name()
+                );
             }
         }
     }

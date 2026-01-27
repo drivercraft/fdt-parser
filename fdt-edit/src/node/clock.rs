@@ -8,47 +8,50 @@ use fdt_raw::Phandle;
 
 use crate::node::gerneric::NodeRefGen;
 
-/// 时钟提供者类型
+/// Clock provider type
 #[derive(Clone, Debug, PartialEq)]
 pub enum ClockType {
-    /// 固定时钟
+    /// Fixed clock
     Fixed(FixedClock),
-    /// 普通时钟提供者
+    /// Normal clock provider
     Normal,
 }
 
-/// 固定时钟
+/// Fixed clock provider.
+///
+/// Represents a fixed-rate clock that always operates at a constant frequency.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FixedClock {
+    /// Optional name for the clock
     pub name: Option<String>,
-    /// 时钟频率 (Hz)
+    /// Clock frequency in Hz
     pub frequency: u32,
-    /// 时钟精度
+    /// Clock accuracy in ppb (parts per billion)
     pub accuracy: Option<u32>,
 }
 
-/// 时钟引用，用于解析 clocks 属性
+/// Clock reference, used to parse clocks property
 ///
-/// 根据设备树规范，clocks 属性格式为：
+/// According to the device tree specification, the clocks property format is:
 /// `clocks = <&clock_provider specifier [specifier ...]> [<&clock_provider2 ...>]`
 ///
-/// 每个时钟引用由一个 phandle 和若干个 specifier cells 组成，
-/// specifier 的数量由目标 clock provider 的 `#clock-cells` 属性决定。
+/// Each clock reference consists of a phandle and several specifier cells,
+/// the number of specifiers is determined by the target clock provider's `#clock-cells` property.
 #[derive(Clone, Debug)]
 pub struct ClockRef {
-    /// 时钟的名称，来自 clock-names 属性
+    /// Clock name, from clock-names property
     pub name: Option<String>,
-    /// 时钟提供者的 phandle
+    /// Phandle of the clock provider
     pub phandle: Phandle,
-    /// provider 的 #clock-cells 值
+    /// #clock-cells value of the provider
     pub cells: u32,
-    /// 时钟选择器（specifier），通常第一个值用于选择时钟输出
-    /// 长度由 provider 的 #clock-cells 决定
+    /// Clock selector (specifier), usually the first value is used to select clock output
+    /// Length is determined by provider's #clock-cells
     pub specifier: Vec<u32>,
 }
 
 impl ClockRef {
-    /// 创建一个新的时钟引用
+    /// Create a new clock reference
     pub fn new(phandle: Phandle, cells: u32, specifier: Vec<u32>) -> Self {
         Self {
             name: None,
@@ -58,7 +61,7 @@ impl ClockRef {
         }
     }
 
-    /// 创建一个带名称的时钟引用
+    /// Create a named clock reference
     pub fn with_name(
         name: Option<String>,
         phandle: Phandle,
@@ -73,10 +76,10 @@ impl ClockRef {
         }
     }
 
-    /// 获取选择器的第一个值（通常用于选择时钟输出）
+    /// Get the first value of the selector (usually used to select clock output)
     ///
-    /// 只有当 `cells > 0` 时才返回选择器值，
-    /// 因为 `#clock-cells = 0` 的 provider 不需要选择器。
+    /// Only returns a selector value when `cells > 0`,
+    /// because providers with `#clock-cells = 0` don't need a selector.
     pub fn select(&self) -> Option<u32> {
         if self.cells > 0 {
             self.specifier.first().copied()
@@ -86,23 +89,32 @@ impl ClockRef {
     }
 }
 
-/// 时钟提供者节点引用
+/// Clock provider node reference.
+///
+/// Provides specialized access to clock provider nodes and their properties.
 #[derive(Clone)]
 pub struct NodeRefClock<'a> {
+    /// The underlying generic node reference
     pub node: NodeRefGen<'a>,
+    /// Names of clock outputs from this provider
     pub clock_output_names: Vec<String>,
+    /// Value of the `#clock-cells` property
     pub clock_cells: u32,
+    /// The type of clock provider
     pub kind: ClockType,
 }
 
 impl<'a> NodeRefClock<'a> {
+    /// Attempts to create a clock provider reference from a generic node.
+    ///
+    /// Returns `Err` with the original node if it doesn't have a `#clock-cells` property.
     pub fn try_from(node: NodeRefGen<'a>) -> Result<Self, NodeRefGen<'a>> {
-        // 检查是否有时钟提供者属性
+        // Check if it has clock provider properties
         if node.find_property("#clock-cells").is_none() {
             return Err(node);
         }
 
-        // 获取 clock-output-names 属性
+        // Get clock-output-names property
         let clock_output_names = if let Some(prop) = node.find_property("clock-output-names") {
             let iter = prop.as_str_iter();
             iter.map(|s| s.to_string()).collect()
@@ -110,13 +122,13 @@ impl<'a> NodeRefClock<'a> {
             Vec::new()
         };
 
-        // 获取 #clock-cells
+        // Get #clock-cells
         let clock_cells = node
             .find_property("#clock-cells")
             .and_then(|prop| prop.get_u32())
             .unwrap_or(0);
 
-        // 判断时钟类型
+        // Determine clock type
         let kind = if node.compatibles().any(|c| c == "fixed-clock") {
             let frequency = node
                 .find_property("clock-frequency")
@@ -144,15 +156,15 @@ impl<'a> NodeRefClock<'a> {
         })
     }
 
-    /// 获取时钟输出名称（用于 provider）
+    /// Get clock output name (for provider)
     pub fn output_name(&self, index: usize) -> Option<&str> {
         self.clock_output_names.get(index).map(|s| s.as_str())
     }
 
-    /// 解析 clocks 属性，返回时钟引用列表
+    /// Parse clocks property, return list of clock references
     ///
-    /// 通过查找每个 phandle 对应的 clock provider 的 #clock-cells，
-    /// 正确解析 specifier 的长度。
+    /// By looking up each phandle's corresponding clock provider's #clock-cells,
+    /// correctly parse the specifier length.
     pub fn clocks(&self) -> Vec<ClockRef> {
         let Some(prop) = self.find_property("clocks") else {
             return Vec::new();
@@ -162,7 +174,7 @@ impl<'a> NodeRefClock<'a> {
         let mut data = prop.as_reader();
         let mut index = 0;
 
-        // 获取 clock-names 用于命名
+        // Get clock-names for naming
         let clock_names = if let Some(prop) = self.find_property("clock-names") {
             let iter = prop.as_str_iter();
             iter.map(|s| s.to_string()).collect()
@@ -173,35 +185,35 @@ impl<'a> NodeRefClock<'a> {
         while let Some(phandle_raw) = data.read_u32() {
             let phandle = Phandle::from(phandle_raw);
 
-            // 通过 phandle 查找 provider 节点，获取其 #clock-cells
+            // Look up provider node by phandle, get its #clock-cells
             let clock_cells = if let Some(provider) = self.ctx.find_by_phandle(phandle) {
                 provider
                     .get_property("#clock-cells")
                     .and_then(|p| p.get_u32())
-                    .unwrap_or(1) // 默认 1 cell
+                    .unwrap_or(1) // Default 1 cell
             } else {
-                1 // 默认 1 cell
+                1 // Default 1 cell
             };
 
-            // 读取 specifier（根据 provider 的 #clock-cells）
+            // Read specifier (based on provider's #clock-cells)
             let mut specifier = Vec::with_capacity(clock_cells as usize);
             let mut complete = true;
             for _ in 0..clock_cells {
                 if let Some(val) = data.read_u32() {
                     specifier.push(val);
                 } else {
-                    // 数据不足，停止解析
+                    // Insufficient data, stop parsing
                     complete = false;
                     break;
                 }
             }
 
-            // 只有完整的 clock reference 才添加
+            // Only add complete clock reference
             if !complete {
                 break;
             }
 
-            // 从 clock-names 获取对应的名称
+            // Get corresponding name from clock-names
             let name = clock_names.get(index).cloned();
 
             clocks.push(ClockRef::with_name(name, phandle, clock_cells, specifier));

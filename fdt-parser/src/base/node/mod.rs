@@ -1,3 +1,9 @@
+//! Device tree node types and accessors.
+//!
+//! This module provides the `Node` enum and related types for accessing
+//! device tree nodes. Nodes are automatically classified into specialized
+//! types (Chosen, Memory, InterruptController, etc.) based on their properties.
+
 use core::ops::Deref;
 
 use super::Fdt;
@@ -16,40 +22,55 @@ pub use chosen::*;
 pub use interrupt_controller::*;
 pub use memory::*;
 
+/// Base node type representing any device tree node.
+///
+/// `NodeBase` provides common functionality available on all nodes,
+/// including property access, child iteration, and parent references.
 #[derive(Clone)]
 pub struct NodeBase<'a> {
     name: &'a str,
     pub(crate) fdt: Fdt<'a>,
+    /// The depth/level of this node in the device tree (0 for root)
     pub level: usize,
     pub(crate) raw: Raw<'a>,
     pub(crate) parent: Option<ParentInfo<'a>>,
     interrupt_parent: Option<Phandle>,
 }
 
+/// Information about a node's parent, used for address translation.
 #[derive(Clone)]
 pub(crate) struct ParentInfo<'a> {
     pub name: &'a str,
     pub level: usize,
     pub raw: Raw<'a>,
-    // Parent's #address-cells and #size-cells (for parsing reg)
+    /// Parent's #address-cells and #size-cells (for parsing reg)
     pub address_cells: Option<u8>,
     pub size_cells: Option<u8>,
-    // Parent's ranges for address translation
+    /// Parent's ranges for address translation
     pub ranges: Option<FdtRangeSilce<'a>>,
 }
 
+/// Builder for creating NodeBase with parent information.
+///
+/// This struct reduces the number of parameters needed for `NodeBase::new_with_parent_info`
+/// by grouping related parameters together.
+pub(crate) struct ParentInfoBuilder<'a> {
+    pub parent_address_cells: Option<u8>,
+    pub parent_size_cells: Option<u8>,
+    pub parent_ranges: Option<FdtRangeSilce<'a>>,
+    pub interrupt_parent: Option<Phandle>,
+}
+
 impl<'a> NodeBase<'a> {
-    /// Create a new NodeBase with pre-calculated parent information from the stack
+    /// Create a new NodeBase with pre-calculated parent information from the stack.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_with_parent_info(
         name: &'a str,
         fdt: Fdt<'a>,
         raw: Raw<'a>,
         level: usize,
         parent: Option<&NodeBase<'a>>,
-        parent_address_cells: Option<u8>,
-        parent_size_cells: Option<u8>,
-        parent_ranges: Option<FdtRangeSilce<'a>>,
-        interrupt_parent: Option<Phandle>,
+        parent_info: ParentInfoBuilder<'a>,
     ) -> Self {
         let name = if name.is_empty() { "/" } else { name };
         NodeBase {
@@ -60,19 +81,21 @@ impl<'a> NodeBase<'a> {
                 name: p.name(),
                 level: p.level(),
                 raw: p.raw(),
-                address_cells: parent_address_cells,
-                size_cells: parent_size_cells,
-                ranges: parent_ranges,
+                address_cells: parent_info.parent_address_cells,
+                size_cells: parent_info.parent_size_cells,
+                ranges: parent_info.parent_ranges,
             }),
-            interrupt_parent,
+            interrupt_parent: parent_info.interrupt_parent,
             raw,
         }
     }
 
+    /// Returns the name of this node's parent.
     pub fn parent_name(&self) -> Option<&'a str> {
         self.parent_fast().map(|p| p.name())
     }
 
+    /// Returns the parent node as a `Node`.
     pub fn parent(&self) -> Option<Node<'a>> {
         let parent_info = self.parent.as_ref()?;
         self.fdt
@@ -92,30 +115,39 @@ impl<'a> NodeBase<'a> {
         })
     }
 
+    /// Returns the raw data for this node.
     pub fn raw(&self) -> Raw<'a> {
         self.raw
     }
 
-    /// Get the name of this node
+    /// Get the name of this node.
     pub fn name(&self) -> &'a str {
         self.name
     }
 
-    /// Get the level/depth of this node in the device tree
+    /// Get the level/depth of this node in the device tree.
     pub fn level(&self) -> usize {
         self.level
     }
 
-    /// Get compatible strings for this node (placeholder implementation)
+    /// Get compatible strings for this node (placeholder implementation).
     pub fn compatibles(&self) -> Result<impl Iterator<Item = &'a str> + 'a, FdtError> {
         let prop = self.find_property("compatible")?;
         Ok(prop.str_list())
     }
 
+    /// Returns a flattened iterator over compatible strings.
+    ///
+    /// This is an alias for [`compatibles`](Self::compatibles) that
+    /// returns the same iterator for chaining with other iterator operations.
     pub fn compatibles_flatten(&self) -> Result<impl Iterator<Item = &'a str> + 'a, FdtError> {
         self.compatibles()
     }
 
+    /// Returns an iterator over this node's register entries.
+    ///
+    /// The addresses are automatically translated from child bus addresses
+    /// to parent bus addresses using the parent's ranges property.
     pub fn reg(&self) -> Result<RegIter<'a>, FdtError> {
         let prop = self.find_property("reg")?;
 
@@ -144,12 +176,12 @@ impl<'a> NodeBase<'a> {
         self.find_property("#interrupt-controller").is_ok()
     }
 
-    /// 检查这个节点是否是根节点
+    /// Check if this node is the root node.
     pub fn is_root(&self) -> bool {
         self.level == 0
     }
 
-    /// 获取节点的完整路径信息（仅限调试用途）
+    /// Get debug information about the node (for debugging purposes only).
     pub fn debug_info(&self) -> NodeDebugInfo<'a> {
         NodeDebugInfo {
             name: self.name(),
@@ -158,11 +190,13 @@ impl<'a> NodeBase<'a> {
         }
     }
 
+    /// Returns an iterator over this node's properties.
     pub fn properties(&self) -> impl Iterator<Item = Result<Property<'a>, FdtError>> + '_ {
         let reader = self.raw.buffer();
         PropIter::new(self.fdt.clone(), reader)
     }
 
+    /// Find a property by name.
     pub fn find_property(&self, name: &str) -> Result<Property<'a>, FdtError> {
         for prop in self.properties() {
             let prop = prop?;
@@ -173,12 +207,13 @@ impl<'a> NodeBase<'a> {
         Err(FdtError::NotFound)
     }
 
+    /// Get this node's phandle.
     pub fn phandle(&self) -> Result<Phandle, FdtError> {
         let prop = self.find_property("phandle")?;
         Ok(prop.u32()?.into())
     }
 
-    /// Find [InterruptController] from current node or its parent
+    /// Find [InterruptController] from current node or its parent.
     pub fn interrupt_parent(&self) -> Result<InterruptController<'a>, FdtError> {
         // First try to get the interrupt parent phandle from the node itself
         let phandle = self.interrupt_parent.ok_or(FdtError::NotFound)?;
@@ -191,11 +226,14 @@ impl<'a> NodeBase<'a> {
         }
     }
 
-    /// Get the interrupt parent phandle for this node
+    /// Get the interrupt parent phandle for this node.
     pub fn get_interrupt_parent_phandle(&self) -> Option<Phandle> {
         self.interrupt_parent
     }
 
+    /// Returns an iterator over this node's interrupts.
+    ///
+    /// Each interrupt is represented as an iterator of u32 cells.
     pub fn interrupts(
         &self,
     ) -> Result<impl Iterator<Item = impl Iterator<Item = u32> + 'a> + 'a, FdtError> {
@@ -207,11 +245,13 @@ impl<'a> NodeBase<'a> {
         Ok(iter)
     }
 
+    /// Get the clock-frequency property value.
     pub fn clock_frequency(&self) -> Result<u32, FdtError> {
         let prop = self.find_property("clock-frequency")?;
         prop.u32()
     }
 
+    /// Returns an iterator over this node's children.
     pub fn children(&self) -> NodeChildIter<'a> {
         NodeChildIter {
             fdt: self.fdt.clone(),
@@ -222,6 +262,7 @@ impl<'a> NodeBase<'a> {
         }
     }
 
+    /// Get the status property value.
     pub fn status(&self) -> Result<Status, FdtError> {
         let prop = self.find_property("status")?;
         let s = prop.str()?;
@@ -238,11 +279,14 @@ impl<'a> NodeBase<'a> {
     }
 }
 
-/// 节点调试信息
+/// Node debug information.
 #[derive(Debug)]
 pub struct NodeDebugInfo<'a> {
+    /// The name of the node
     pub name: &'a str,
+    /// The depth/level of the node in the device tree
     pub level: usize,
+    /// The position of the node in the raw data
     pub pos: usize,
 }
 
@@ -252,6 +296,7 @@ impl core::fmt::Debug for NodeBase<'_> {
     }
 }
 
+/// Iterator over register entries.
 pub struct RegIter<'a> {
     pub(crate) size_cell: u8,
     pub(crate) address_cell: u8,
@@ -294,15 +339,24 @@ impl Iterator for RegIter<'_> {
     }
 }
 
+/// Typed node enum for specialized node access.
+///
+/// Nodes are automatically classified based on their name and properties.
+/// Use pattern matching to access node-specific functionality.
 #[derive(Debug, Clone)]
 pub enum Node<'a> {
+    /// A general-purpose node without special handling
     General(NodeBase<'a>),
+    /// The /chosen node containing boot parameters
     Chosen(Chosen<'a>),
+    /// A memory node (e.g., /memory@0)
     Memory(Memory<'a>),
+    /// An interrupt controller node
     InterruptController(InterruptController<'a>),
 }
 
 impl<'a> Node<'a> {
+    /// Returns a reference to the underlying `NodeBase`.
     pub fn node(&self) -> &NodeBase<'a> {
         self.deref()
     }
@@ -335,6 +389,7 @@ impl<'a> Deref for Node<'a> {
     }
 }
 
+/// Iterator over a node's children.
 pub struct NodeChildIter<'a> {
     fdt: Fdt<'a>,
     parent: NodeBase<'a>,
@@ -347,21 +402,21 @@ impl<'a> Iterator for NodeChildIter<'a> {
     type Item = Result<Node<'a>, FdtError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // 懒初始化节点迭代器
+        // Lazily initialize the node iterator
         if self.all_nodes.is_none() {
             self.all_nodes = Some(self.fdt.all_nodes());
         }
 
         let all_nodes = self.all_nodes.as_mut()?;
 
-        // 寻找子节点
+        // Search for child nodes
         loop {
             let node = match all_nodes.next()? {
                 Ok(node) => node,
                 Err(e) => return Some(Err(e)),
             };
 
-            // 首先找到父节点
+            // First, find the parent node
             if !self.found_parent {
                 if node.name() == self.parent.name() && node.level() == self.parent.level() {
                     self.found_parent = true;
@@ -370,16 +425,17 @@ impl<'a> Iterator for NodeChildIter<'a> {
                 continue;
             }
 
-            // 已经找到父节点，现在查找子节点
+            // Parent node found, now look for child nodes
             let current_level = node.level();
 
-            // 如果当前节点的级别等于目标级别，并且在树结构中紧跟在父节点之后，
-            // 那么它就是父节点的直接子节点
+            // If current node's level equals target level and follows parent in tree structure,
+            // then it's a direct child of the parent node
             if current_level == self.target_level {
                 return Some(Ok(node));
             }
 
-            // 如果当前节点的级别小于或等于父节点级别，说明我们已经离开了父节点的子树
+            // If current node's level is less than or equal to parent's level,
+            // we've left the parent's subtree
             if current_level <= self.parent.level() {
                 break;
             }
@@ -390,7 +446,7 @@ impl<'a> Iterator for NodeChildIter<'a> {
 }
 
 impl<'a> NodeChildIter<'a> {
-    /// 创建一个新的子节点迭代器
+    /// Create a new child node iterator.
     pub fn new(fdt: Fdt<'a>, parent: NodeBase<'a>) -> Self {
         NodeChildIter {
             fdt,
@@ -401,17 +457,17 @@ impl<'a> NodeChildIter<'a> {
         }
     }
 
-    /// 获取父节点的引用
+    /// Get a reference to the parent node.
     pub fn parent(&self) -> &NodeBase<'a> {
         &self.parent
     }
 
-    /// 收集所有子节点到一个 Vec 中
+    /// Collect all child nodes into a Vec.
     pub fn collect_children(self) -> Result<alloc::vec::Vec<Node<'a>>, FdtError> {
         self.collect()
     }
 
-    /// 查找具有特定名称的子节点
+    /// Find a child node by name.
     pub fn find_child_by_name(self, name: &str) -> Result<Node<'a>, FdtError> {
         for child_result in self {
             let child = child_result?;
@@ -422,7 +478,7 @@ impl<'a> NodeChildIter<'a> {
         Err(FdtError::NotFound)
     }
 
-    /// 查找具有特定兼容性字符串的子节点
+    /// Find a child node by compatible string.
     pub fn find_child_by_compatible(self, compatible: &str) -> Result<Node<'a>, FdtError> {
         for child_result in self {
             let child = child_result?;
@@ -449,25 +505,35 @@ mod tests {
         let dtb_data = include_bytes!("../../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
         let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
-        // 查找根节点
+        // Find the root node
         let root_node = fdt.find_nodes("/").next().unwrap().unwrap();
 
-        // 测试子节点迭代器
+        // Test child node iterator
         let children: Result<alloc::vec::Vec<_>, _> = root_node.children().collect();
         let children = children.unwrap();
 
-        // 根节点应该有子节点
-        assert!(!children.is_empty(), "根节点应该有子节点");
+        // Root node should have children
+        assert!(!children.is_empty(), "Root node should have children");
 
-        // 所有子节点的 level 应该是 1
+        // All children should be at level 1
         for child in &children {
-            assert_eq!(child.level(), 1, "根节点的直接子节点应该在 level 1");
+            assert_eq!(
+                child.level(),
+                1,
+                "Root node's direct children should be at level 1"
+            );
         }
 
-        // 检查是否包含一些预期的子节点
+        // Check that expected children are present
         let child_names: alloc::vec::Vec<_> = children.iter().map(|c| c.name()).collect();
-        assert!(child_names.contains(&"chosen"), "应该包含 chosen 节点");
-        assert!(child_names.contains(&"memory@0"), "应该包含 memory@0 节点");
+        assert!(
+            child_names.contains(&"chosen"),
+            "Should contain chosen node"
+        );
+        assert!(
+            child_names.contains(&"memory@0"),
+            "Should contain memory@0 node"
+        );
     }
 
     #[test]
@@ -475,15 +541,15 @@ mod tests {
         let dtb_data = include_bytes!("../../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
         let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
-        // 查找根节点
+        // Find the root node
         let root_node = fdt.find_nodes("/").next().unwrap().unwrap();
 
-        // 测试通过名称查找子节点
+        // Test finding child by name
         let memory_node = root_node.children().find_child_by_name("memory@0").unwrap();
 
         assert_eq!(memory_node.name(), "memory@0");
 
-        // 测试查找不存在的节点
+        // Test finding non-existent node
         let nonexistent_err = root_node
             .children()
             .find_child_by_name("nonexistent")
@@ -496,14 +562,14 @@ mod tests {
         let dtb_data = include_bytes!("../../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
         let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
-        // 查找一个叶子节点（没有子节点的节点）
+        // Find a leaf node (a node with no children)
         let leaf_node = fdt.find_nodes("/chosen").next().unwrap().unwrap();
 
-        // 测试叶子节点的子节点迭代器
+        // Test leaf node's child iterator
         let children: Result<alloc::vec::Vec<_>, _> = leaf_node.children().collect();
         let children = children.unwrap();
 
-        assert!(children.is_empty(), "叶子节点不应该有子节点");
+        assert!(children.is_empty(), "Leaf node should not have children");
     }
 
     #[test]
@@ -511,23 +577,23 @@ mod tests {
         let dtb_data = include_bytes!("../../../../dtb-file/src/dtb/bcm2711-rpi-4-b.dtb");
         let fdt = Fdt::from_bytes(dtb_data).unwrap();
 
-        // 查找 reserved-memory 节点，它应该有子节点
+        // Find reserved-memory node, which should have children
         let reserved_memory = fdt
             .all_nodes()
             .find(|node| node.as_ref().is_ok_and(|n| n.name() == "reserved-memory"))
             .unwrap()
             .unwrap();
 
-        // 测试子节点迭代器
+        // Test child node iterator
         let children: Result<alloc::vec::Vec<_>, _> = reserved_memory.children().collect();
         let children = children.unwrap();
 
-        // 确保子节点的 level 正确
+        // Ensure children's level is correct
         for child in &children {
             assert_eq!(
                 child.level(),
                 reserved_memory.level() + 1,
-                "子节点的 level 应该比父节点高 1"
+                "Child's level should be 1 higher than parent's level"
             );
         }
     }

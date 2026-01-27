@@ -10,11 +10,11 @@ mod tests {
 
     #[test]
     fn test_clock_node_detection() {
-        // 使用 RPI 4B DTB 测试 clock 节点检测
+        // Test clock node detection using RPI 4B DTB
         let raw_data = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 遍历查找 clock 节点（有 #clock-cells 属性的节点）
+        // Traverse to find clock nodes (nodes with #clock-cells property)
         let mut clock_count = 0;
         for node in fdt.all_nodes() {
             if let NodeKind::Clock(clock) = node.as_ref() {
@@ -36,11 +36,11 @@ mod tests {
 
         for node in fdt.all_nodes() {
             if let NodeKind::Clock(clock) = node.as_ref() {
-                // 获取 #clock-cells
+                // Get #clock-cells
                 let cells = clock.clock_cells;
                 println!("Clock: {} cells={}", clock.name(), cells);
 
-                // 获取输出名称
+                // Get output names
                 if !clock.clock_output_names.is_empty() {
                     println!("  output-names: {:?}", clock.clock_output_names);
                 }
@@ -65,26 +65,26 @@ mod tests {
         let raw_data = fdt_rpi_4b();
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 查找固定时钟
+        // Find fixed clocks
         let mut found_with_freq = false;
         for node in fdt.all_nodes() {
-            if let NodeKind::Clock(clock) = node.as_ref() {
-                if let ClockType::Fixed(fixed) = &clock.kind {
-                    // 打印固定时钟信息
-                    println!(
-                        "Fixed clock found: {} freq={}Hz accuracy={:?}",
-                        clock.name(),
-                        fixed.frequency,
-                        fixed.accuracy
-                    );
-                    // 有些固定时钟（如 cam1_clk, cam0_clk）没有 clock-frequency 属性
-                    if fixed.frequency > 0 {
-                        found_with_freq = true;
-                    }
+            if let NodeKind::Clock(clock) = node.as_ref()
+                && let ClockType::Fixed(fixed) = &clock.kind
+            {
+                // Print fixed clock information
+                println!(
+                    "Fixed clock found: {} freq={}Hz accuracy={:?}",
+                    clock.name(),
+                    fixed.frequency,
+                    fixed.accuracy
+                );
+                // Some fixed clocks (e.g., cam1_clk, cam0_clk) don't have clock-frequency property
+                if fixed.frequency > 0 {
+                    found_with_freq = true;
                 }
             }
         }
-        // 至少应该有一个固定时钟有频率
+        // At least one fixed clock should have a frequency
         assert!(
             found_with_freq,
             "Should find at least one fixed clock with frequency"
@@ -100,11 +100,11 @@ mod tests {
             if let NodeKind::Clock(clock) = node.as_ref() {
                 let names = &clock.clock_output_names;
                 if !names.is_empty() {
-                    // 测试 output_name 方法
+                    // Test output_name method
                     let first = clock.output_name(0);
                     assert_eq!(first, Some(names[0].as_str()));
 
-                    // 如果有多个输出，测试索引访问
+                    // If there are multiple outputs, test indexed access
                     if names.len() > 1 && clock.clock_cells > 0 {
                         let second = clock.output_name(1);
                         assert_eq!(second, Some(names[1].as_str()));
@@ -123,7 +123,7 @@ mod tests {
             if let NodeKind::Clock(clock) = node.as_ref() {
                 match &clock.kind {
                     ClockType::Fixed(fixed) => {
-                        // 打印固定时钟信息
+                        // Print fixed clock information
                         println!(
                             "Fixed clock: {} freq={} accuracy={:?}",
                             clock.name(),
@@ -132,7 +132,7 @@ mod tests {
                         );
                     }
                     ClockType::Normal => {
-                        // 测试 Normal 类型
+                        // Test Normal type
                         println!("Clock {} is a provider", clock.name());
                     }
                 }
@@ -163,7 +163,7 @@ mod tests {
                             "  [{}] phandle={:?} cells={} specifier={:?} name={:?}",
                             i, clk.phandle, clk.cells, clk.specifier, clk.name
                         );
-                        // 验证 specifier 长度与 cells 一致
+                        // Verify specifier length matches cells
                         assert_eq!(
                             clk.specifier.len(),
                             clk.cells as usize,
@@ -182,11 +182,11 @@ mod tests {
         let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
         for node in fdt.all_nodes() {
-            // 使用 as_clock_ref 获取带上下文的 clock 引用
+            // Use as_clock_ref to get clock reference with context
             if let NodeKind::Clock(clock) = node.as_ref() {
                 let clocks = clock.clocks();
                 for clk in clocks {
-                    // 测试 select() 方法
+                    // Test select() method
                     if clk.cells > 0 {
                         assert!(
                             clk.select().is_some(),

@@ -18,28 +18,28 @@ mod tests {
     #[test]
     fn test_remove_node_exact_path() {
         init_logging();
-        // 解析原始 DTB
+        // Parse original DTB
         let raw_data = fdt_qemu();
         let mut fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // 找到一个存在的节点路径进行删除
+        // Find an existing node path to remove
         let node = fdt.get_by_path("/psci");
-        assert!(node.is_some(), "psci 节点应该存在");
+        assert!(node.is_some(), "psci node should exist");
 
-        // 删除节点
+        // Remove node
         let removed = fdt.remove_node("/psci");
-        assert!(removed.is_ok(), "删除应该成功");
-        assert!(removed.unwrap().is_some(), "应该返回被删除的节点");
+        assert!(removed.is_ok(), "Removal should succeed");
+        assert!(removed.unwrap().is_some(), "Should return the removed node");
 
-        // 验证节点已被删除
+        // Verify node has been removed
         let node_after = fdt.get_by_path("/psci");
-        assert!(node_after.is_none(), "psci 节点应该已被删除");
+        assert!(node_after.is_none(), "psci node should have been removed");
     }
 
     #[test]
     fn test_remove_node_exact_path_parts() {
         init_logging();
-        // 解析原始 DTB
+        // Parse original DTB
         let raw_data = fdt_qemu();
         let mut fdt = Fdt::from_bytes(&raw_data).unwrap();
 
@@ -51,30 +51,30 @@ mod tests {
         println!("Removing node at path: {}", path);
         // drop(node);
 
-        // 删除节点
+        // Remove node
         let removed = fdt.remove_node(&path);
-        assert!(removed.is_ok(), "删除应该成功");
-        assert!(removed.unwrap().is_some(), "应该返回被删除的节点");
+        assert!(removed.is_ok(), "Removal should succeed");
+        assert!(removed.unwrap().is_some(), "Should return the removed node");
 
-        // 验证节点已被删除
+        // Verify node has been removed
         let node_after = fdt.get_by_path("/cpus/cpu@0");
-        assert!(node_after.is_none(), "cpu 节点应该已被删除");
+        assert!(node_after.is_none(), "cpu node should have been removed");
 
         let raw = fdt.encode();
         let fdt2 = Fdt::from_bytes(&raw).unwrap();
         let node_after_reload = fdt2.get_by_path("/cpus/cpu@0");
         assert!(
             node_after_reload.is_none(),
-            "重新加载后 cpu 节点应该已被删除"
+            "cpu node should have been removed after reload"
         );
     }
 
     #[test]
     fn test_remove_nested_node() {
-        // 使用手动创建的树测试嵌套删除
+        // Use manually created tree to test nested removal
         let mut fdt = Fdt::new();
 
-        // 创建嵌套节点: /soc/i2c@0/eeprom@50
+        // Create nested nodes: /soc/i2c@0/eeprom@50
         let mut soc = Node::new("soc");
         let mut i2c = Node::new("i2c@0");
         let eeprom = Node::new("eeprom@50");
@@ -82,18 +82,18 @@ mod tests {
         soc.add_child(i2c);
         fdt.root.add_child(soc);
 
-        // 验证节点存在
+        // Verify node exists
         assert!(fdt.get_by_path("/soc/i2c@0/eeprom@50").is_some());
 
-        // 删除嵌套节点
+        // Remove nested node
         let removed = fdt.remove_node("/soc/i2c@0/eeprom@50");
         assert!(removed.is_ok());
         assert!(removed.unwrap().is_some());
 
-        // 验证节点已删除
+        // Verify node has been removed
         assert!(fdt.get_by_path("/soc/i2c@0/eeprom@50").is_none());
 
-        // 父节点应该仍然存在
+        // Parent nodes should still exist
         assert!(fdt.get_by_path("/soc/i2c@0").is_some());
         assert!(fdt.get_by_path("/soc").is_some());
     }
@@ -102,7 +102,7 @@ mod tests {
     fn test_remove_nonexistent_node() {
         let mut fdt = Fdt::new();
 
-        // 删除不存在的节点应该返回 NotFound
+        // Removing non-existent node should return NotFound
         let result = fdt.remove_node("/nonexistent");
         assert!(result.is_err());
     }
@@ -111,18 +111,18 @@ mod tests {
     fn test_remove_direct_child() {
         let mut fdt = Fdt::new();
 
-        // 添加直接子节点
+        // Add direct child node
         fdt.root.add_child(Node::new("memory@0"));
 
-        // 验证存在
+        // Verify it exists
         assert!(fdt.get_by_path("/memory@0").is_some());
 
-        // 删除直接子节点
+        // Remove direct child node
         let removed = fdt.remove_node("/memory@0");
         assert!(removed.is_ok());
         assert!(removed.unwrap().is_some());
 
-        // 验证已删除
+        // Verify it has been removed
         assert!(fdt.get_by_path("/memory@0").is_none());
     }
 
@@ -130,7 +130,7 @@ mod tests {
     fn test_remove_empty_path() {
         let mut fdt = Fdt::new();
 
-        // 空路径应该返回错误
+        // Empty path should return error
         let result = fdt.remove_node("");
         assert!(result.is_err());
 
@@ -140,10 +140,10 @@ mod tests {
 
     #[test]
     fn test_node_remove_by_path() {
-        // 直接测试 Node 的 remove_by_path 方法
+        // Test Node's remove_by_path method directly
         let mut root = Node::new("");
 
-        // 创建结构: /a/b/c
+        // Create structure: /a/b/c
         let mut a = Node::new("a");
         let mut b = Node::new("b");
         let c = Node::new("c");
@@ -151,25 +151,25 @@ mod tests {
         a.add_child(b);
         root.add_child(a);
 
-        // 验证 c 存在
+        // Verify c exists
         assert!(root.get_child("a").is_some());
 
-        // 删除 c
+        // Remove c
         let removed = root.remove_by_path("a/b/c");
         assert!(removed.is_ok());
         assert!(removed.unwrap().is_some());
 
-        // 删除 b
+        // Remove b
         let removed = root.remove_by_path("a/b");
         assert!(removed.is_ok());
         assert!(removed.unwrap().is_some());
 
-        // 删除 a
+        // Remove a
         let removed = root.remove_by_path("a");
         assert!(removed.is_ok());
         assert!(removed.unwrap().is_some());
 
-        // 所有节点都已删除
+        // All nodes have been removed
         assert!(root.get_child("a").is_none());
     }
 
@@ -180,7 +180,7 @@ mod tests {
         assert_eq!(&node.path(), "/test");
         println!("Node:\n {:?}", node);
 
-        // 带有和不带斜杠的路径都应该工作
+        // Both paths with and without leading slash should work
         let result = fdt.remove_node("/test");
         assert!(result.is_ok());
 
@@ -191,16 +191,16 @@ mod tests {
     fn test_remove_node_preserves_siblings() {
         let mut fdt = Fdt::new();
 
-        // 添加多个兄弟节点
+        // Add multiple sibling nodes
         fdt.root.add_child(Node::new("node1"));
         fdt.root.add_child(Node::new("node2"));
         fdt.root.add_child(Node::new("node3"));
 
-        // 删除中间节点
+        // Remove middle node
         let removed = fdt.remove_node("/node2");
         assert!(removed.is_ok());
 
-        // 验证其他节点仍然存在
+        // Verify other nodes still exist
         assert!(fdt.get_by_path("/node1").is_some());
         assert!(fdt.get_by_path("/node2").is_none());
         assert!(fdt.get_by_path("/node3").is_some());

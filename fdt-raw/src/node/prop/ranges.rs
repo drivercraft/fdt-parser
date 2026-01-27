@@ -1,5 +1,14 @@
+//! Ranges property parser for address translation.
+//!
+//! This module provides types for parsing the `ranges` property, which maps
+//! child bus addresses to parent bus addresses for address translation.
+
 use crate::data::{Bytes, Reader};
 
+/// Ranges property wrapper for parsing address translation entries.
+///
+/// The `ranges` property maps child bus address ranges to parent bus address
+/// ranges, enabling translation between address spaces.
 #[derive(Clone)]
 pub struct VecRange<'a> {
     address_cells: usize,
@@ -9,6 +18,7 @@ pub struct VecRange<'a> {
 }
 
 impl<'a> VecRange<'a> {
+    /// Creates a new VecRange parser.
     pub(crate) fn new(
         address_cells: usize,
         parent_address_cells: usize,
@@ -23,6 +33,7 @@ impl<'a> VecRange<'a> {
         }
     }
 
+    /// Returns an iterator over range entries.
     pub fn iter(&self) -> VecRangeIter<'a> {
         VecRangeIter {
             address_cells: self.address_cells,
@@ -33,13 +44,21 @@ impl<'a> VecRange<'a> {
     }
 }
 
+/// Range entry information.
+///
+/// Represents a single entry in a `ranges` property, mapping a child bus
+/// address range to a parent bus address range.
 #[derive(Debug, Clone)]
 pub struct RangeInfo {
+    /// Child bus address
     pub child_address: u64,
+    /// Parent bus address
     pub parent_address: u64,
+    /// Length of the region
     pub length: u64,
 }
 
+/// Iterator over range entries.
 pub struct VecRangeIter<'a> {
     address_cells: usize,
     parent_address_cells: usize,

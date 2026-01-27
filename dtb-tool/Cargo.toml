@@ -1,9 +1,9 @@
 [package]
 name = "dtb-tool"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Zhourui <zrufo747@outlook.com>"]
 edition = "2021"
-repository = "https://github.com/qclic/fdt-parser"
+repository = "https://github.com/drivercraft/fdt-parser"
 documentation = "https://docs.rs/fdt-parser"
 license = "MPL-2.0"
 description = "A pure-Rust `#![no_std]` crate for parsing FDT"

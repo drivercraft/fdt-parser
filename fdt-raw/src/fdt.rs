@@ -1,10 +1,21 @@
+//! Main Flattened Device Tree (FDT) parser.
+//!
+//! This module provides the primary `Fdt` type that represents a parsed
+//! device tree blob. It offers methods for traversing nodes, resolving
+//! paths, translating addresses, and accessing special nodes like
+//! /chosen and /memory.
+
 use core::fmt;
 
 use crate::{
     Chosen, FdtError, Memory, MemoryReservation, Node, data::Bytes, header::Header, iter::FdtIter,
 };
 
-/// Memory reservation block iterator
+/// Iterator over memory reservation entries.
+///
+/// The memory reservation block contains a list of physical memory regions
+/// that must be preserved during boot. This iterator yields each reservation
+/// entry until it reaches the terminating entry (address=0, size=0).
 pub struct MemoryReservationIter<'a> {
     data: &'a [u8],
     offset: usize,
@@ -14,22 +25,22 @@ impl<'a> Iterator for MemoryReservationIter<'a> {
     type Item = MemoryReservation;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // 确保我们有足够的数据来读取地址和大小（各8字节）
+        // Ensure we have enough data to read address and size (8 bytes each)
         if self.offset + 16 > self.data.len() {
             return None;
         }
 
-        // 读取地址（8字节，大端序）
+        // Read address (8 bytes, big-endian)
         let address_bytes = &self.data[self.offset..self.offset + 8];
         let address = u64::from_be_bytes(address_bytes.try_into().unwrap());
         self.offset += 8;
 
-        // 读取大小（8字节，大端序）
+        // Read size (8 bytes, big-endian)
         let size_bytes = &self.data[self.offset..self.offset + 8];
         let size = u64::from_be_bytes(size_bytes.try_into().unwrap());
         self.offset += 8;
 
-        // 检查是否到达终止符（地址和大小都为0）
+        // Check for terminator (both address and size are zero)
         if address == 0 && size == 0 {
             return None;
         }
@@ -38,7 +49,7 @@ impl<'a> Iterator for MemoryReservationIter<'a> {
     }
 }
 
-/// 写入缩进（使用空格）
+/// Helper function for writing indentation during formatting.
 fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Result {
     for _ in 0..count {
         write!(f, "{}", ch)?;
@@ -46,6 +57,14 @@ fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Resu
     Ok(())
 }
 
+/// A parsed Flattened Device Tree (FDT).
+///
+/// This is the main type for working with device tree blobs. It provides
+/// methods for traversing the tree, finding nodes by path, translating
+/// addresses, and accessing special nodes like /chosen and /memory.
+///
+/// The `Fdt` holds a reference to the underlying device tree data and
+/// performs zero-copy parsing where possible.
 #[derive(Clone)]
 pub struct Fdt<'a> {
     header: Header,
@@ -53,7 +72,15 @@ pub struct Fdt<'a> {
 }
 
 impl<'a> Fdt<'a> {
-    /// Create a new `Fdt` from byte slice.
+    /// Create a new `Fdt` from a byte slice.
+    ///
+    /// Parses the FDT header and validates the magic number. The slice
+    /// must contain a complete, valid device tree blob.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FdtError` if the header is invalid, the magic number
+    /// doesn't match, or the buffer is too small.
     pub fn from_bytes(data: &'a [u8]) -> Result<Fdt<'a>, FdtError> {
         let header = Header::from_bytes(data)?;
         if data.len() < header.totalsize as usize {
@@ -69,13 +96,21 @@ impl<'a> Fdt<'a> {
         })
     }
 
-    /// Create a new `Fdt` from a raw pointer and size in bytes.
+    /// Create a new `Fdt` from a raw pointer.
+    ///
+    /// Parses an FDT from the memory location pointed to by `ptr`.
+    /// This is useful when working with device trees loaded by bootloaders.
     ///
     /// # Safety
     ///
     /// The caller must ensure that the pointer is valid and points to a
-    /// memory region of at least `size` bytes that contains a valid device tree
-    /// blob.
+    /// memory region of at least `totalsize` bytes that contains a valid
+    /// device tree blob. The memory must remain valid for the lifetime `'a`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FdtError` if the header is invalid or the magic number
+    /// doesn't match.
     pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Fdt<'a>, FdtError> {
         let header = unsafe { Header::from_ptr(ptr)? };
 
@@ -85,18 +120,32 @@ impl<'a> Fdt<'a> {
         Ok(Fdt { header, data })
     }
 
+    /// Returns a reference to the FDT header.
     pub fn header(&self) -> &Header {
         &self.header
     }
 
+    /// Returns the underlying byte slice.
     pub fn as_slice(&self) -> &'a [u8] {
         self.data.as_slice()
     }
 
+    /// Returns an iterator over all nodes in the device tree.
     pub fn all_nodes(&self) -> FdtIter<'a> {
         FdtIter::new(self.clone())
     }
 
+    /// Find a node by its absolute path or alias.
+    ///
+    /// The path can be an absolute path starting with '/', or an alias
+    /// defined in the /aliases node. Returns `None` if the node is not found.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let node = fdt.find_by_path("/soc@30000000/serial@10000");
+    /// let uart = fdt.find_by_path("serial0");  // Using alias
+    /// ```
     pub fn find_by_path(&self, path: &str) -> Option<Node<'a>> {
         let path = self.normalize_path(path)?;
         let split = path.trim_matches('/').split('/');
@@ -122,11 +171,19 @@ impl<'a> Fdt<'a> {
         found_node
     }
 
+    /// Resolve an alias to its full path.
+    ///
+    /// Looks up the alias in the /aliases node and returns the corresponding
+    /// path string.
     fn resolve_alias(&self, alias: &str) -> Option<&'a str> {
         let aliases_node = self.find_by_path("/aliases")?;
         aliases_node.find_property_str(alias)
     }
 
+    /// Normalize a path to an absolute path.
+    ///
+    /// If the path starts with '/', it's returned as-is. Otherwise,
+    /// it's treated as an alias and resolved.
     fn normalize_path(&self, path: &'a str) -> Option<&'a str> {
         if path.starts_with('/') {
             Some(path)
@@ -135,26 +192,33 @@ impl<'a> Fdt<'a> {
         }
     }
 
-    /// Translate device address to CPU physical address.
+    /// Translate a device address to a CPU physical address.
     ///
-    /// This function implements address translation similar to Linux's of_translate_address.
-    /// It walks up the device tree hierarchy, applying each parent's ranges property to
-    /// translate the child address space to parent address space, ultimately obtaining
-    /// the CPU physical address.
+    /// This function implements address translation similar to Linux's
+    /// `of_translate_address`. It walks up the device tree hierarchy,
+    /// applying each parent's `ranges` property to translate the child
+    /// address space to the parent address space.
+    ///
+    /// The translation starts from the node at `path` and walks up through
+    /// each parent, applying the `ranges` property until reaching the root.
     ///
     /// # Arguments
+    ///
     /// * `path` - Node path (absolute path starting with '/' or alias name)
-    /// * `address` - Device address from the node's reg property
+    /// * `address` - Device address from the node's `reg` property
     ///
     /// # Returns
-    /// The translated CPU physical address. If translation fails, returns the original address.
+    ///
+    /// The translated CPU physical address. If translation fails at any
+    /// point (e.g., a parent node has no `ranges` property), the original
+    /// address is returned.
     pub fn translate_address(&self, path: &'a str, address: u64) -> u64 {
         let path = match self.normalize_path(path) {
             Some(p) => p,
             None => return address,
         };
 
-        // 分割路径为各级节点名称
+        // Split path into component parts
         let path_parts: heapless::Vec<&str, 16> = path
             .trim_matches('/')
             .split('/')
@@ -167,17 +231,17 @@ impl<'a> Fdt<'a> {
 
         let mut current_address = address;
 
-        // 从最深层的节点向上遍历，对每一层应用 ranges 转换
-        // 注意：我们需要从倒数第二层开始（因为最后一层是目标节点本身）
+        // Walk up from the deepest node, applying ranges at each level
+        // Note: We start from the second-to-last level (the target node itself is skipped)
         for depth in (0..path_parts.len()).rev() {
-            // 构建到当前层的路径
+            // Build the path to the current parent level
             let parent_parts = &path_parts[..depth];
             if parent_parts.is_empty() {
-                // 已经到达根节点，不需要继续转换
+                // Reached root node, no more translation needed
                 break;
             }
 
-            // 查找父节点
+            // Find the parent node
             let mut parent_path = heapless::String::<256>::new();
             parent_path.push('/').ok();
             for (i, part) in parent_parts.iter().enumerate() {
@@ -192,25 +256,25 @@ impl<'a> Fdt<'a> {
                 None => continue,
             };
 
-            // 获取父节点的 ranges 属性
+            // Get the parent's ranges property
             let ranges = match parent_node.ranges() {
                 Some(r) => r,
                 None => {
-                    // 没有 ranges 属性，停止转换
+                    // No ranges property, stop translation
                     break;
                 }
             };
 
-            // 在 ranges 中查找匹配的转换规则
+            // Look for a matching translation rule in ranges
             let mut found = false;
             for range in ranges.iter() {
-                // 检查地址是否在当前 range 的范围内
+                // Check if the address falls within this range
                 if current_address >= range.child_address
                     && current_address < range.child_address + range.length
                 {
-                    // 计算在 child address space 中的偏移
+                    // Calculate offset in child address space
                     let offset = current_address - range.child_address;
-                    // 转换到 parent address space
+                    // Translate to parent address space
                     current_address = range.parent_address + offset;
                     found = true;
                     break;
@@ -218,15 +282,15 @@ impl<'a> Fdt<'a> {
             }
 
             if !found {
-                // 如果在 ranges 中没有找到匹配项，保持当前地址不变
-                // 这通常意味着地址转换失败，但我们继续尝试上层
+                // No matching range found, keep current address and continue
+                // This typically means translation failed, but we try upper levels
             }
         }
 
         current_address
     }
 
-    /// Get an iterator over memory reservation entries
+    /// Returns an iterator over memory reservation entries.
     pub fn memory_reservations(&self) -> MemoryReservationIter<'a> {
         MemoryReservationIter {
             data: self.data.as_slice(),
@@ -234,6 +298,7 @@ impl<'a> Fdt<'a> {
         }
     }
 
+    /// Returns the /chosen node if it exists.
     pub fn chosen(&self) -> Option<Chosen<'a>> {
         for node in self.all_nodes() {
             if let Node::Chosen(c) = node {
@@ -243,6 +308,7 @@ impl<'a> Fdt<'a> {
         None
     }
 
+    /// Returns an iterator over all memory nodes.
     pub fn memory(&self) -> impl Iterator<Item = Memory<'a>> + 'a {
         self.all_nodes().filter_map(|node| {
             if let Node::Memory(mem) = node {
@@ -253,6 +319,7 @@ impl<'a> Fdt<'a> {
         })
     }
 
+    /// Returns an iterator over nodes in the /reserved-memory region.
     pub fn reserved_memory(&self) -> impl Iterator<Item = Node<'a>> + 'a {
         ReservedMemoryIter {
             node_iter: self.all_nodes(),
@@ -262,6 +329,10 @@ impl<'a> Fdt<'a> {
     }
 }
 
+/// Iterator over nodes in the /reserved-memory region.
+///
+/// Yields all child nodes of the /reserved-memory node, which describe
+/// memory regions that are reserved for specific purposes.
 struct ReservedMemoryIter<'a> {
     node_iter: FdtIter<'a>,
     in_reserved_memory: bool,
@@ -272,7 +343,7 @@ impl<'a> Iterator for ReservedMemoryIter<'a> {
     type Item = Node<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(node) = self.node_iter.next() {
+        for node in self.node_iter.by_ref() {
             if node.name() == "reserved-memory" {
                 self.in_reserved_memory = true;
                 self.reserved_level = node.level();
@@ -281,7 +352,7 @@ impl<'a> Iterator for ReservedMemoryIter<'a> {
 
             if self.in_reserved_memory {
                 if node.level() <= self.reserved_level {
-                    // 已经离开 reserved-memory 节点
+                    // Left the reserved-memory node
                     self.in_reserved_memory = false;
                     return None;
                 } else {
@@ -303,7 +374,7 @@ impl fmt::Display for Fdt<'_> {
         for node in self.all_nodes() {
             let level = node.level();
 
-            // 关闭前一层级的节点
+            // Close nodes from the previous level
             while prev_level > level {
                 prev_level -= 1;
                 write_indent(f, prev_level, "    ")?;
@@ -317,10 +388,10 @@ impl fmt::Display for Fdt<'_> {
                 node.name()
             };
 
-            // 打印节点头部
+            // Print node header
             writeln!(f, "{} {{", name)?;
 
-            // 打印属性
+            // Print properties
             for prop in node.properties() {
                 write_indent(f, level + 1, "    ")?;
                 writeln!(f, "{};", prop)?;
@@ -329,7 +400,7 @@ impl fmt::Display for Fdt<'_> {
             prev_level = level + 1;
         }
 
-        // 关闭剩余的节点
+        // Close remaining nodes
         while prev_level > 0 {
             prev_level -= 1;
             write_indent(f, prev_level, "    ")?;
@@ -348,7 +419,7 @@ impl fmt::Debug for Fdt<'_> {
 
         for node in self.all_nodes() {
             let level = node.level();
-            // 基础缩进 2 个 tab，每层再加 1 个 tab
+            // Base indentation is 2 tabs, plus 1 tab per level
             write_indent(f, level + 2, "\t")?;
 
             let name = if node.name().is_empty() {
@@ -357,14 +428,14 @@ impl fmt::Debug for Fdt<'_> {
                 node.name()
             };
 
-            // 打印节点名称和基本信息
+            // Print node name and basic info
             writeln!(
                 f,
                 "[{}] address_cells={}, size_cells={}",
                 name, node.address_cells, node.size_cells
             )?;
 
-            // 打印属性
+            // Print properties
             for prop in node.properties() {
                 write_indent(f, level + 3, "\t")?;
                 if let Some(v) = prop.as_address_cells() {
@@ -378,7 +449,7 @@ impl fmt::Debug for Fdt<'_> {
                 } else if let Some(p) = prop.as_phandle() {
                     writeln!(f, "phandle: {}", p)?;
                 } else {
-                    // 默认处理未知属性
+                    // Default handling for unknown properties
                     if prop.is_empty() {
                         writeln!(f, "{}", prop.name())?;
                     } else if let Some(s) = prop.as_str() {
@@ -404,13 +475,13 @@ mod tests {
 
     #[test]
     fn test_memory_reservation_iterator() {
-        // 创建一个简单的测试数据：一个内存保留条目 + 终止符
+        // Create simple test data: one memory reservation entry + terminator
         let mut test_data = [0u8; 32];
 
-        // 地址: 0x80000000, 大小: 0x10000000 (256MB)
+        // Address: 0x80000000, Size: 0x10000000 (256MB)
         test_data[0..8].copy_from_slice(&0x80000000u64.to_be_bytes());
         test_data[8..16].copy_from_slice(&0x10000000u64.to_be_bytes());
-        // 终止符: address=0, size=0
+        // Terminator: address=0, size=0
         test_data[16..24].copy_from_slice(&0u64.to_be_bytes());
         test_data[24..32].copy_from_slice(&0u64.to_be_bytes());
 
@@ -427,7 +498,7 @@ mod tests {
 
     #[test]
     fn test_empty_memory_reservation_iterator() {
-        // 只有终止符
+        // Only terminator
         let mut test_data = [0u8; 16];
         test_data[0..8].copy_from_slice(&0u64.to_be_bytes());
         test_data[8..16].copy_from_slice(&0u64.to_be_bytes());

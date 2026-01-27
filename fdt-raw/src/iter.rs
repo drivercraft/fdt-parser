@@ -1,3 +1,8 @@
+//! Iterator for traversing all nodes in a Flattened Device Tree.
+//!
+//! This module provides `FdtIter`, which walks through the structure block
+//! of an FDT and yields each node in a depth-first traversal order.
+
 use log::error;
 
 use crate::{
@@ -6,21 +11,32 @@ use crate::{
     node::{OneNodeIter, OneNodeState},
 };
 
+/// Iterator over all nodes in a Flattened Device Tree.
+///
+/// This iterator performs a depth-first traversal of the device tree,
+/// yielding each node as it's encountered. It maintains a context stack
+/// to track the `#address-cells` and `#size-cells` values inherited from
+/// parent nodes.
 pub struct FdtIter<'a> {
     fdt: Fdt<'a>,
     reader: Reader<'a>,
     strings: Bytes<'a>,
-    /// 当前正在处理的节点迭代器
+    /// The node iterator currently being processed
     node_iter: Option<OneNodeIter<'a>>,
-    /// 是否已终止（出错或结束）
+    /// Whether iteration has terminated (due to error or end)
     finished: bool,
-    /// 当前层级深度
+    /// Current depth level in the tree
     level: usize,
-    /// 上下文栈，栈顶为当前上下文
+    /// Context stack, with the top being the current context
     context_stack: heapless::Vec<NodeContext, 16>,
 }
 
 impl<'a> FdtIter<'a> {
+    /// Creates a new FDT iterator from an FDT instance.
+    ///
+    /// Initializes the reader at the start of the structure block and the
+    /// strings slice at the strings block. Also initializes the context
+    /// stack with default values.
     pub fn new(fdt: Fdt<'a>) -> Self {
         let header = fdt.header();
         let struct_offset = header.off_dt_struct as usize;
@@ -32,7 +48,7 @@ impl<'a> FdtIter<'a> {
             .data
             .slice(strings_offset..strings_offset + strings_size);
 
-        // 初始化上下文栈，压入默认上下文
+        // Initialize context stack with default context
         let mut context_stack = heapless::Vec::new();
         let _ = context_stack.push(NodeContext::default());
 
@@ -47,14 +63,14 @@ impl<'a> FdtIter<'a> {
         }
     }
 
-    /// 获取当前上下文（栈顶）
+    /// Returns the current context (top of the stack).
     #[inline]
     fn current_context(&self) -> &NodeContext {
-        // 栈永远不为空，因为初始化时压入了默认上下文
+        // The stack is never empty because we push a default context on initialization
         self.context_stack.last().unwrap()
     }
 
-    /// 处理错误：输出错误日志并终止迭代
+    /// Handles an error by logging it and terminating iteration.
     fn handle_error(&mut self, err: FdtError) {
         error!("FDT parse error: {}", err);
         self.finished = true;
@@ -70,28 +86,28 @@ impl<'a> Iterator for FdtIter<'a> {
         }
 
         loop {
-            // 如果有正在处理的节点，继续处理它
+            // If there's a node being processed, continue processing it
             if let Some(ref mut node_iter) = self.node_iter {
                 match node_iter.process() {
                     Ok(OneNodeState::ChildBegin) => {
-                        // 遇到子节点，更新 reader 位置并清空当前节点迭代器
+                        // Child node encountered, update reader position and clear current node iterator
                         self.reader = node_iter.reader().clone();
                         self.node_iter = None;
-                        // 继续循环，下一次会读取 BeginNode token
+                        // Continue loop, next iteration will read BeginNode token
                     }
                     Ok(OneNodeState::End) => {
-                        // 当前节点结束，更新 reader 并降低层级
+                        // Current node ended, update reader and decrease level
                         self.reader = node_iter.reader().clone();
                         self.node_iter = None;
                         if self.level > 0 {
                             self.level -= 1;
-                            // 弹出栈顶，恢复父节点上下文
+                            // Pop stack to restore parent node context
                             self.context_stack.pop();
                         }
-                        // 继续循环处理下一个 token
+                        // Continue loop to process next token
                     }
                     Ok(OneNodeState::Processing) => {
-                        // 不应该到达这里
+                        // Should not reach here
                         continue;
                     }
                     Err(e) => {
@@ -102,10 +118,10 @@ impl<'a> Iterator for FdtIter<'a> {
                 continue;
             }
 
-            // 读取下一个 token
+            // Read next token
             match self.reader.read_token() {
                 Ok(Token::BeginNode) => {
-                    // 创建新的节点迭代器来处理这个节点
+                    // Create new node iterator to handle this node
                     let mut node_iter = OneNodeIter::new(
                         self.reader.clone(),
                         self.strings.clone(),
@@ -114,41 +130,41 @@ impl<'a> Iterator for FdtIter<'a> {
                         self.fdt.clone(),
                     );
 
-                    // 读取节点名称
+                    // Read node name
                     match node_iter.read_node_name() {
                         Ok(mut node) => {
-                            // 先处理节点属性以获取 address-cells, size-cells
+                            // Process node properties to get address-cells, size-cells
                             match node_iter.process() {
                                 Ok(state) => {
                                     let props = node_iter.parsed_props();
 
-                                    // 更新节点的 cells
+                                    // Update node's cells
                                     node.address_cells = props.address_cells.unwrap_or(2);
                                     node.size_cells = props.size_cells.unwrap_or(1);
 
-                                    // 根据状态决定下一步动作
+                                    // Decide next action based on state
                                     match state {
                                         OneNodeState::ChildBegin => {
-                                            // 有子节点，压入子节点上下文
+                                            // Has child nodes, push child context
                                             let child_context = NodeContext {
                                                 address_cells: node.address_cells,
                                                 size_cells: node.size_cells,
                                             };
                                             let _ = self.context_stack.push(child_context);
 
-                                            // 有子节点，更新 reader 位置
+                                            // Has child nodes, update reader position
                                             self.reader = node_iter.reader().clone();
-                                            // 增加层级（节点有子节点）
+                                            // Increase level (node has children)
                                             self.level += 1;
                                         }
                                         OneNodeState::End => {
-                                            // 节点已结束（没有子节点），更新 reader
+                                            // Node ended (no children), update reader
                                             self.reader = node_iter.reader().clone();
-                                            // 不压栈，不更新上下文，因为节点没有子节点
-                                            // 不增加层级，因为节点已经关闭
+                                            // Don't push or update context since node has no children
+                                            // Don't increase level since node is already closed
                                         }
                                         OneNodeState::Processing => {
-                                            // 不应该到达这里，因为 process() 应该总是返回 ChildBegin 或 End
+                                            // Should not reach here, process() should always return ChildBegin or End
                                             self.node_iter = Some(node_iter);
                                             self.level += 1;
                                         }
@@ -169,25 +185,25 @@ impl<'a> Iterator for FdtIter<'a> {
                     }
                 }
                 Ok(Token::EndNode) => {
-                    // 顶层 EndNode，降低层级
+                    // Top-level EndNode, decrease level
                     if self.level > 0 {
                         self.level -= 1;
-                        // 弹出栈顶，恢复父节点上下文
+                        // Pop stack to restore parent node context
                         self.context_stack.pop();
                     }
                     continue;
                 }
                 Ok(Token::End) => {
-                    // 结构块结束
+                    // Structure block ended
                     self.finished = true;
                     return None;
                 }
                 Ok(Token::Nop) => {
-                    // 忽略 NOP
+                    // Ignore NOP tokens
                     continue;
                 }
                 Ok(Token::Prop) | Ok(Token::Data(_)) => {
-                    // 在顶层遇到属性或未知数据是错误的
+                    // Property or unknown data at top level is an error
                     self.handle_error(FdtError::BufferTooSmall {
                         pos: self.reader.position(),
                     });

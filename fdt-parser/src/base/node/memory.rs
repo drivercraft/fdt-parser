@@ -1,7 +1,17 @@
+//! Memory node type.
+//!
+//! This module provides the `Memory` type for memory device nodes that
+//! describe the physical memory layout of the system.
+
 use core::{iter, ops::Deref};
 
 use crate::{base::NodeBase, FdtError, MemoryRegion};
 
+/// A memory device node.
+///
+/// Memory device nodes describe the physical memory layout for the system.
+/// A system can have multiple memory nodes, or multiple memory ranges
+/// specified in the `reg` property of a single memory node.
 #[derive(Clone)]
 pub struct Memory<'a> {
     node: NodeBase<'a>,
@@ -12,9 +22,12 @@ impl<'a> Memory<'a> {
         Memory { node }
     }
 
-    /// A memory device node is required for all devicetrees and describes the physical memory layout for the system. If a system
-    /// has multiple ranges of memory, multiple memory nodes can be created, or the ranges can be specified in the reg property
-    /// of a single memory node.
+    /// Returns an iterator over the memory regions described by this node.
+    ///
+    /// A memory device node is required for all devicetrees and describes the
+    /// physical memory layout for the system. If a system has multiple ranges
+    /// of memory, multiple memory nodes can be created, or the ranges can be
+    /// specified in the reg property of a single memory node.
     pub fn regions(&self) -> impl Iterator<Item = Result<MemoryRegion, FdtError>> + 'a {
         let mut reg = self.node.reg();
         let mut has_error = false;
@@ -38,6 +51,7 @@ impl<'a> Memory<'a> {
         })
     }
 
+    /// Get the name of this memory node.
     pub fn name(&self) -> &'a str {
         self.node.name()
     }

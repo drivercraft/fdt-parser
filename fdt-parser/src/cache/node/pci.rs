@@ -6,35 +6,53 @@ use core::{
 use crate::{cache::node::NodeBase, FdtError, Phandle};
 use alloc::{vec, vec::Vec};
 
+/// PCI address space type.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PciSpace {
+    /// I/O space
     IO,
+    /// 32-bit memory space
     Memory32,
+    /// 64-bit memory space
     Memory64,
 }
 
+/// A PCI address range for address translation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PciRange {
+    /// The address space type
     pub space: PciSpace,
+    /// The address on the PCI bus
     pub bus_address: u64,
+    /// The address in CPU physical memory
     pub cpu_address: u64,
+    /// The size of the range
     pub size: u64,
+    /// Whether the memory is prefetchable
     pub prefetchable: bool,
 }
 
+/// A PCI interrupt mapping entry from the interrupt-map property.
 #[derive(Clone, Debug)]
 pub struct PciInterruptMap {
+    /// The child device address (masked)
     pub child_address: Vec<u32>,
+    /// The child interrupt pin (masked)
     pub child_irq: Vec<u32>,
+    /// The phandle of the interrupt parent controller
     pub interrupt_parent: Phandle,
+    /// The interrupt specifier for the parent controller
     pub parent_irq: Vec<u32>,
 }
 
+/// Interrupt information for a PCI device.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PciInterruptInfo {
+    /// The interrupt lines/numbers for this device
     pub irqs: Vec<u32>,
 }
 
+/// A PCI device tree node.
 #[derive(Clone)]
 pub struct Pci {
     node: NodeBase,
@@ -45,6 +63,7 @@ impl Pci {
         Pci { node }
     }
 
+    /// Get the number of interrupt cells for PCI devices.
     pub fn interrupt_cells(&self) -> u32 {
         self.find_property("#interrupt-cells")
             .and_then(|prop| prop.u32().ok())

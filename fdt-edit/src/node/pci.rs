@@ -6,42 +6,71 @@ use log::debug;
 
 use crate::node::gerneric::NodeRefGen;
 
+/// PCI address space types.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PciSpace {
+    /// I/O space
     IO,
+    /// 32-bit memory space
     Memory32,
+    /// 64-bit memory space
     Memory64,
 }
 
+/// PCI address range entry.
+///
+/// Represents a range of addresses in PCI address space with mapping to CPU address space.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PciRange {
+    /// The PCI address space type
     pub space: PciSpace,
+    /// Address on the PCI bus
     pub bus_address: u64,
+    /// Address in CPU physical address space
     pub cpu_address: u64,
+    /// Size of the range in bytes
     pub size: u64,
+    /// Whether the memory region is prefetchable
     pub prefetchable: bool,
 }
 
+/// PCI interrupt mapping entry.
+///
+/// Represents a mapping from PCI device interrupts to parent interrupt controller inputs.
 #[derive(Clone, Debug)]
 pub struct PciInterruptMap {
+    /// Child device address (masked)
     pub child_address: Vec<u32>,
+    /// Child device IRQ (masked)
     pub child_irq: Vec<u32>,
+    /// Phandle of the interrupt parent controller
     pub interrupt_parent: Phandle,
+    /// Parent controller IRQ inputs
     pub parent_irq: Vec<u32>,
 }
 
+/// PCI interrupt information.
+///
+/// Contains the resolved interrupt information for a PCI device.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PciInterruptInfo {
+    /// List of IRQ numbers
     pub irqs: Vec<u32>,
 }
 
+/// PCI node reference.
+///
+/// Provides specialized access to PCI bridge nodes and their properties.
 #[derive(Clone, Debug)]
 pub struct NodeRefPci<'a> {
+    /// The underlying generic node reference
     pub node: NodeRefGen<'a>,
 }
 
 impl<'a> NodeRefPci<'a> {
-    // 在这里添加 PCI 相关的方法
+    /// Attempts to create a PCI node reference from a generic node.
+    ///
+    /// Returns `Err` with the original node if it's not a PCI node.
     pub fn try_from(node: NodeRefGen<'a>) -> Result<Self, NodeRefGen<'a>> {
         if node.device_type() == Some("pci") {
             Ok(Self { node })
@@ -50,6 +79,9 @@ impl<'a> NodeRefPci<'a> {
         }
     }
 
+    /// Returns the `#interrupt-cells` property value.
+    ///
+    /// Defaults to 1 for PCI devices if not specified.
     pub fn interrupt_cells(&self) -> u32 {
         self.find_property("#interrupt-cells")
             .and_then(|prop| prop.get_u32())
@@ -131,8 +163,8 @@ impl<'a> NodeRefPci<'a> {
         (space, prefetchable)
     }
 
-    /// 获取 PCI 设备的中断信息
-    /// 参数: bus, device, function, pin (1=INTA, 2=INTB, 3=INTC, 4=INTD)
+    /// Get interrupt information for a PCI device
+    /// Parameters: bus, device, function, pin (1=INTA, 2=INTB, 3=INTC, 4=INTD)
     pub fn child_interrupts(
         &self,
         bus: u8,
@@ -140,17 +172,17 @@ impl<'a> NodeRefPci<'a> {
         function: u8,
         interrupt_pin: u8,
     ) -> Result<PciInterruptInfo, FdtError> {
-        // 获取 interrupt-map 和 mask
+        // Get interrupt-map and mask
         let interrupt_map = self.interrupt_map()?;
 
-        // 将 mask 转换为 Vec 以便索引访问
+        // Convert mask to Vec for indexed access
         let mask: Vec<u32> = self
             .interrupt_map_mask()
             .ok_or(FdtError::NotFound)?
             .collect();
 
-        // 构造 PCI 设备的子地址
-        // 格式: [bus_num, device_num, func_num] 在适当的位
+        // Construct child address for PCI device
+        // Format: [bus_num, device_num, func_num] at appropriate bit positions
         let child_addr_high = ((bus as u32 & 0xff) << 16)
             | ((device as u32 & 0x1f) << 11)
             | ((function as u32 & 0x7) << 8);
@@ -163,20 +195,20 @@ impl<'a> NodeRefPci<'a> {
         let encoded_address = [child_addr_high, child_addr_mid, child_addr_low];
         let mut masked_child_address = Vec::with_capacity(child_addr_cells);
 
-        // 应用 mask 到子地址
+        // Apply mask to child address
         for (idx, value) in encoded_address.iter().take(child_addr_cells).enumerate() {
             let mask_value = mask.get(idx).copied().unwrap_or(0xffff_ffff);
             masked_child_address.push(value & mask_value);
         }
 
-        // 如果 encoded_address 比 child_addr_cells 短，填充 0
+        // If encoded_address is shorter than child_addr_cells, pad with 0
         let remaining = child_addr_cells.saturating_sub(encoded_address.len());
         masked_child_address.extend(core::iter::repeat_n(0, remaining));
 
         let encoded_irq = [interrupt_pin as u32];
         let mut masked_child_irq = Vec::with_capacity(child_irq_cells);
 
-        // 应用 mask 到子 IRQ
+        // Apply mask to child IRQ
         for (idx, value) in encoded_irq.iter().take(child_irq_cells).enumerate() {
             let mask_value = mask
                 .get(child_addr_cells + idx)
@@ -185,11 +217,11 @@ impl<'a> NodeRefPci<'a> {
             masked_child_irq.push(value & mask_value);
         }
 
-        // 如果 encoded_irq 比 child_irq_cells 短，填充 0
+        // If encoded_irq is shorter than child_irq_cells, pad with 0
         let remaining_irq = child_irq_cells.saturating_sub(encoded_irq.len());
         masked_child_irq.extend(core::iter::repeat_n(0, remaining_irq));
 
-        // 在 interrupt-map 中查找匹配的条目
+        // Search for matching entry in interrupt-map
         for mapping in &interrupt_map {
             if mapping.child_address == masked_child_address
                 && mapping.child_irq == masked_child_irq
@@ -200,20 +232,20 @@ impl<'a> NodeRefPci<'a> {
             }
         }
 
-        // 回退到简单的 IRQ 计算
+        // Fall back to simple IRQ calculation
         let simple_irq = (device as u32 * 4 + interrupt_pin as u32) % 32;
         Ok(PciInterruptInfo {
             irqs: vec![simple_irq],
         })
     }
 
-    /// 解析 interrupt-map 属性
+    /// Parse interrupt-map property
     pub fn interrupt_map(&self) -> Result<Vec<PciInterruptMap>, FdtError> {
         let prop = self
             .find_property("interrupt-map")
             .ok_or(FdtError::NotFound)?;
 
-        // 将 mask 和 data 转换为 Vec 以便索引访问
+        // Convert mask and data to Vec for indexed access
         let mask: Vec<u32> = self
             .interrupt_map_mask()
             .ok_or(FdtError::NotFound)?
@@ -222,22 +254,22 @@ impl<'a> NodeRefPci<'a> {
         let mut data = prop.as_reader();
         let mut mappings = Vec::new();
 
-        // 计算每个条目的大小
-        // 格式: <child-address child-irq interrupt-parent parent-address parent-irq...>
+        // Calculate size of each entry
+        // Format: <child-address child-irq interrupt-parent parent-address parent-irq...>
         let child_addr_cells = self.address_cells().unwrap_or(3) as usize;
         let child_irq_cells = self.interrupt_cells() as usize;
 
         loop {
-            // 解析子地址
+            // Parse child address
             let mut child_address = Vec::with_capacity(child_addr_cells);
             for _ in 0..child_addr_cells {
                 match data.read_u32() {
                     Some(v) => child_address.push(v),
-                    None => return Ok(mappings), // 数据结束
+                    None => return Ok(mappings), // End of data
                 }
             }
 
-            // 解析子 IRQ
+            // Parse child IRQ
             let mut child_irq = Vec::with_capacity(child_irq_cells);
             for _ in 0..child_irq_cells {
                 match data.read_u32() {
@@ -246,7 +278,7 @@ impl<'a> NodeRefPci<'a> {
                 }
             }
 
-            // 解析中断父 phandle
+            // Parse interrupt parent phandle
             let interrupt_parent_raw = match data.read_u32() {
                 Some(v) => v,
                 None => return Ok(mappings),
@@ -267,13 +299,13 @@ impl<'a> NodeRefPci<'a> {
                     .collect::<Vec<_>>()
             );
 
-            // 通过 phandle 查找中断父节点以获取其 #address-cells 和 #interrupt-cells
-            // 根据 devicetree 规范，interrupt-map 中的 parent unit address 使用中断父节点的 #address-cells
+            // Look up interrupt parent node by phandle to get its #address-cells and #interrupt-cells
+            // According to devicetree spec, parent unit address in interrupt-map uses interrupt parent's #address-cells
             let (parent_addr_cells, parent_irq_cells) =
                 if let Some(irq_parent) = self.ctx.find_by_phandle(interrupt_parent) {
                     debug!("Found interrupt parent: {:?}", irq_parent.name);
 
-                    // 直接使用中断父节点的 #address-cells
+                    // Use interrupt parent node's #address-cells directly
                     let addr_cells = irq_parent.address_cells().unwrap_or(0) as usize;
 
                     let irq_cells = irq_parent
@@ -290,18 +322,18 @@ impl<'a> NodeRefPci<'a> {
                         "Interrupt parent phandle 0x{:x} NOT FOUND in context!",
                         interrupt_parent.raw()
                     );
-                    // 默认值：address_cells=0, interrupt_cells=3 (GIC 格式)
+                    // Default values: address_cells=0, interrupt_cells=3 (GIC format)
                     (0, 3)
                 };
 
-            // 跳过父地址 cells
+            // Skip parent address cells
             for _ in 0..parent_addr_cells {
                 if data.read_u32().is_none() {
                     return Ok(mappings);
                 }
             }
 
-            // 解析父 IRQ
+            // Parse parent IRQ
             let mut parent_irq = Vec::with_capacity(parent_irq_cells);
             for _ in 0..parent_irq_cells {
                 match data.read_u32() {
@@ -310,7 +342,7 @@ impl<'a> NodeRefPci<'a> {
                 }
             }
 
-            // 应用 mask 到子地址和 IRQ
+            // Apply mask to child address and IRQ
             let masked_address: Vec<u32> = child_address
                 .iter()
                 .enumerate()

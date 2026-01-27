@@ -3,6 +3,10 @@ use core::{fmt::Debug, ops::Deref};
 use crate::cache::node::NodeBase;
 use alloc::{string::String, string::ToString};
 
+/// The /chosen node containing boot parameters (cached version).
+///
+/// The chosen node doesn't represent any actual hardware device but serves
+/// as a place to pass parameters to the operating system or bootloader.
 #[derive(Clone)]
 pub struct Chosen {
     node: NodeBase,
@@ -31,13 +35,17 @@ impl Chosen {
         let name = sp.next()?;
         let params = sp.next();
 
-        // 尝试在cache中找到节点
+        // Try to find the node in the cache
         self.node.fdt.get_node_by_path(name).map(|node| Stdout {
             params: params.map(|s| s.to_string()),
             node,
         })
     }
 
+    /// Get the debug console information.
+    ///
+    /// First tries to find the stdout node. If that fails, parses the
+    /// bootargs for earlycon configuration.
     pub fn debugcon(&self) -> Option<DebugConCache> {
         if let Some(stdout) = self.stdout() {
             Some(DebugConCache::Node(stdout.node))
@@ -49,16 +57,16 @@ impl Chosen {
     fn fdt_bootargs_find_debugcon_info(&self) -> Option<DebugConCache> {
         let bootargs = self.bootargs()?;
 
-        // 查找 earlycon 参数
+        // Look for earlycon parameter
         let earlycon = bootargs
             .split_ascii_whitespace()
             .find(|arg| arg.contains("earlycon"))?;
 
         let mut tmp = earlycon.split('=');
-        let _ = tmp.next()?; // 跳过 "earlycon"
+        let _ = tmp.next()?; // skip "earlycon"
         let values = tmp.next()?;
 
-        // 解析所有参数
+        // Parse all parameters
         let mut params_iter = values.split(',');
         let name = params_iter.next()?;
 
@@ -76,7 +84,7 @@ impl Chosen {
 
         let mmio = u64::from_str_radix(addr_str.trim_start_matches("0x"), 16).ok()?;
 
-        // 先尝试在cache中查找对应节点
+        // Try to find the corresponding node in the cache first
         let all_nodes = self.node.fdt.all_nodes();
         for node in all_nodes {
             let Ok(reg) = node.reg() else {
@@ -90,13 +98,13 @@ impl Chosen {
             }
         }
 
-        // 如果找不到对应节点，返回解析出的earlycon信息
-        // 重新分割字符串以获取剩余参数
+        // If no matching node is found, return the parsed earlycon information
+        // Re-split the string to get remaining parameters
         let mut parts = values.split(',');
-        let _name = parts.next(); // 跳过name
-        let _addr_part = parts.next(); // 跳过地址部分
+        let _name = parts.next(); // skip name
+        let _addr_part = parts.next(); // skip address part
         let params = if let Some(param) = parts.next() {
-            // 获取第一个剩余参数的位置，然后取剩余所有内容
+            // Get the position of the first remaining parameter, then take all remaining content
             let param_start = values.find(param).unwrap_or(0);
             if param_start > 0 {
                 Some(values[param_start..].to_string())
@@ -132,21 +140,31 @@ impl Deref for Chosen {
     }
 }
 
+/// Result of debug console lookup for the cached parser.
 #[derive(Clone, Debug)]
 pub enum DebugConCache {
-    /// 找到了对应的设备树节点
+    /// Found the corresponding device tree node
     Node(super::super::Node),
-    /// 仅在bootargs中找到earlycon参数，包含解析出的信息
+    /// Found earlycon parameter only in bootargs, with parsed information
     EarlyConInfo {
+        /// The name of the early console device (e.g., "uart8250")
         name: String,
+        /// The MMIO address of the device
         mmio: u64,
+        /// Additional parameters for the early console
         params: Option<String>,
     },
 }
 
+/// The stdout device specified by the chosen node (cached version).
+///
+/// Contains the node reference and optional parameters (typically specifying
+/// the baud rate or other console configuration).
 #[derive(Clone)]
 pub struct Stdout {
+    /// Optional parameters for the stdout device (e.g., baud rate)
     pub params: Option<String>,
+    /// The device tree node for the stdout device
     pub node: super::super::Node,
 }
 

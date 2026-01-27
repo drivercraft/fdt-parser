@@ -8,8 +8,7 @@ keywords = ["devicetree", "fdt", "dt", "dtb"]
 license = "MPL-2.0"
 name = "fdt-parser"
 repository = "https://github.com/drivercraft/fdt-parser"
-version = "0.5.1"
-
+version = "0.5.2"
 
 [lib]
 doctest = false

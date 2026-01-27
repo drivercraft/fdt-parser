@@ -3,6 +3,7 @@ use core::ops::Deref;
 use crate::{cache::node::NodeBase, Phandle};
 use alloc::{string::String, string::ToString, vec::Vec};
 
+/// Information about a clock connection between a consumer and provider.
 #[derive(Clone, Debug)]
 pub struct ClockInfo {
     /// Name supplied by the consumer through `clock-names`
@@ -10,7 +11,9 @@ pub struct ClockInfo {
     /// Name exposed by the provider via `clock-output-names` that matches the specifier
     pub provider_output_name: Option<String>,
 
+    /// The phandle of the clock provider
     pub phandle: Phandle,
+    /// The clock specifier/index value
     pub select: u64,
     /// Provider details
     pub provider: ClockType,
@@ -28,9 +31,12 @@ impl ClockInfo {
     }
 }
 
+/// The type of clock provider.
 #[derive(Clone, Debug)]
 pub enum ClockType {
+    /// A fixed clock with a constant frequency
     Fixed(FixedClock),
+    /// A general clock provider
     Provider(Clock),
 }
 
@@ -53,6 +59,7 @@ impl ClockType {
         }
     }
 
+    /// Get the number of clock cells for this clock type.
     pub fn clock_cells(&self) -> u32 {
         match self {
             ClockType::Fixed(fixed) => fixed.clock.clock_cells,
@@ -60,6 +67,7 @@ impl ClockType {
         }
     }
 
+    /// Get the output name for the given clock selector.
     pub fn output_name(&self, select: u64) -> Option<String> {
         match self {
             ClockType::Fixed(fixed) => fixed.clock.output_name(select),
@@ -79,17 +87,25 @@ impl Deref for ClockType {
     }
 }
 
+/// A fixed clock with a constant frequency.
 #[derive(Clone, Debug)]
 pub struct FixedClock {
+    /// The clock provider node
     pub clock: Clock,
+    /// The fixed frequency in Hz
     pub frequency: Option<u32>,
+    /// The clock accuracy in ppb (parts per billion)
     pub accuracy: Option<u32>,
 }
 
+/// A clock provider node.
 #[derive(Clone, Debug)]
 pub struct Clock {
+    /// The device tree node for this clock
     pub node: NodeBase,
+    /// The value of #clock-cells property
     pub clock_cells: u32,
+    /// The names of the clock outputs
     pub output_names: Vec<String>,
 }
 
@@ -111,6 +127,7 @@ impl Clock {
         }
     }
 
+    /// Get the output name for the given clock selector.
     pub fn output_name(&self, select: u64) -> Option<String> {
         if self.output_names.is_empty() {
             return None;

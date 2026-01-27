@@ -3,6 +3,7 @@ use core::{fmt::Debug, ops::Deref};
 use crate::{cache::node::NodeBase, FdtError, MemoryRegion};
 use alloc::vec::Vec;
 
+/// A memory node (cached version).
 #[derive(Clone)]
 pub struct Memory {
     node: NodeBase,

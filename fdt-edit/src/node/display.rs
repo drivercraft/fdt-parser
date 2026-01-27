@@ -7,7 +7,7 @@ use crate::{
     NodeRefMemory, Property,
 };
 
-/// Node 的 DTS 显示格式化器
+/// Formatter for displaying nodes in DTS (device tree source) format.
 pub struct NodeDisplay<'a> {
     node: &'a Node,
     indent: usize,
@@ -16,6 +16,7 @@ pub struct NodeDisplay<'a> {
 }
 
 impl<'a> NodeDisplay<'a> {
+    /// Creates a new display formatter for the given node.
     pub fn new(node: &'a Node) -> Self {
         Self {
             node,
@@ -25,16 +26,19 @@ impl<'a> NodeDisplay<'a> {
         }
     }
 
+    /// Sets the indentation level for nested nodes.
     pub fn indent(mut self, indent: usize) -> Self {
         self.indent = indent;
         self
     }
 
+    /// Sets whether to show address values in properties.
     pub fn show_address(mut self, show: bool) -> Self {
         self.show_address = show;
         self
     }
 
+    /// Sets whether to show size values in properties.
     pub fn show_size(mut self, show: bool) -> Self {
         self.show_size = show;
         self
@@ -87,10 +91,10 @@ impl<'a> NodeDisplay<'a> {
         let mut first = true;
         write!(f, "<")?;
 
-        // 获取 parent 的 address-cells 和 size-cells
-        // 这里需要从上下文获取，暂时使用默认值
-        let address_cells = 2; // 默认值
-        let size_cells = 1; // 默认值
+        // Get parent's address-cells and size-cells
+        // Need to get from context, using default values for now
+        let address_cells = 2; // Default value
+        let size_cells = 1; // Default value
 
         while let (Some(addr), Some(size)) = (
             reader.read_cells(address_cells),
@@ -137,7 +141,7 @@ impl<'a> NodeDisplay<'a> {
         } else if let Some(u64_val) = prop.get_u64() {
             write!(f, "<0x{:x}>;", u64_val)
         } else {
-            // 尝试格式化为字节数组
+            // Try to format as byte array
             let mut reader = prop.as_reader();
             let mut first = true;
             write!(f, "<")?;
@@ -158,13 +162,13 @@ impl<'a> fmt::Display for NodeDisplay<'a> {
         self.format_indent(f)?;
 
         if self.node.name.is_empty() {
-            // 根节点
+            // Root node
             writeln!(f, "/ {{")?;
         } else {
-            // 普通节点
+            // Regular node
             write!(f, "{}", self.node.name)?;
 
-            // 检查是否有地址和大小属性需要显示
+            // Check if there are address and size properties to display
             let mut props = Vec::new();
             for prop in self.node.properties() {
                 if prop.name() != "reg" {
@@ -180,14 +184,14 @@ impl<'a> fmt::Display for NodeDisplay<'a> {
             }
         }
 
-        // 输出属性
+        // Output properties
         for prop in self.node.properties() {
             if prop.name() != "reg" || self.show_address || self.show_size {
                 self.format_property(prop, f)?;
             }
         }
 
-        // 输出子节点
+        // Output child nodes
         for child in self.node.children() {
             let child_display = NodeDisplay::new(child)
                 .indent(self.indent + 1)
@@ -196,7 +200,7 @@ impl<'a> fmt::Display for NodeDisplay<'a> {
             write!(f, "{}", child_display)?;
         }
 
-        // 关闭节点
+        // Close node
         self.format_indent(f)?;
         writeln!(f, "}};")?;
 
@@ -224,7 +228,9 @@ impl fmt::Debug for Node {
     }
 }
 
-/// NodeRef 的显示格式化器
+/// Display formatter for node references.
+///
+/// Formats specialized node references with type-specific information.
 pub struct NodeRefDisplay<'a> {
     node_ref: &'a NodeRef<'a>,
     indent: usize,
@@ -232,6 +238,7 @@ pub struct NodeRefDisplay<'a> {
 }
 
 impl<'a> NodeRefDisplay<'a> {
+    /// Creates a new display formatter for the given node reference.
     pub fn new(node_ref: &'a NodeRef<'a>) -> Self {
         Self {
             node_ref,
@@ -240,11 +247,13 @@ impl<'a> NodeRefDisplay<'a> {
         }
     }
 
+    /// Sets the indentation level for nested nodes.
     pub fn indent(mut self, indent: usize) -> Self {
         self.indent = indent;
         self
     }
 
+    /// Sets whether to show detailed type information.
     pub fn show_details(mut self, show: bool) -> Self {
         self.show_details = show;
         self
@@ -323,7 +332,7 @@ impl<'a> fmt::Display for NodeRefDisplay<'a> {
             self.format_type_info(f)?;
             writeln!(f)?;
 
-            // 添加缩进并显示 DTS
+            // Add indentation and display DTS
             let dts_display = NodeDisplay::new(self.node_ref).indent(self.indent + 1);
             write!(f, "{}", dts_display)?;
         } else {

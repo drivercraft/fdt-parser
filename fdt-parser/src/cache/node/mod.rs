@@ -1,3 +1,8 @@
+//! Cached node types with specialized accessors.
+//!
+//! This module provides the `Node` enum and related types for the cached parser.
+//! Nodes are automatically classified into specialized types based on their properties.
+
 use core::{fmt::Debug, ops::Deref};
 
 use super::Fdt;
@@ -25,12 +30,21 @@ pub use interrupt_controller::*;
 pub use memory::*;
 pub use pci::*;
 
+/// Typed node enum for specialized node access.
+///
+/// Nodes are automatically classified based on their name and properties.
+/// Use pattern matching to access node-specific functionality.
 #[derive(Debug, Clone)]
 pub enum Node {
+    /// A general-purpose node without special handling
     General(NodeBase),
+    /// The /chosen node containing boot parameters
     Chosen(Chosen),
+    /// A memory node (e.g., /memory@0)
     Memory(Memory),
+    /// An interrupt controller node
     InterruptController(InterruptController),
+    /// A PCI host bridge node
     Pci(Pci),
 }
 
@@ -41,12 +55,12 @@ impl Node {
             meta: meta.clone(),
         };
 
-        // 根据节点类型创建具体类型
+        // Create specific type based on node type
         match meta.name.as_str() {
             "chosen" => Self::Chosen(Chosen::new(base)),
             name if name.starts_with("memory@") => Self::Memory(Memory::new(base)),
             _ => {
-                // 检查是否是PCI节点
+                // Check if this is a PCI node
                 let pci = Pci::new(base.clone());
                 if pci.is_pci_host_bridge() {
                     Self::Pci(pci)
@@ -74,6 +88,10 @@ impl Deref for Node {
     }
 }
 
+/// Base node type for cached parser nodes.
+///
+/// `NodeBase` provides common functionality available on all nodes,
+/// with fast lookups using the cached indices.
 #[derive(Clone)]
 pub struct NodeBase {
     fdt: Fdt,
@@ -85,24 +103,29 @@ impl NodeBase {
         self.fdt.raw().begin_at(self.meta.pos)
     }
 
+    /// Get the level/depth of this node in the device tree.
     pub fn level(&self) -> usize {
         self.meta.level
     }
 
+    /// Get the name of this node.
     pub fn name(&self) -> &str {
         &self.meta.name
     }
 
+    /// Get the full path of this node.
     pub fn full_path(&self) -> &str {
         &self.meta.full_path
     }
 
+    /// Get the parent node.
     pub fn parent(&self) -> Option<Node> {
         let parent_path = self.meta.parent.as_ref()?.path.as_str();
         let parent_meta = self.fdt.inner.get_node_by_path(parent_path)?;
         Some(Node::new(&self.fdt, &parent_meta))
     }
 
+    /// Get all properties of this node.
     pub fn properties<'a>(&'a self) -> Vec<Property<'a>> {
         let reader = self.raw().buffer();
         PropIter::new(self.fdt.fdt_base(), reader)
@@ -110,13 +133,14 @@ impl NodeBase {
             .collect()
     }
 
+    /// Find a property by name.
     pub fn find_property<'a>(&'a self, name: impl AsRef<str>) -> Option<Property<'a>> {
         self.properties()
             .into_iter()
             .find(|prop| prop.name == name.as_ref())
     }
 
-    /// Get compatible strings for this node (placeholder implementation)
+    /// Get compatible strings for this node (placeholder implementation).
     pub fn compatibles(&self) -> Vec<String> {
         self.find_property("compatible")
             .map(|p| {
@@ -128,7 +152,7 @@ impl NodeBase {
             .unwrap_or_default()
     }
 
-    /// Get the status of this node
+    /// Get the status of this node.
     pub fn status(&self) -> Option<Status> {
         self.find_property("status")
             .and_then(|prop| prop.str().ok())
@@ -143,6 +167,7 @@ impl NodeBase {
             })
     }
 
+    /// Get the #address-cells value for this node.
     pub fn address_cells(&self) -> u8 {
         self.find_property("#address-cells")
             .and_then(|p| p.u32().ok())
@@ -162,7 +187,10 @@ impl NodeBase {
             || self.find_property("#interrupt-controller").is_some()
     }
 
-    /// Get register information for this node
+    /// Get register information for this node.
+    ///
+    /// Returns a vector of register entries with addresses translated
+    /// to the parent bus address space.
     pub fn reg(&self) -> Result<Vec<FdtReg>, FdtError> {
         let prop = self.find_property("reg").ok_or(FdtError::NotFound)?;
 
@@ -189,6 +217,7 @@ impl NodeBase {
         Ok(iter.collect())
     }
 
+    /// Get the ranges property for address translation.
     pub fn ranges(&self) -> Option<FdtRangeSilce<'_>> {
         let p = self.find_property("ranges")?;
         let parent_info = self.meta.parent.as_ref();
@@ -217,10 +246,12 @@ impl NodeBase {
         ))
     }
 
+    /// Get the interrupt parent phandle for this node.
     pub fn interrupt_parent_phandle(&self) -> Option<Phandle> {
         self.meta.interrupt_parent
     }
 
+    /// Get the interrupt parent node.
     pub fn interrupt_parent(&self) -> Option<InterruptController> {
         let phandle = self.interrupt_parent_phandle()?;
         let irq = self.fdt.get_node_by_phandle(phandle)?;
@@ -230,6 +261,7 @@ impl NodeBase {
         Some(i)
     }
 
+    /// Get the interrupts for this node.
     pub fn interrupts(&self) -> Result<Vec<Vec<u32>>, FdtError> {
         let res = self
             .find_property("interrupts")
@@ -246,7 +278,7 @@ impl NodeBase {
         Ok(out)
     }
 
-    /// Get the clocks used by this node following the Devicetree clock binding
+    /// Get the clocks used by this node following the Devicetree clock binding.
     pub fn clocks(&self) -> Result<Vec<ClockInfo>, FdtError> {
         let mut clocks = Vec::new();
         let Some(prop) = self.find_property("clocks") else {
@@ -308,6 +340,9 @@ impl Debug for NodeBase {
     }
 }
 
+/// Metadata for a cached node.
+///
+/// Contains precomputed information about the node for fast access.
 #[derive(Clone)]
 pub(super) struct NodeMeta {
     name: String,
@@ -319,6 +354,7 @@ pub(super) struct NodeMeta {
 }
 
 impl NodeMeta {
+    /// Create node metadata from a base parser node.
     pub fn new(node: &base::Node<'_>, full_path: String, parent: Option<&NodeMeta>) -> Self {
         NodeMeta {
             full_path,
@@ -335,6 +371,7 @@ impl NodeMeta {
     }
 }
 
+/// Information about a node's parent.
 #[derive(Clone)]
 struct ParentInfo {
     path: String,
