@@ -1,0 +1,28 @@
+name: Build & Check CI
+
+on:
+  workflow_call:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust-toolchain: [nightly]
+        targets: [x86_64-unknown-linux-gnu, x86_64-unknown-none, riscv64gc-unknown-none-elf, aarch64-unknown-none-softfloat]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@nightly
+      with:
+        toolchain: ${{ matrix.rust-toolchain }}
+        components: rust-src, clippy, rustfmt
+        targets: ${{ matrix.targets }}
+    - name: Check rust version
+      run: rustc --version --verbose
+    - name: Check code format
+      run: cargo fmt --all -- --check
+    - name: Clippy
+      run: cargo clippy --manifest-path ./fdt-parser/Cargo.toml --target ${{ matrix.targets }} --all-features -- -A clippy::new_without_default
+    - name: Build
+      run: cargo build -p fdt-parser --target ${{ matrix.targets }} --all-features
