@@ -1,0 +1,15 @@
+name: Test
+
+on:
+  workflow_call:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@nightly
+    - name: Install dtc
+      run: sudo apt-get install device-tree-compiler
+    - name: Unit test
+      run: cargo test -- --nocapture
