@@ -48,6 +48,18 @@ impl Display for NodeGeneric {
             self.meta.write_indent(f)?;
             write!(f, "  {} = ", prop.name())?;
 
+            if prop.name() == "compatible" {
+                write!(f, "[")?;
+                for (i, str) in prop.as_str_iter().enumerate() {
+                    write!(f, "\"{}\"", str)?;
+                    if i != prop.as_str_iter().count() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                writeln!(f, "]")?;
+                continue;
+            }
+
             if let Some(str) = prop.as_str() {
                 writeln!(f, "\"{}\";", str)?;
             } else {
