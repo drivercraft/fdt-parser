@@ -166,8 +166,8 @@ pub enum FdtError {
     #[error("data provided does not contain a nul")]
     FromBytesUntilNull,
     /// Failed to parse data as a UTF-8 string
-    #[error("failed to parse UTF-8 string")]
-    Utf8Parse,
+    #[error("{0}")]
+    Utf8Error(#[from] core::str::Utf8Error),
     /// The specified alias was not found in the /aliases node
     #[error("no aliase `{0}` found")]
     NoAlias(&'static str),
@@ -182,11 +182,6 @@ pub enum FdtError {
     PropertyNotFound(&'static str),
 }
 
-impl From<core::str::Utf8Error> for FdtError {
-    fn from(_: core::str::Utf8Error) -> Self {
-        FdtError::Utf8Parse
-    }
-}
 impl From<FromBytesUntilNulError> for FdtError {
     fn from(_: FromBytesUntilNulError) -> Self {
         FdtError::FromBytesUntilNull

@@ -6,6 +6,7 @@
 
 use core::ptr::NonNull;
 
+use crate::data::U32_SIZE;
 use crate::FdtError;
 
 /// A 4-byte aligned buffer for header data.
@@ -83,7 +84,7 @@ impl Header {
     /// Returns `FdtError::InvalidPtr` if the pointer is null, or
     /// `FdtError::InvalidMagic` if the magic number doesn't match.
     pub unsafe fn from_ptr(ptr: *mut u8) -> Result<Self, FdtError> {
-        if !(ptr as usize).is_multiple_of(core::mem::align_of::<Header>()) {
+        if !(ptr as usize).is_multiple_of(Self::alignment()) {
             // Pointer is not aligned, so we need to copy the data to an aligned
             // buffer first.
             let mut aligned = AlignedHeader([0u8; core::mem::size_of::<Header>()]);
@@ -136,5 +137,11 @@ impl Header {
             size_dt_strings: u32::from_be(raw.size_dt_strings),
             size_dt_struct: u32::from_be(raw.size_dt_struct),
         })
+    }
+
+    /// Returns the required alignment for FDT structures.
+    #[inline]
+    pub const fn alignment() -> usize {
+        U32_SIZE
     }
 }

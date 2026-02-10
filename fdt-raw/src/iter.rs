@@ -64,13 +64,22 @@ impl<'a> FdtIter<'a> {
     }
 
     /// Returns the current context (top of the stack).
+    ///
+    /// # Safety
+    ///
+    /// The stack is never empty because a default context is pushed on
+    /// initialization in `FdtIter::new`.
     #[inline]
     fn current_context(&self) -> &NodeContext {
-        // The stack is never empty because we push a default context on initialization
+        // SAFETY: The stack is initialized with a default context and is never
+        // completely emptied during iteration.
         self.context_stack.last().unwrap()
     }
 
     /// Handles an error by logging it and terminating iteration.
+    ///
+    /// When an error occurs during FDT parsing, we log it and stop iteration
+    /// rather than panicking. This allows partial parsing and graceful degradation.
     fn handle_error(&mut self, err: FdtError) {
         error!("FDT parse error: {}", err);
         self.finished = true;

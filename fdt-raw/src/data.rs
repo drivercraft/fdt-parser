@@ -10,13 +10,31 @@ use core::{
 
 use crate::define::{FdtError, Token};
 
+/// Size of a 32-bit (4-byte) value in bytes.
+/// Used frequently in FDT parsing for alignment and value sizes.
+pub(crate) const U32_SIZE: usize = 4;
+
+/// Memory reservation entry size in bytes (address + size, each 8 bytes).
+pub(crate) const MEM_RSV_ENTRY_SIZE: usize = 16;
+
 /// A view into a byte slice with a specific range.
 ///
 /// `Bytes` provides a window into FDT data with range tracking and
-/// convenience methods for creating readers and iterators.
+/// convenience methods for creating readers and iterators. This allows
+/// zero-copy parsing by maintaining references to the original data.
+///
+/// # Examples
+///
+/// ```ignore
+/// let bytes = Bytes::new(&data);
+/// let slice = bytes.slice(10..20);
+/// let reader = slice.reader();
+/// ```
 #[derive(Clone)]
 pub struct Bytes<'a> {
+    /// Reference to the complete original data buffer
     pub(crate) all: &'a [u8],
+    /// The active range within the original buffer
     range: Range<usize>,
 }
 
@@ -30,6 +48,12 @@ impl Deref for Bytes<'_> {
 
 impl<'a> Bytes<'a> {
     /// Creates a new `Bytes` from the entire byte slice.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let bytes = Bytes::new(&my_data);
+    /// ```
     pub fn new(all: &'a [u8]) -> Self {
         Self {
             all,
@@ -38,6 +62,10 @@ impl<'a> Bytes<'a> {
     }
 
     /// Creates a new `Bytes` from a subrange of the current data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `range.end` exceeds the current length.
     pub fn slice(&self, range: Range<usize>) -> Self {
         assert!(range.end <= self.len());
         Self {
@@ -65,6 +93,10 @@ impl<'a> Bytes<'a> {
     }
 
     /// Creates a reader starting at a specific position.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `position` is greater than or equal to the current length.
     pub fn reader_at(&self, position: usize) -> Reader<'a> {
         assert!(position < self.len());
         Reader {
@@ -96,10 +128,21 @@ impl<'a> Bytes<'a> {
 /// Sequential reader for parsing FDT data structures.
 ///
 /// `Reader` provides sequential read access with position tracking for
-/// parsing FDT binary format.
+/// parsing FDT binary format. It maintains a current position and can
+/// backtrack if needed.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut reader = bytes.reader();
+/// let value = reader.read_u32()?;
+/// let str = reader.read_cstr()?;
+/// ```
 #[derive(Clone)]
 pub struct Reader<'a> {
+    /// The byte slice being read from
     pub(crate) bytes: Bytes<'a>,
+    /// Current read position within the bytes
     pub(crate) iter: usize,
 }
 
@@ -128,7 +171,7 @@ impl<'a> Reader<'a> {
 
     /// Reads a big-endian u32 value.
     pub fn read_u32(&mut self) -> Option<u32> {
-        let bytes = self.read_bytes(4)?;
+        let bytes = self.read_bytes(U32_SIZE)?;
         Some(u32::from_be_bytes(bytes.as_slice().try_into().unwrap()))
     }
 
@@ -153,7 +196,7 @@ impl<'a> Reader<'a> {
 
     /// Reads a token from the FDT structure block.
     pub fn read_token(&mut self) -> Result<Token, FdtError> {
-        let bytes = self.read_bytes(4).ok_or(FdtError::BufferTooSmall {
+        let bytes = self.read_bytes(U32_SIZE).ok_or(FdtError::BufferTooSmall {
             pos: self.position(),
         })?;
         Ok(u32::from_be_bytes(bytes.as_slice().try_into().unwrap()).into())
@@ -167,6 +210,18 @@ impl<'a> Reader<'a> {
 }
 
 /// Iterator over u32 values in FDT data.
+///
+/// Reads big-endian u32 values sequentially from the underlying data.
+/// Each iteration consumes 4 bytes.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut iter = bytes.as_u32_iter();
+/// while let Some(value) = iter.next() {
+///     println!("Value: {:#x}", value);
+/// }
+/// ```
 #[derive(Clone)]
 pub struct U32Iter<'a> {
     /// The underlying reader for accessing FDT data
@@ -177,12 +232,24 @@ impl Iterator for U32Iter<'_> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let bytes = self.reader.read_bytes(4)?;
+        let bytes = self.reader.read_bytes(U32_SIZE)?;
         Some(u32::from_be_bytes(bytes.as_slice().try_into().unwrap()))
     }
 }
 
 /// Iterator over null-terminated strings in FDT data.
+///
+/// Reads null-terminated (C-style) strings sequentially from the underlying data.
+/// Each iteration consumes the string content plus its null terminator.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut iter = bytes.as_str_iter();
+/// while let Some(s) = iter.next() {
+///     println!("String: {}", s);
+/// }
+/// ```
 #[derive(Clone)]
 pub struct StrIter<'a> {
     /// The underlying reader for accessing FDT data
