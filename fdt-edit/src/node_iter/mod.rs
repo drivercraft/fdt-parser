@@ -9,10 +9,18 @@ mod base;
 mod iter_ref;
 
 pub use base::*;
+use enum_dispatch::enum_dispatch;
 pub(crate) use iter_ref::*;
 
+#[enum_dispatch(NodeOp)]
 pub enum NodeKind {
     Generic(NodeGeneric),
+}
+
+#[enum_dispatch]
+pub(crate) trait NodeOp {
+    fn as_generic(&self) -> &NodeGeneric;
+    fn as_generic_mut(&mut self) -> &mut NodeGeneric;
 }
 
 impl NodeKind {
@@ -21,21 +29,25 @@ impl NodeKind {
     }
 
     pub(crate) fn _as_raw<'a>(&self) -> &'a Node {
-        match self {
-            NodeKind::Generic(generic) => generic.as_node(),
-        }
+        self.as_generic().as_node()
     }
 
     pub(crate) fn _as_raw_mut<'a>(&mut self) -> &'a mut Node {
-        match self {
-            NodeKind::Generic(generic) => generic.as_node_mut(),
-        }
+        self.as_generic_mut().as_node_mut()
     }
 
     pub(crate) fn _fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            NodeKind::Generic(generic) => generic.fmt(f),
-        }
+        self.as_generic().fmt(f)
+    }
+}
+
+impl NodeOp for NodeGeneric {
+    fn as_generic(&self) -> &NodeGeneric {
+        self
+    }
+
+    fn as_generic_mut(&mut self) -> &mut NodeGeneric {
+        self
     }
 }
 

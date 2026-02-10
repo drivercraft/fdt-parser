@@ -1,9 +1,6 @@
-use core::fmt::Display;
-
 use alloc::vec::Vec;
-use fdt_raw::NodeBase;
 
-use crate::{NodeGeneric, NodeIterMeta, NodeKind, NodeRef, NodeRefMut};
+use crate::{NodeIterMeta, NodeRef, NodeRefMut};
 
 use super::Node;
 

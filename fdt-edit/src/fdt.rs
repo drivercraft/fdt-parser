@@ -131,6 +131,6 @@ impl Fdt {
     }
 
     pub fn all_nodes_mut(&mut self) -> impl Iterator<Item = NodeRefMut<'_>> + '_ {
-        NodeRefIterMut::new(&mut self.root)
+        NodeRefIterMut::new(&self.root)
     }
 }
