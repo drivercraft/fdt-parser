@@ -69,7 +69,7 @@ fn test_translate_addresses_batch() {
 
     // Batch translation with multiple addresses from the same path
     let mut addresses = [0x7e215040u64, 0x7e200000];
-    let original = addresses.clone();
+    let original = addresses;
     fdt.translate_addresses(path, &mut addresses);
 
     assert_eq!(

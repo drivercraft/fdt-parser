@@ -29,6 +29,10 @@ pub(crate) trait ViewOp<'a> {
     }
 }
 
+pub trait ViewMutOp<'a> {
+    fn new(node: NodeGenericMut<'a>) -> Self;
+}
+
 // ---------------------------------------------------------------------------
 // NodeView — immutable view
 // ---------------------------------------------------------------------------

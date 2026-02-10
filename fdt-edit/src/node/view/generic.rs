@@ -4,7 +4,7 @@ use alloc::{string::String, vec::Vec};
 use fdt_raw::RegInfo;
 
 use super::NodeView;
-use crate::{NodeId, RegFixed, ViewOp};
+use crate::{Node, NodeId, RegFixed, ViewMutOp, ViewOp};
 
 // ---------------------------------------------------------------------------
 // GenericNodeView
@@ -51,6 +51,12 @@ impl<'a> ViewOp<'a> for NodeGenericMut<'a> {
     }
 }
 
+impl<'a> ViewMutOp<'a> for NodeGenericMut<'a> {
+    fn new(node: NodeGenericMut<'a>) -> Self {
+        Self { inner: node.inner }
+    }
+}
+
 impl<'a> NodeGenericMut<'a> {
     pub fn id(&self) -> NodeId {
         self.inner.id()
@@ -62,5 +68,17 @@ impl<'a> NodeGenericMut<'a> {
 
     pub fn set_regs(&mut self, regs: &[RegInfo]) {
         self.inner.set_regs(regs);
+    }
+
+    pub fn add_child_generic(&mut self, name: &str) -> NodeGenericMut<'a> {
+        let node = Node::new(name);
+        let new_id = self.inner.fdt_mut().add_node(self.inner.id(), node);
+        let new_view = NodeView::new(self.inner.fdt(), new_id);
+        NodeGenericMut { inner: new_view }
+    }
+
+    pub fn add_child<T: ViewMutOp<'a>>(&mut self, name: &str) -> T {
+        let generic_child = self.add_child_generic(name);
+        T::new(generic_child)
     }
 }
