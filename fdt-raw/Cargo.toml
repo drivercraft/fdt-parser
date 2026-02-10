@@ -2,7 +2,6 @@
 authors = ["周睿 <zrufo747@outlook.com>"]
 categories = ["embedded", "no-std", "hardware-support"]
 description = "A low-level, no-std compatible library for parsing Flattened Device Tree (FDT) binary files"
-documentation = "https://docs.rs/fdt-raw"
 edition = "2024"
 keywords = ["device-tree", "dtb", "embedded", "no-std", "bare-metal"]
 license = "MIT OR Apache-2.0"

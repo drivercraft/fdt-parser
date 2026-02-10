@@ -1,7 +1,6 @@
 [workspace]
-members = ["dtb-file", "fdt-raw"]
+members = ["dtb-file", "fdt-edit", "fdt-raw"]
 resolver = "3"
 
-
 [workspace.dependencies]
-dtb-file = { path = "dtb-file" }
+dtb-file = {path = "dtb-file"}
