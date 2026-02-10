@@ -13,3 +13,4 @@ pub use fdt_raw::{FdtError, Phandle, RegInfo, Status, data::Reader};
 pub use fdt::*;
 pub use node::*;
 pub use prop::*;
+pub use node_iter::*;

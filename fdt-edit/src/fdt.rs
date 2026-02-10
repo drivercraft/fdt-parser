@@ -118,10 +118,18 @@ impl Fdt {
     }
 
     pub fn all_raw_nodes(&self) -> impl Iterator<Item = &Node> {
-        NodeIter::new(&self.root)
+        self.all_nodes().map(|node_ref| node_ref.node)
     }
 
     pub fn all_raw_nodes_mut(&mut self) -> impl Iterator<Item = &mut Node> {
-        NodeIterMut::new(&mut self.root)
+        self.all_nodes_mut().map(|node_ref| node_ref.node)
+    }
+
+    pub fn all_nodes(&self) -> impl Iterator<Item = NodeRef<'_>> {
+        NodeRefIter::new(&self.root)
+    }
+
+    pub fn all_nodes_mut(&mut self) -> impl Iterator<Item = NodeRefMut<'_>> {
+        NodeRefIterMut::new(&mut self.root)
     }
 }
