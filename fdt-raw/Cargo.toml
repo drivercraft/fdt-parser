@@ -4,14 +4,11 @@ categories = ["embedded", "no-std", "hardware-support"]
 description = "A low-level, no-std compatible library for parsing Flattened Device Tree (FDT) binary files"
 documentation = "https://docs.rs/fdt-raw"
 edition = "2024"
-exclude = [".git*", "*.md", "tests/"]
 keywords = ["device-tree", "dtb", "embedded", "no-std", "bare-metal"]
 license = "MIT OR Apache-2.0"
 name = "fdt-raw"
-readme = "README.md"
-homepage = "https://github.com/drivercraft/fdt-parser"
 repository = "https://github.com/drivercraft/fdt-parser"
-version = "0.1.6"
+version = "0.2.0"
 
 [dependencies]
 heapless = "0.9"
@@ -19,12 +16,10 @@ log = "0.4"
 thiserror = {version = "2", default-features = false}
 
 [dev-dependencies]
-dtb-file = { path = "../dtb-file" }
+dtb-file.workspace = true
 env_logger = "0.11"
 
 [features]
-default = []
-std = []
 
 [package.metadata.docs.rs]
 all-features = true
