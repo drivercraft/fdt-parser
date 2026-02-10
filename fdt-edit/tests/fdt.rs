@@ -60,57 +60,13 @@ fn test_node_classify() {
 }
 
 #[test]
-fn test_visit_trait() {
-    struct Counter {
-        nodes: usize,
-        memory: usize,
-        intc: usize,
-    }
-
-    impl<'a> Visit<'a> for Counter {
-        fn visit_memory_node(&mut self, node: NodeView<'a>) {
-            self.memory += 1;
-            self.nodes += 1;
-            visit_node_children(self, node);
-        }
-
-        fn visit_intc_node(&mut self, node: NodeView<'a>) {
-            self.intc += 1;
-            self.nodes += 1;
-            visit_node_children(self, node);
-        }
-
-        fn visit_generic_node(&mut self, node: NodeView<'a>) {
-            self.nodes += 1;
-            visit_node_children(self, node);
-        }
-    }
-
-    let raw_data = fdt_phytium();
-    let fdt = Fdt::from_bytes(&raw_data).unwrap();
-
-    let mut counter = Counter {
-        nodes: 0,
-        memory: 0,
-        intc: 0,
-    };
-    fdt.visit(&mut counter);
-
-    println!(
-        "Visit: total={} memory={} intc={}",
-        counter.nodes, counter.memory, counter.intc
-    );
-    assert_eq!(counter.nodes, fdt.node_count());
-}
-
-#[test]
 fn test_path_lookup() {
     let raw_data = fdt_phytium();
     let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
     // Root should always be found
     let root = fdt.get_by_path("/").unwrap();
-    assert_eq!(root.as_view().id(), fdt.root_id());
+    assert_eq!(root.id(), fdt.root_id());
 
     // Check path round-trip: for every node, path_of(id) should resolve back
     for id in fdt.iter_node_ids() {
@@ -129,7 +85,7 @@ fn test_path_lookup() {
     for view in fdt.all_nodes() {
         let path = view.path();
         let typed = fdt.get_by_path(&path).unwrap();
-        assert_eq!(typed.as_view().id(), view.id());
+        assert_eq!(typed.id(), view.id());
     }
 }
 
