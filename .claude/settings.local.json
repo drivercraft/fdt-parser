@@ -12,7 +12,10 @@
       "WebFetch(domain:www.devicetree.org)",
       "Bash(RUST_BACKTRACE=1 cargo test -p fdt-parser -- test_pci2 --nocapture)",
       "Bash(cargo check:*)",
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "mcp__zread__get_repo_structure",
+      "Bash(find:*)",
+      "mcp__zread__read_file"
     ],
     "deny": [],
     "ask": []

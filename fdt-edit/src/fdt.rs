@@ -13,7 +13,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{FdtError, Node, NodeId, NodeType, NodeTypeMut, NodeView, Phandle};
+use crate::{FdtData, FdtEncoder, FdtError, Node, NodeId, NodeType, NodeTypeMut, NodeView, Phandle};
 
 pub use fdt_raw::MemoryReservation;
 
@@ -378,6 +378,11 @@ impl Fdt {
 
     pub fn root_mut(&mut self) -> NodeTypeMut<'_> {
         self.view_typed_mut(self.root).unwrap()
+    }
+
+    /// Encodes the FDT to DTB binary format.
+    pub fn encode(&self) -> FdtData {
+        FdtEncoder::new(self).encode()
     }
 }
 
