@@ -133,4 +133,17 @@ impl Fdt {
     pub fn all_nodes_mut(&mut self) -> impl Iterator<Item = NodeRefMut<'_>> + '_ {
         NodeRefIterMut::new(&self.root)
     }
+
+    fn get_by_path_exact(&self, path: &str) -> Option<NodeRef<'_>> {
+        self.all_nodes().find(|node| node.path().as_str() == path)
+    }
+
+    // /// Resolves an alias to its full path.
+    // ///
+    // /// Looks up the alias in the /aliases node and returns the
+    // /// corresponding path string.
+    // pub fn resolve_alias(&self, alias: &str) -> Option<&str> {
+    //     let aliases_node = self.get_by_path_exact("/aliases")?;
+        
+    // }
 }

@@ -9,6 +9,7 @@ mod base;
 mod iter_ref;
 mod memory;
 
+use alloc::string::String;
 pub use base::*;
 use enum_dispatch::enum_dispatch;
 pub(crate) use iter_ref::*;
@@ -47,6 +48,10 @@ impl NodeKind {
 
     pub(crate) fn _as_raw_mut<'a>(&mut self) -> &'a mut Node {
         self.as_generic_mut().as_node_mut()
+    }
+
+    pub fn path(&self) -> String {
+        self.as_generic().path()
     }
 }
 
