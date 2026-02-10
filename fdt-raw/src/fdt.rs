@@ -164,6 +164,59 @@ impl<'a> Fdt<'a> {
         found_node
     }
 
+    /// Find all direct children of a node at the given path.
+    ///
+    /// Returns an iterator over all direct child nodes (one level deeper)
+    /// of the node at the specified path. Returns `None` if the node is
+    /// not found.
+    ///
+    /// Only direct children are yielded — grandchildren and deeper
+    /// descendants are skipped.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // List all direct children of /soc
+    /// if let Some(children) = fdt.find_children_by_path("/soc") {
+    ///     for child in children {
+    ///         println!("{}", child.name());
+    ///     }
+    /// }
+    /// ```
+    pub fn find_children_by_path(&self, path: &str) -> Option<impl Iterator<Item = Node<'a>> + 'a> {
+        let path = self.normalize_path(path)?;
+        let split = path.trim_matches('/').split('/');
+
+        let mut iter = self.all_nodes();
+        let mut target_level = 0usize;
+
+        for part in split {
+            if part.is_empty() {
+                // Root path "/" — skip the root node itself
+                iter.next();
+                break;
+            }
+            let mut found = false;
+            for node in iter.by_ref() {
+                if node.name() == part {
+                    found = true;
+                    target_level = node.level();
+                    break;
+                }
+            }
+            if !found {
+                return None;
+            }
+        }
+
+        let child_level = target_level + 1;
+        Some(ChildrenIter {
+            node_iter: iter,
+            child_level,
+            done: false,
+        })
+    }
+
     /// Resolve an alias to its full path.
     ///
     /// Looks up the alias in the /aliases node and returns the corresponding
@@ -378,6 +431,39 @@ impl<'a> Iterator for ReservedMemoryIter<'a> {
                     return Some(node);
                 }
             }
+        }
+        None
+    }
+}
+
+/// Iterator over direct children of a specific node.
+///
+/// Yields only nodes whose level equals `child_level`. Nodes deeper
+/// than `child_level` (grandchildren) are skipped, and iteration stops
+/// when leaving the parent's subtree (level < child_level).
+struct ChildrenIter<'a> {
+    node_iter: FdtIter<'a>,
+    child_level: usize,
+    done: bool,
+}
+
+impl<'a> Iterator for ChildrenIter<'a> {
+    type Item = Node<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        for node in self.node_iter.by_ref() {
+            if node.level() == self.child_level {
+                return Some(node);
+            }
+            if node.level() < self.child_level {
+                // Left the parent's subtree
+                self.done = true;
+                return None;
+            }
+            // node.level() > self.child_level: grandchild, skip
         }
         None
     }
