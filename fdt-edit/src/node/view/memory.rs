@@ -54,7 +54,7 @@ impl<'a> MemoryNodeView<'a> {
         let regs = self.as_view().regs();
         regs.into_iter()
             .map(|r| MemoryRegion {
-                address: r.address,  // Use the CPU-translated address
+                address: r.address, // Use the CPU-translated address
                 size: r.size.unwrap_or(0),
             })
             .collect()
@@ -97,9 +97,5 @@ impl<'a> MemoryNodeViewMut<'a> {
         } else {
             None
         }
-    }
-
-    pub fn set_regs(&mut self, regs: &[fdt_raw::RegInfo]) {
-        self.inner.set_regs(regs);
     }
 }
