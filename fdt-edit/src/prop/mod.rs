@@ -13,7 +13,7 @@ use alloc::{
 
 use fdt_raw::data::{Bytes, StrIter, U32Iter};
 // Re-export from fdt_raw
-pub use fdt_raw::{Phandle, RegInfo, Status, data::Reader};
+use crate::Reader;
 
 /// A mutable device tree property.
 ///

@@ -1,3 +1,5 @@
+use core::fmt::{Debug, Display};
+
 use alloc::{collections::btree_map::BTreeMap, string::String, vec::Vec};
 use fdt_raw::{Phandle, Status};
 
@@ -50,8 +52,8 @@ impl Node {
     }
 
     /// Returns a mutable iterator over the node's children.
-    pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Node> {
-        self.children.iter_mut()
+    pub fn children_mut(&mut self) -> &mut [Node] {
+        &mut self.children
     }
 
     /// Adds a child node to this node.
@@ -349,5 +351,23 @@ impl From<&fdt_raw::Node<'_>> for Node {
             new_node.set_property(prop);
         }
         new_node
+    }
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Node(name: {})", self.name)
+    }
+}
+
+impl Debug for Node {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Node {{ name: {}, properties: {}, children: {} }}",
+            self.name,
+            self.properties.len(),
+            self.children.len()
+        )
     }
 }
