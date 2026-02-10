@@ -35,7 +35,16 @@ impl Display for NodeRef<'_> {
         writeln!(f, "{}", self.node.name)?;
         for prop in self.node.properties() {
             self.meta.write_indent(f)?;
-            // writeln!(f, "  {} = ", prop.name())?;
+            write!(f, "  {} = ", prop.name())?;
+
+            if let Some(str) = prop.as_str() {
+                writeln!(f, "\"{}\";", str)?;
+            } else {
+                for cell in prop.get_u32_iter() {
+                    write!(f, "{:#x} ", cell)?;
+                }
+                writeln!(f, ";")?;
+            }
         }
 
         Ok(())
