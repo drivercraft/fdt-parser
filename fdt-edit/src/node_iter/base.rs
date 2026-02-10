@@ -2,15 +2,26 @@ use core::fmt::Display;
 
 use crate::Node;
 
-pub struct NodeRef<'a> {
+pub struct NodeGeneric {
     pub(crate) meta: NodeIterMeta,
-    pub(crate) node: &'a Node,
+    pub(crate) node: *mut Node,
 }
 
-pub struct NodeRefMut<'a> {
-    pub(crate) meta: NodeIterMeta,
-    pub(crate) node: &'a mut Node,
+impl NodeGeneric {
+    pub(crate) fn new(node: *mut Node, meta: NodeIterMeta) -> Self {
+        Self { node, meta }
+    }
+
+    pub fn as_node<'a>(&self) -> &'a Node {
+        unsafe { &*self.node }
+    }
+
+    pub fn as_node_mut<'a>(&mut self) -> &'a mut Node {
+        unsafe { &mut *self.node }
+    }
 }
+
+unsafe impl Send for NodeGeneric {}
 
 #[derive(Clone)]
 pub(crate) struct NodeIterMeta {
@@ -28,12 +39,12 @@ impl NodeIterMeta {
     }
 }
 
-impl Display for NodeRef<'_> {
+impl Display for NodeGeneric {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.meta.write_indent(f)?;
 
-        writeln!(f, "{}", self.node.name)?;
-        for prop in self.node.properties() {
+        writeln!(f, "{}", self.as_node().name)?;
+        for prop in self.as_node().properties() {
             self.meta.write_indent(f)?;
             write!(f, "  {} = ", prop.name())?;
 

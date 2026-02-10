@@ -1,24 +1,26 @@
-use alloc::vec::Vec;
+use core::fmt::Display;
 
-use crate::{NodeIterMeta, NodeRef, NodeRefMut};
+use alloc::vec::Vec;
+use fdt_raw::NodeBase;
+
+use crate::{NodeGeneric, NodeIterMeta, NodeKind, NodeRef, NodeRefMut};
 
 use super::Node;
 
-struct StackEntry<'a> {
+struct StackEntry {
     node: *mut Node,
     child_index: usize,
     meta: NodeIterMeta,
-    _marker: core::marker::PhantomData<&'a Node>,
 }
 
-unsafe impl<'a> Send for NodeRefIter<'a> {}
+unsafe impl Send for StackEntry {}
 
-pub(crate) struct NodeRefIter<'a> {
-    stack: Vec<StackEntry<'a>>,
+pub(crate) struct NodeIter {
+    stack: Vec<StackEntry>,
 }
 
-impl<'a> NodeRefIter<'a> {
-    pub fn new(root: &'a Node) -> Self {
+impl NodeIter {
+    pub fn new(root: &Node) -> Self {
         Self {
             stack: vec![StackEntry {
                 node: root as *const Node as usize as *mut Node,
@@ -28,7 +30,6 @@ impl<'a> NodeRefIter<'a> {
                     address_cells: 2, // Default value, can be overridden by root node properties
                     size_cells: 1,    // Default value, can be overridden by root node properties
                 },
-                _marker: core::marker::PhantomData,
             }],
         }
     }
@@ -54,7 +55,6 @@ impl<'a> NodeRefIter<'a> {
                         node: child_ptr,
                         child_index: 0,
                         meta: child_meta.clone(),
-                        _marker: core::marker::PhantomData,
                     });
 
                     return Some((child_ptr, child_meta));
@@ -67,25 +67,40 @@ impl<'a> NodeRefIter<'a> {
     }
 }
 
+pub(crate) struct NodeRefIter<'a> {
+    iter: NodeIter,
+    _marker: core::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> NodeRefIter<'a> {
+    pub fn new(root: &Node) -> Self {
+        Self {
+            iter: NodeIter::new(root),
+            _marker: core::marker::PhantomData,
+        }
+    }
+}
+
 impl<'a> Iterator for NodeRefIter<'a> {
     type Item = NodeRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_raw().map(|(node_ptr, meta)| NodeRef {
-            node: unsafe { &*node_ptr },
-            meta,
-        })
+        self.iter
+            .next_raw()
+            .map(|(node_ptr, meta)| NodeRef::new(node_ptr, meta))
     }
 }
 
 pub(crate) struct NodeRefIterMut<'a> {
-    inner: NodeRefIter<'a>,
+    iter: NodeIter,
+    _marker: core::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> NodeRefIterMut<'a> {
-    pub fn new(root: &'a mut Node) -> Self {
+    pub fn new(root: &Node) -> Self {
         Self {
-            inner: NodeRefIter::new(root),
+            iter: NodeIter::new(root),
+            _marker: core::marker::PhantomData,
         }
     }
 }
@@ -94,9 +109,8 @@ impl<'a> Iterator for NodeRefIterMut<'a> {
     type Item = NodeRefMut<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next_raw().map(|(node_ptr, meta)| NodeRefMut {
-            node: unsafe { &mut *node_ptr },
-            meta,
-        })
+        self.iter
+            .next_raw()
+            .map(|(node_ptr, meta)| NodeRefMut::new(node_ptr, meta))
     }
 }
