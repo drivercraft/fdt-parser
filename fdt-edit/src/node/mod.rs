@@ -16,8 +16,6 @@ pub(crate) mod view;
 pub struct Node {
     /// Node name (without path)
     pub name: String,
-    /// Parent node ID (None for root)
-    pub parent: Option<NodeId>,
     /// Property list (maintains original order)
     properties: Vec<Property>,
     /// Property name to index mapping (for fast lookup)
@@ -34,7 +32,6 @@ impl Node {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.into(),
-            parent: None,
             properties: Vec::new(),
             prop_cache: BTreeMap::new(),
             children: Vec::new(),

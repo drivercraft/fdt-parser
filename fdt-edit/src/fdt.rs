@@ -30,6 +30,8 @@ pub struct Fdt {
     pub memory_reservations: Vec<MemoryReservation>,
     /// Flat storage for all nodes
     nodes: BTreeMap<NodeId, Node>,
+    /// Parent mapping: child_id -> parent_id
+    parent_map: BTreeMap<NodeId, NodeId>,
     /// Root node ID
     root: NodeId,
     /// Next unique node ID to allocate
@@ -54,6 +56,7 @@ impl Fdt {
             boot_cpuid_phys: 0,
             memory_reservations: Vec::new(),
             nodes,
+            parent_map: BTreeMap::new(),
             root: root_id,
             next_id: 1,
             phandle_cache: BTreeMap::new(),
@@ -71,6 +74,11 @@ impl Fdt {
     /// Returns the root node ID.
     pub fn root_id(&self) -> NodeId {
         self.root
+    }
+
+    /// Returns the parent node ID for the given node, if any.
+    pub fn parent_of(&self, id: NodeId) -> Option<NodeId> {
+        self.parent_map.get(&id).copied()
     }
 
     /// Returns a reference to the node with the given ID.
@@ -92,10 +100,10 @@ impl Fdt {
     ///
     /// Sets the new node's `parent` field and updates the parent's children list
     /// and name cache.
-    pub fn add_node(&mut self, parent: NodeId, mut node: Node) -> NodeId {
-        node.parent = Some(parent);
+    pub fn add_node(&mut self, parent: NodeId, node: Node) -> NodeId {
         let name = node.name.clone();
         let id = self.alloc_node(node);
+        self.parent_map.insert(id, parent);
 
         if let Some(parent_node) = self.nodes.get_mut(&parent) {
             parent_node.add_child(&name, id);
@@ -131,6 +139,8 @@ impl Fdt {
     /// Recursively removes a node and all its descendants from the arena.
     fn remove_subtree(&mut self, id: NodeId) {
         if let Some(node) = self.nodes.remove(&id) {
+            // Remove from parent map
+            self.parent_map.remove(&id);
             // Remove from phandle cache
             if let Some(phandle) = node.phandle() {
                 self.phandle_cache.remove(&phandle);
@@ -213,8 +223,8 @@ impl Fdt {
                 break;
             }
             parts.push(&node.name);
-            match node.parent {
-                Some(p) => cur = p,
+            match self.parent_map.get(&cur) {
+                Some(&p) => cur = p,
                 None => break,
             }
         }
@@ -281,6 +291,7 @@ impl Fdt {
             boot_cpuid_phys: header.boot_cpuid_phys,
             memory_reservations: raw_fdt.memory_reservations().collect(),
             nodes: BTreeMap::new(),
+            parent_map: BTreeMap::new(),
             root: 0,
             next_id: 0,
             phandle_cache: BTreeMap::new(),
@@ -315,9 +326,7 @@ impl Fdt {
 
             if let Some(&(parent_id, _)) = id_stack.last() {
                 // Set parent link
-                if let Some(n) = fdt.nodes.get_mut(&node_id) {
-                    n.parent = Some(parent_id);
-                }
+                fdt.parent_map.insert(node_id, parent_id);
                 // Add as child to parent
                 if let Some(parent) = fdt.nodes.get_mut(&parent_id) {
                     parent.add_child(&node_name, node_id);
