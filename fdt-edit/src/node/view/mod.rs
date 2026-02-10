@@ -14,7 +14,7 @@ use core::fmt::Display;
 use alloc::{string::String, vec::Vec};
 use enum_dispatch::enum_dispatch;
 
-use crate::{Fdt, Node, NodeId};
+use crate::{Fdt, Node, NodeId, RangesEntry};
 
 // Re-export specialized view types
 pub use generic::{NodeGeneric, NodeGenericMut};
@@ -112,6 +112,78 @@ impl<'a> NodeView<'a> {
         self.as_node().size_cells()
     }
 
+    /// Parses the `reg` property and returns corrected register entries.
+    ///
+    /// Uses parent node's `ranges` property to translate bus addresses to CPU addresses.
+    pub fn regs(&self) -> Vec<RegFixed> {
+        let node = self.as_node();
+        let reg = match node.get_property("reg") {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+
+        // Get address-cells and size-cells from parent (or default 2/1)
+        let (addr_cells, size_cells) = self.parent_cells();
+
+        // Get parent's ranges for address translation
+        let ranges = self.parent_ranges();
+
+        let mut reader = reg.as_reader();
+        let mut results = Vec::new();
+
+        while let Some(child_bus_address) = reader.read_cells(addr_cells) {
+            let size = if size_cells > 0 {
+                reader.read_cells(size_cells)
+            } else {
+                None
+            };
+
+            // Convert bus address to CPU address using ranges
+            let mut address = child_bus_address;
+            if let Some(ref ranges) = ranges {
+                for r in ranges {
+                    if child_bus_address >= r.child_bus_address
+                        && child_bus_address < r.child_bus_address + r.length
+                    {
+                        address = child_bus_address - r.child_bus_address + r.parent_bus_address;
+                        break;
+                    }
+                }
+            }
+
+            results.push(RegFixed {
+                address,
+                child_bus_address,
+                size,
+            });
+        }
+
+        results
+    }
+
+    /// Returns (address_cells, size_cells) from the parent node (defaults: 2, 1).
+    fn parent_cells(&self) -> (usize, usize) {
+        if let Some(parent) = self.parent() {
+            let ac = parent.as_view().address_cells().unwrap_or(2) as usize;
+            let sc = parent.as_view().size_cells().unwrap_or(1) as usize;
+            (ac, sc)
+        } else {
+            (2, 1)
+        }
+    }
+
+    /// Returns the parent node's ranges entries for address translation.
+    fn parent_ranges(&self) -> Option<Vec<RangesEntry>> {
+        self.parent().and_then(|p| {
+            let view = p.as_view();
+            // Get grandparent's address-cells for parsing parent_bus_address
+            let parent_addr_cells = p.parent()
+                .and_then(|gp| gp.as_view().address_cells())
+                .unwrap_or(2);
+            view.as_node().ranges(parent_addr_cells)
+        })
+    }
+
     pub(crate) fn classify(&self) -> NodeType<'a> {
         if let Some(node) = MemoryNodeView::try_from_view(*self) {
             return NodeType::Memory(node);
@@ -206,6 +278,11 @@ impl<'a> NodeType<'a> {
     pub fn name(&self) -> &'a str {
         self.as_view().name()
     }
+
+    /// Parses the `reg` property and returns corrected register entries.
+    pub fn regs(&self) -> Vec<RegFixed> {
+        self.as_view().regs()
+    }
 }
 
 impl core::fmt::Display for NodeType<'_> {
@@ -256,4 +333,11 @@ impl Fdt {
     pub fn view_typed_mut(&mut self, id: NodeId) -> Option<NodeTypeMut<'_>> {
         self.view(id).map(|mut v| v.classify_mut())
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RegFixed {
+    pub address: u64,
+    pub child_bus_address: u64,
+    pub size: Option<u64>,
 }

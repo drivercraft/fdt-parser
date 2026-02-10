@@ -47,43 +47,22 @@ impl<'a> MemoryNodeView<'a> {
 
     /// Iterates over memory regions parsed from the `reg` property.
     ///
-    /// Uses the parent node's `#address-cells` and `#size-cells` to decode.
+    /// Uses the parent node's `ranges` for address translation, converting
+    /// bus addresses to CPU physical addresses.
     pub fn regions(&self) -> Vec<MemoryRegion> {
-        let node = self.as_view().as_node();
-        let reg = match node.get_property("reg") {
-            Some(p) => p,
-            None => return Vec::new(),
-        };
-
-        // Get address-cells and size-cells from parent (or default 2/1)
-        let (addr_cells, size_cells) = self.parent_cells();
-
-        let mut reader = reg.as_reader();
-        let mut regions = Vec::new();
-
-        while let (Some(address), Some(size)) =
-            (reader.read_cells(addr_cells), reader.read_cells(size_cells))
-        {
-            regions.push(MemoryRegion { address, size });
-        }
-
-        regions
+        // Use NodeView::regs() to get address-translated regions
+        let regs = self.as_view().regs();
+        regs.into_iter()
+            .map(|r| MemoryRegion {
+                address: r.address,  // Use the CPU-translated address
+                size: r.size.unwrap_or(0),
+            })
+            .collect()
     }
 
     /// Total size across all memory regions.
     pub fn total_size(&self) -> u64 {
         self.regions().iter().map(|r| r.size).sum()
-    }
-
-    /// Returns (address_cells, size_cells) from the parent node (defaults: 2, 1).
-    fn parent_cells(&self) -> (usize, usize) {
-        if let Some(parent) = self.as_view().parent() {
-            let ac = parent.as_view().address_cells().unwrap_or(2) as usize;
-            let sc = parent.as_view().size_cells().unwrap_or(1) as usize;
-            (ac, sc)
-        } else {
-            (2, 1)
-        }
     }
 }
 
