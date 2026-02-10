@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use fdt_raw::MemoryRegion;
 
 use super::NodeView;
-use crate::{Node, NodeGeneric, NodeGenericMut, NodeId, ViewOp};
+use crate::{NodeGeneric, NodeGenericMut, ViewOp};
 
 // ---------------------------------------------------------------------------
 // MemoryNodeView

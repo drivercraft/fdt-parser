@@ -6,8 +6,8 @@
 
 use core::ptr::NonNull;
 
-use crate::data::U32_SIZE;
 use crate::FdtError;
+use crate::data::U32_SIZE;
 
 /// A 4-byte aligned buffer for header data.
 ///

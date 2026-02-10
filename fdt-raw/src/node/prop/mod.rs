@@ -17,7 +17,7 @@ pub use reg::{RegInfo, RegIter};
 
 use crate::{
     FdtError, Phandle, Status, Token,
-    data::{Bytes, Reader, StrIter, U32Iter, U32_SIZE},
+    data::{Bytes, Reader, StrIter, U32_SIZE, U32Iter},
 };
 
 /// A generic device tree property containing name and raw data.
