@@ -314,6 +314,32 @@ impl<'a> NodeType<'a> {
             NodeType::Generic(v) => &v.inner,
         }
     }
+
+    /// Returns the underlying `Node` reference.
+    pub fn as_node(&self) -> &'a Node {
+        self.as_view().as_node()
+    }
+
+    /// Returns the node's full path string.
+    pub fn path(&self) -> String {
+        self.as_view().path()
+    }
+
+    /// Returns the node's ID.
+    pub fn id(&self) -> NodeId {
+        self.as_view().id()
+    }
+
+    /// Returns the node's name.
+    pub fn name(&self) -> &'a str {
+        self.as_view().name()
+    }
+}
+
+impl core::fmt::Display for NodeType<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.as_view())
+    }
 }
 
 // ---------------------------------------------------------------------------

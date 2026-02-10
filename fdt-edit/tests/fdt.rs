@@ -24,7 +24,7 @@ fn test_node_classify() {
     let mut generic_count = 0;
 
     for view in fdt.all_nodes() {
-        match view.classify() {
+        match view {
             NodeType::Memory(mem) => {
                 memory_count += 1;
                 let regions = mem.regions();
