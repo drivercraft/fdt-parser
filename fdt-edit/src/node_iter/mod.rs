@@ -7,25 +7,38 @@ use crate::Node;
 
 mod base;
 mod iter_ref;
+mod memory;
 
 pub use base::*;
 use enum_dispatch::enum_dispatch;
 pub(crate) use iter_ref::*;
+pub use memory::*;
 
 #[enum_dispatch(NodeOp)]
 pub enum NodeKind {
     Generic(NodeGeneric),
+    Memory(NodeMemory),
 }
 
 #[enum_dispatch]
 pub(crate) trait NodeOp {
     fn as_generic(&self) -> &NodeGeneric;
     fn as_generic_mut(&mut self) -> &mut NodeGeneric;
+    fn _display(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_generic().fmt(f)
+    }
 }
 
 impl NodeKind {
     pub(crate) fn new(node: *mut Node, meta: NodeIterMeta) -> Self {
-        NodeKind::Generic(NodeGeneric::new(node, meta))
+        let generic = NodeGeneric::new(node, meta.clone());
+
+        let generic = match NodeMemory::try_new(generic) {
+            Ok(mem) => return NodeKind::Memory(mem),
+            Err(generic) => generic,
+        };
+
+        NodeKind::Generic(generic)
     }
 
     pub(crate) fn _as_raw<'a>(&self) -> &'a Node {
@@ -34,10 +47,6 @@ impl NodeKind {
 
     pub(crate) fn _as_raw_mut<'a>(&mut self) -> &'a mut Node {
         self.as_generic_mut().as_node_mut()
-    }
-
-    pub(crate) fn _fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_generic().fmt(f)
     }
 }
 
@@ -78,7 +87,7 @@ impl<'a> Deref for NodeRef<'a> {
 
 impl Display for NodeRef<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.inner._fmt(f)
+        self.inner._display(f)
     }
 }
 
@@ -111,6 +120,6 @@ impl<'a> DerefMut for NodeRefMut<'a> {
 
 impl Display for NodeRefMut<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.inner._fmt(f)
+        self.inner._display(f)
     }
 }

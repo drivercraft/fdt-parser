@@ -19,6 +19,18 @@ impl NodeGeneric {
     pub fn as_node_mut<'a>(&mut self) -> &'a mut Node {
         unsafe { &mut *self.node }
     }
+
+    pub fn name(&self) -> &str {
+        self.as_node().name()
+    }
+
+    pub fn properties(&self) -> &[crate::Property] {
+        self.as_node().properties()
+    }
+
+    pub fn get_property(&self, name: &str) -> Option<&crate::Property> {
+        self.as_node().get_property(name)
+    }
 }
 
 unsafe impl Send for NodeGeneric {}
@@ -26,8 +38,8 @@ unsafe impl Send for NodeGeneric {}
 #[derive(Clone)]
 pub(crate) struct NodeIterMeta {
     pub(crate) level: usize,
-    pub(crate) address_cells: usize,
-    pub(crate) size_cells: usize,
+    pub(crate) parent_address_cells: usize,
+    pub(crate) parent_size_cells: usize,
 }
 
 impl NodeIterMeta {

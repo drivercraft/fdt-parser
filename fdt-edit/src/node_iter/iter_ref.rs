@@ -24,8 +24,8 @@ impl NodeIter {
                 child_index: 0,
                 meta: NodeIterMeta {
                     level: 0,
-                    address_cells: 2, // Default value, can be overridden by root node properties
-                    size_cells: 1,    // Default value, can be overridden by root node properties
+                    parent_address_cells: 2, // Default value, can be overridden by root node properties
+                    parent_size_cells: 1, // Default value, can be overridden by root node properties
                 },
             }],
         }
@@ -44,8 +44,8 @@ impl NodeIter {
                     // Update meta information based on the current node's properties
                     let child_meta = NodeIterMeta {
                         level: top.meta.level + 1,
-                        address_cells: top.meta.address_cells, // This should be updated based on the child's properties if it has #address-cells
-                        size_cells: top.meta.size_cells, // This should be updated based on the child's properties if it has #size-cells
+                        parent_address_cells: top.meta.parent_address_cells, // This should be updated based on the child's properties if it has #address-cells
+                        parent_size_cells: top.meta.parent_size_cells, // This should be updated based on the child's properties if it has #size-cells
                     };
 
                     self.stack.push(StackEntry {
