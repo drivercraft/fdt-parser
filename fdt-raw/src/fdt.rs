@@ -8,8 +8,8 @@
 use core::fmt;
 
 use crate::{
-    Chosen, FdtError, Memory, MemoryReservation, Node, Property, data, data::Bytes, fmt_utils,
-    header::Header, iter::FdtIter,
+    Chosen, FdtError, Memory, MemoryReservation, Node, Property, VecRange, data, data::Bytes,
+    fmt_utils, header::Header, iter::FdtIter,
 };
 
 /// Iterator over memory reservation entries.
@@ -206,17 +206,51 @@ impl<'a> Fdt<'a> {
     /// point (e.g., a parent node has no `ranges` property), the original
     /// address is returned.
     pub fn translate_address(&self, path: &'a str, address: u64) -> u64 {
+        let mut addresses = [address];
+        self.translate_addresses_inner(path, &mut addresses);
+        addresses[0]
+    }
+
+    /// Translate multiple device addresses to CPU physical addresses in a single pass.
+    ///
+    /// This is more efficient than calling `translate_address` multiple times
+    /// for the same node path, because the tree is walked only once. Each
+    /// parent node's `ranges` property is looked up once and applied to all
+    /// addresses in the batch.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Node path (absolute path starting with '/' or alias name)
+    /// * `addresses` - Slice of device addresses from the node's `reg` property
+    ///
+    /// # Returns
+    ///
+    /// A `heapless::Vec` of translated CPU physical addresses, in the same
+    /// order as the input. If translation fails, the original addresses are
+    /// preserved.
+    pub fn translate_addresses<const N: usize>(
+        &self,
+        path: &'a str,
+        addresses: &[u64],
+    ) -> heapless::Vec<u64, N> {
+        let mut result: heapless::Vec<u64, N> = addresses.iter().copied().collect();
+        self.translate_addresses_inner(path, &mut result);
+        result
+    }
+
+    /// Inner implementation for batch address translation.
+    fn translate_addresses_inner(&self, path: &'a str, addresses: &mut [u64]) {
         let path = match self.normalize_path(path) {
             Some(p) => p,
-            None => return address,
+            None => return,
         };
 
         let path_parts = Self::split_path(path);
         if path_parts.is_empty() {
-            return address;
+            return;
         }
 
-        self.translate_address_with_parts(&path_parts, address)
+        self.translate_addresses_with_parts(&path_parts, addresses);
     }
 
     /// Splits an absolute path into its component parts.
@@ -229,10 +263,11 @@ impl<'a> Fdt<'a> {
             .collect()
     }
 
-    /// Performs address translation using pre-split path components.
+    /// Performs batch address translation using pre-split path components.
     ///
-    /// Walks up the tree from the deepest node, applying `ranges` at each level.
-    fn translate_address_with_parts(&self, path_parts: &[&str], mut address: u64) -> u64 {
+    /// Walks up the tree from the deepest node, applying `ranges` at each level
+    /// to all addresses in the slice. Each parent node is looked up only once.
+    fn translate_addresses_with_parts(&self, path_parts: &[&str], addresses: &mut [u64]) {
         // Walk up from the deepest node, applying ranges at each level
         // We start from the second-to-last level (the target node itself is skipped)
         for depth in (0..path_parts.len()).rev() {
@@ -244,14 +279,17 @@ impl<'a> Fdt<'a> {
             }
 
             if let Some(parent_node) = self.find_node_by_parts(parent_parts) {
-                address = match self.apply_ranges_translation(parent_node, address) {
-                    Some(translated) => translated,
+                let ranges = match parent_node.ranges() {
+                    Some(r) => r,
                     None => break, // No ranges property, stop translation
                 };
+
+                // Apply ranges to all addresses in batch
+                for addr in addresses.iter_mut() {
+                    *addr = Self::apply_ranges_one(&ranges, *addr);
+                }
             }
         }
-
-        address
     }
 
     /// Finds a node by its path component parts.
@@ -267,23 +305,21 @@ impl<'a> Fdt<'a> {
         self.find_by_path(path.as_str())
     }
 
-    /// Applies a single level of address translation using a node's ranges property.
+    /// Translates a single address using the given ranges.
     ///
-    /// Returns `Some(translated_address)` if the address falls within a range,
-    /// or `None` if the node has no ranges property.
-    fn apply_ranges_translation(&self, node: Node<'a>, address: u64) -> Option<u64> {
-        let ranges = node.ranges()?;
-
+    /// If the address falls within a range, it is translated. Otherwise,
+    /// the original address is returned unchanged.
+    fn apply_ranges_one(ranges: &VecRange<'_>, address: u64) -> u64 {
         for range in ranges.iter() {
             // Check if the address falls within this range
             if address >= range.child_address && address < range.child_address + range.length {
                 let offset = address - range.child_address;
-                return Some(range.parent_address + offset);
+                return range.parent_address + offset;
             }
         }
 
-        // No matching range found, but we continue to try upper levels
-        Some(address)
+        // No matching range found, return as-is
+        address
     }
 
     /// Returns an iterator over memory reservation entries.
@@ -423,11 +459,7 @@ impl Fdt<'_> {
     }
 
     /// Closes all remaining open nodes at the end of output.
-    fn close_all_nodes(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-        state: &mut DisplayState,
-    ) -> fmt::Result {
+    fn close_all_nodes(&self, f: &mut fmt::Formatter<'_>, state: &mut DisplayState) -> fmt::Result {
         while state.prev_level > 0 {
             state.prev_level -= 1;
             fmt_utils::write_indent(f, state.prev_level, "    ")?;
@@ -486,9 +518,11 @@ impl Fdt<'_> {
             () if prop.as_size_cells().is_some() => {
                 writeln!(f, "#size-cells: {}", prop.as_size_cells().unwrap())?
             }
-            () if prop.as_interrupt_cells().is_some() => {
-                writeln!(f, "#interrupt-cells: {}", prop.as_interrupt_cells().unwrap())?
-            }
+            () if prop.as_interrupt_cells().is_some() => writeln!(
+                f,
+                "#interrupt-cells: {}",
+                prop.as_interrupt_cells().unwrap()
+            )?,
             () if prop.as_status().is_some() => {
                 writeln!(f, "status: {:?}", prop.as_status().unwrap())?
             }
