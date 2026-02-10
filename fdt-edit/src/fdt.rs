@@ -10,7 +10,7 @@
 use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
-    vec::{self, Vec},
+    vec::Vec,
 };
 
 use crate::{FdtError, Node, NodeId, NodeType, NodeTypeMut, NodeView, Phandle};

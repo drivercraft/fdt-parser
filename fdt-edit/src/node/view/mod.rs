@@ -14,7 +14,7 @@ use core::fmt::Display;
 use alloc::{string::String, vec::Vec};
 use enum_dispatch::enum_dispatch;
 
-use crate::{Fdt, Node, NodeId, RangesEntry};
+use crate::{Fdt, Node, NodeId, Property, RangesEntry};
 
 // Re-export specialized view types
 pub use generic::{NodeGeneric, NodeGenericMut};
@@ -177,11 +177,78 @@ impl<'a> NodeView<'a> {
         self.parent().and_then(|p| {
             let view = p.as_view();
             // Get grandparent's address-cells for parsing parent_bus_address
-            let parent_addr_cells = p.parent()
+            let parent_addr_cells = p
+                .parent()
                 .and_then(|gp| gp.as_view().address_cells())
                 .unwrap_or(2);
             view.as_node().ranges(parent_addr_cells)
         })
+    }
+
+    /// Sets the `reg` property from CPU addresses.
+    ///
+    /// Converts CPU addresses to bus addresses using parent's `ranges` property
+    /// and stores them in big-endian format.
+    pub fn set_regs(&mut self, regs: &[fdt_raw::RegInfo]) {
+        // Get address-cells and size-cells from parent (or default 2/1)
+        let (addr_cells, size_cells) = self.parent_cells();
+
+        // Get parent's ranges for address translation
+        let ranges = self.parent_ranges();
+
+        let mut data = Vec::new();
+
+        for reg in regs {
+            // Convert CPU address to bus address
+            let mut bus_address = reg.address;
+            if let Some(ref ranges) = ranges {
+                for r in ranges {
+                    // Check if CPU address is within the range mapping
+                    if reg.address >= r.parent_bus_address
+                        && reg.address < r.parent_bus_address + r.length
+                    {
+                        // Reverse conversion: cpu_address -> bus_address
+                        bus_address = reg.address - r.parent_bus_address + r.child_bus_address;
+                        break;
+                    }
+                }
+            }
+
+            // Write bus address (big-endian)
+            match addr_cells {
+                1 => data.extend_from_slice(&(bus_address as u32).to_be_bytes()),
+                2 => {
+                    data.extend_from_slice(&((bus_address >> 32) as u32).to_be_bytes());
+                    data.extend_from_slice(&((bus_address & 0xFFFF_FFFF) as u32).to_be_bytes());
+                }
+                n => {
+                    // Handle arbitrary address cells
+                    for i in 0..n {
+                        let shift = (n - 1 - i) * 32;
+                        data.extend_from_slice(&(((bus_address >> shift) as u32).to_be_bytes()));
+                    }
+                }
+            }
+
+            // Write size (big-endian)
+            let size = reg.size.unwrap_or(0);
+            match size_cells {
+                1 => data.extend_from_slice(&(size as u32).to_be_bytes()),
+                2 => {
+                    data.extend_from_slice(&((size >> 32) as u32).to_be_bytes());
+                    data.extend_from_slice(&((size & 0xFFFF_FFFF) as u32).to_be_bytes());
+                }
+                n => {
+                    for i in 0..n {
+                        let shift = (n - 1 - i) * 32;
+                        data.extend_from_slice(&(((size >> shift) as u32).to_be_bytes()));
+                    }
+                }
+            }
+        }
+
+        let prop = Property::new("reg", data);
+        self.as_node_mut().set_property(prop);
     }
 
     pub(crate) fn classify(&self) -> NodeType<'a> {
@@ -307,6 +374,14 @@ impl<'a> NodeTypeMut<'a> {
     /// Returns the inner node ID regardless of variant.
     pub fn id(&self) -> NodeId {
         self.as_view().id()
+    }
+
+    /// Sets the `reg` property from CPU addresses.
+    ///
+    /// Converts CPU addresses to bus addresses using parent's `ranges` property
+    /// and stores them in big-endian format.
+    pub fn set_regs(&mut self, regs: &[fdt_raw::RegInfo]) {
+        self.as_view().set_regs(regs);
     }
 }
 

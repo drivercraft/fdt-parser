@@ -1,9 +1,10 @@
 //! Generic node view specialization.
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
+use fdt_raw::RegInfo;
 
 use super::NodeView;
-use crate::{NodeId, ViewOp};
+use crate::{NodeId, RegFixed, ViewOp};
 
 // ---------------------------------------------------------------------------
 // GenericNodeView
@@ -22,6 +23,10 @@ impl<'a> NodeGeneric<'a> {
 
     pub fn path(&self) -> String {
         self.inner.path()
+    }
+
+    pub fn regs(&self) -> Vec<RegFixed> {
+        self.inner.regs()
     }
 }
 
@@ -53,5 +58,9 @@ impl<'a> NodeGenericMut<'a> {
 
     pub fn path(&self) -> String {
         self.inner.path()
+    }
+
+    pub fn set_regs(&mut self, regs: &[RegInfo]) {
+        self.inner.set_regs(regs);
     }
 }

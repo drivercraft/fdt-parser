@@ -82,4 +82,8 @@ impl<'a> IntcNodeViewMut<'a> {
             None
         }
     }
+
+    pub fn set_regs(&mut self, regs: &[fdt_raw::RegInfo]) {
+        self.inner.set_regs(regs);
+    }
 }
