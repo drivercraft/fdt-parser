@@ -112,7 +112,7 @@ impl<'a> NodeView<'a> {
         self.as_node().size_cells()
     }
 
-    fn classify(&self) -> NodeType<'a> {
+    pub(crate) fn classify(&self) -> NodeType<'a> {
         if let Some(node) = MemoryNodeView::try_from_view(*self) {
             return NodeType::Memory(node);
         }
@@ -124,7 +124,7 @@ impl<'a> NodeView<'a> {
         NodeType::Generic(NodeGeneric { inner: *self })
     }
 
-    fn classify_mut(&mut self) -> NodeTypeMut<'a> {
+    pub(crate) fn classify_mut(&mut self) -> NodeTypeMut<'a> {
         if let Some(node) = MemoryNodeViewMut::try_from_view(*self) {
             return NodeTypeMut::Memory(node);
         }
@@ -255,39 +255,5 @@ impl Fdt {
     /// Returns a classified `NodeTypeMut` for the given node ID.
     pub fn view_typed_mut(&mut self, id: NodeId) -> Option<NodeTypeMut<'_>> {
         self.view(id).map(|mut v| v.classify_mut())
-    }
-
-    /// Looks up a node by path and returns an immutable classified view.
-    pub fn get_by_path(&self, path: &str) -> Option<NodeType<'_>> {
-        let id = self.get_by_path_id(path)?;
-        Some(NodeView::new(self, id).classify())
-    }
-
-    /// Looks up a node by path and returns a mutable classified view.
-    pub fn get_by_path_mut(&mut self, path: &str) -> Option<NodeTypeMut<'_>> {
-        let id = self.get_by_path_id(path)?;
-        Some(NodeView::new(self, id).classify_mut())
-    }
-
-    /// Looks up a node by phandle and returns an immutable classified view.
-    pub fn get_by_phandle(&self, phandle: crate::Phandle) -> Option<NodeType<'_>> {
-        let id = self.get_by_phandle_id(phandle)?;
-        Some(NodeView::new(self, id).classify())
-    }
-
-    /// Looks up a node by phandle and returns a mutable classified view.
-    pub fn get_by_phandle_mut(&mut self, phandle: crate::Phandle) -> Option<NodeTypeMut<'_>> {
-        let id = self.get_by_phandle_id(phandle)?;
-        Some(NodeView::new(self, id).classify_mut())
-    }
-
-    /// Returns a depth-first iterator over `NodeView`s.
-    fn iter_raw_nodes(&self) -> impl Iterator<Item = NodeView<'_>> {
-        self.iter_node_ids().map(move |id| NodeView::new(self, id))
-    }
-
-    /// Returns a depth-first iterator over classified `NodeType`s.
-    pub fn all_nodes(&self) -> impl Iterator<Item = NodeType<'_>> {
-        self.iter_raw_nodes().map(|v| v.classify())
     }
 }

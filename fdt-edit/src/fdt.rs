@@ -7,9 +7,13 @@
 //! All nodes are stored in a flat `BTreeMap<NodeId, Node>` arena. Child
 //! relationships are represented as `Vec<NodeId>` inside each `Node`.
 
-use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::{self, Vec},
+};
 
-use crate::{FdtError, Node, NodeId, Phandle};
+use crate::{FdtError, Node, NodeId, NodeType, NodeTypeMut, NodeView, Phandle};
 
 pub use fdt_raw::MemoryReservation;
 
@@ -158,12 +162,31 @@ impl Fdt {
         }
     }
 
+    pub fn resolve_alias(&self, alias: &str) -> Option<&str> {
+        let root = self.nodes.get(&self.root)?;
+        let alias_node_id = root.get_child("aliases")?;
+        let alias_node = self.nodes.get(&alias_node_id)?;
+        let prop = alias_node.get_property(alias)?;
+        prop.as_str()
+    }
+
+    /// 规范化路径：如果是别名则解析为完整路径，否则确保以 / 开头
+    fn normalize_path(&self, path: &str) -> Option<String> {
+        if path.starts_with('/') {
+            Some(path.to_string())
+        } else {
+            // 尝试解析别名
+            self.resolve_alias(path).map(|s| s.to_string())
+        }
+    }
+
     /// Looks up a node by its full path (e.g. "/soc/uart@10000"),
     /// returning its `NodeId`.
     ///
     /// The root node is matched by "/" or "".
     pub fn get_by_path_id(&self, path: &str) -> Option<NodeId> {
-        let normalized = path.trim_start_matches('/');
+        let normalized_path = self.normalize_path(path)?;
+        let normalized = normalized_path.trim_start_matches('/');
         if normalized.is_empty() {
             return Some(self.root);
         }
@@ -312,6 +335,40 @@ impl Fdt {
         }
 
         Ok(fdt)
+    }
+
+    /// Looks up a node by path and returns an immutable classified view.
+    pub fn get_by_path(&self, path: &str) -> Option<NodeType<'_>> {
+        let id = self.get_by_path_id(path)?;
+        Some(NodeView::new(self, id).classify())
+    }
+
+    /// Looks up a node by path and returns a mutable classified view.
+    pub fn get_by_path_mut(&mut self, path: &str) -> Option<NodeTypeMut<'_>> {
+        let id = self.get_by_path_id(path)?;
+        Some(NodeView::new(self, id).classify_mut())
+    }
+
+    /// Looks up a node by phandle and returns an immutable classified view.
+    pub fn get_by_phandle(&self, phandle: crate::Phandle) -> Option<NodeType<'_>> {
+        let id = self.get_by_phandle_id(phandle)?;
+        Some(NodeView::new(self, id).classify())
+    }
+
+    /// Looks up a node by phandle and returns a mutable classified view.
+    pub fn get_by_phandle_mut(&mut self, phandle: crate::Phandle) -> Option<NodeTypeMut<'_>> {
+        let id = self.get_by_phandle_id(phandle)?;
+        Some(NodeView::new(self, id).classify_mut())
+    }
+
+    /// Returns a depth-first iterator over `NodeView`s.
+    fn iter_raw_nodes(&self) -> impl Iterator<Item = NodeView<'_>> {
+        self.iter_node_ids().map(move |id| NodeView::new(self, id))
+    }
+
+    /// Returns a depth-first iterator over classified `NodeType`s.
+    pub fn all_nodes(&self) -> impl Iterator<Item = NodeType<'_>> {
+        self.iter_raw_nodes().map(|v| v.classify())
     }
 }
 
