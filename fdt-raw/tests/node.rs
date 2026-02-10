@@ -611,3 +611,130 @@ fn test_compatibles() {
         info!("compatible: {}", compatible);
     }
 }
+
+#[test]
+fn test_node_path_root() {
+    init_logging();
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // The first node (root) should have path "/"
+    let root = fdt.all_nodes().next().unwrap();
+    assert_eq!(root.name(), "");
+    assert_eq!(root.path().as_str(), "/");
+}
+
+#[test]
+fn test_node_path_all_nodes() {
+    init_logging();
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    for node in fdt.all_nodes() {
+        let path = node.path();
+        info!("node: {} -> path: {}", node.name(), path);
+
+        // All paths must start with '/'
+        assert!(
+            path.starts_with('/'),
+            "Path should start with '/', got: {}",
+            path
+        );
+
+        // Root node special case
+        if node.name().is_empty() {
+            assert_eq!(path.as_str(), "/");
+        } else {
+            // Non-root nodes: path should end with the node name
+            assert!(
+                path.ends_with(node.name()),
+                "Path '{}' should end with node name '{}'",
+                path,
+                node.name()
+            );
+            // Path should not have double slashes
+            assert!(
+                !path.contains("//"),
+                "Path should not contain '//': {}",
+                path
+            );
+        }
+    }
+}
+
+#[test]
+fn test_node_path_known_nodes() {
+    init_logging();
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // Collect all paths
+    let paths: Vec<String> = fdt
+        .all_nodes()
+        .map(|n| n.path().to_string())
+        .collect();
+
+    // Verify known paths exist
+    let expected_paths = [
+        "/",
+        "/memory@40000000",
+        "/chosen",
+    ];
+    for expected in expected_paths {
+        assert!(
+            paths.iter().any(|p| p == expected),
+            "Expected path '{}' not found in: {:?}",
+            expected,
+            paths
+        );
+    }
+}
+
+#[test]
+fn test_node_path_find_by_path_consistency() {
+    init_logging();
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    // For each node, its path() should be findable via find_by_path
+    for node in fdt.all_nodes() {
+        let path = node.path();
+        let found = fdt.find_by_path(path.as_str());
+        assert!(
+            found.is_some(),
+            "Node with path '{}' (name='{}') should be findable via find_by_path",
+            path,
+            node.name()
+        );
+        assert_eq!(
+            found.unwrap().name(),
+            node.name(),
+            "find_by_path('{}') returned node with wrong name",
+            path
+        );
+    }
+}
+
+#[test]
+fn test_node_path_depth() {
+    init_logging();
+    let raw = fdt_rpi_4b();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    for node in fdt.all_nodes() {
+        let path = node.path();
+        let level = node.level();
+        // Number of '/' in path should equal the level for non-root, or 1 for root
+        let slash_count = path.chars().filter(|&c| c == '/').count();
+        if level == 0 {
+            assert_eq!(slash_count, 1, "Root path '{}' should have exactly one '/'", path);
+        } else {
+            assert_eq!(
+                slash_count, level,
+                "Path '{}' at level {} should have {} slashes, got {}",
+                path, level, level, slash_count
+            );
+        }
+        info!("level={} path={}", level, path);
+    }
+}

@@ -9,8 +9,8 @@ use core::fmt;
 use core::ops::Deref;
 use core::{ffi::CStr, fmt::Debug};
 
-use crate::fmt_utils;
 use crate::Fdt;
+use crate::fmt_utils;
 use crate::{
     FdtError, Token,
     data::{Bytes, Reader, U32_SIZE},
@@ -68,6 +68,8 @@ pub struct NodeBase<'a> {
     pub size_cells: u8,
     /// Inherited context (contains parent's cells)
     context: NodeContext,
+    /// Path components from root to this node
+    path_components: heapless::Vec<&'a str, 16>,
 }
 
 impl<'a> NodeBase<'a> {
@@ -146,6 +148,23 @@ impl<'a> NodeBase<'a> {
         self.find_property("compatible")
             .into_iter()
             .flat_map(|p| p.as_str_iter())
+    }
+
+    /// Returns the full path of this node as a string.
+    ///
+    /// For the root node, returns "/". For other nodes, returns the
+    /// absolute path like "/soc/serial@0".
+    pub fn path(&self) -> heapless::String<256> {
+        let mut result = heapless::String::new();
+        if self.path_components.is_empty() {
+            let _ = result.push('/');
+            return result;
+        }
+        for component in &self.path_components {
+            let _ = result.push('/');
+            let _ = result.push_str(component);
+        }
+        result
     }
 }
 
@@ -306,7 +325,10 @@ impl<'a> OneNodeIter<'a> {
     /// Reads the null-terminated node name and aligns to a 4-byte boundary.
     /// Returns a partially-constructed `NodeBase` with default cell values
     /// that will be updated by `process()`.
-    pub fn read_node_name(&mut self) -> Result<NodeBase<'a>, FdtError> {
+    pub fn read_node_name(
+        &mut self,
+        parent_path: &heapless::Vec<&'a str, 16>,
+    ) -> Result<NodeBase<'a>, FdtError> {
         // Read null-terminated name string
         let name = self.read_cstr()?;
 
@@ -314,6 +336,12 @@ impl<'a> OneNodeIter<'a> {
         self.align4();
 
         let data = self.reader.remain();
+
+        // Build path components: parent path + current node name
+        let mut path_components = parent_path.clone();
+        if !name.is_empty() {
+            let _ = path_components.push(name);
+        }
 
         Ok(NodeBase {
             name,
@@ -325,6 +353,7 @@ impl<'a> OneNodeIter<'a> {
             size_cells: 1,
             context: self.context.clone(),
             _fdt: self.fdt.clone(),
+            path_components,
         })
     }
 

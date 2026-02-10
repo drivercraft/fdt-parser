@@ -29,6 +29,8 @@ pub struct FdtIter<'a> {
     level: usize,
     /// Context stack, with the top being the current context
     context_stack: heapless::Vec<NodeContext, 16>,
+    /// Path stack tracking the current path components from root
+    path_stack: heapless::Vec<&'a str, 16>,
 }
 
 impl<'a> FdtIter<'a> {
@@ -60,6 +62,7 @@ impl<'a> FdtIter<'a> {
             level: 0,
             finished: false,
             context_stack,
+            path_stack: heapless::Vec::new(),
         }
     }
 
@@ -112,6 +115,7 @@ impl<'a> Iterator for FdtIter<'a> {
                             self.level -= 1;
                             // Pop stack to restore parent node context
                             self.context_stack.pop();
+                            self.path_stack.pop();
                         }
                         // Continue loop to process next token
                     }
@@ -140,7 +144,7 @@ impl<'a> Iterator for FdtIter<'a> {
                     );
 
                     // Read node name
-                    match node_iter.read_node_name() {
+                    match node_iter.read_node_name(&self.path_stack) {
                         Ok(mut node) => {
                             // Process node properties to get address-cells, size-cells
                             match node_iter.process() {
@@ -163,6 +167,10 @@ impl<'a> Iterator for FdtIter<'a> {
 
                                             // Has child nodes, update reader position
                                             self.reader = node_iter.reader().clone();
+                                            // Push current node name onto path stack
+                                            if !node.name().is_empty() {
+                                                let _ = self.path_stack.push(node.name());
+                                            }
                                             // Increase level (node has children)
                                             self.level += 1;
                                         }
@@ -199,6 +207,7 @@ impl<'a> Iterator for FdtIter<'a> {
                         self.level -= 1;
                         // Pop stack to restore parent node context
                         self.context_stack.pop();
+                        self.path_stack.pop();
                     }
                     continue;
                 }
