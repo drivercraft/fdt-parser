@@ -11,7 +11,6 @@ repository = "https://github.com/drivercraft/fdt-parser"
 version = "0.2.0"
 
 [dependencies]
-enum_dispatch = "0.3.13"
 fdt-raw = {version = "0.2", path = "../fdt-raw"}
 log = "0.4"
 

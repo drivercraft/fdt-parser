@@ -3,36 +3,35 @@
 //! This module provides the main `Fdt` type for creating, modifying, and
 //! encoding device tree blobs. It supports loading from existing DTB files,
 //! building new trees programmatically, and applying device tree overlays.
+//!
+//! All nodes are stored in a flat `BTreeMap<NodeId, Node>` arena. Child
+//! relationships are represented as `Vec<NodeId>` inside each `Node`.
 
-use alloc::{
-    collections::BTreeMap,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
 
-use crate::node_iter::*;
-use crate::{FdtError, Phandle};
+use crate::{FdtError, Node, NodeId, Phandle};
 
 pub use fdt_raw::MemoryReservation;
 
-use crate::Node;
-
 /// An editable Flattened Device Tree (FDT).
 ///
-/// This structure represents a mutable device tree that can be created from
-/// scratch, loaded from an existing DTB file, modified, and encoded back to
-/// the binary DTB format. It maintains a phandle cache for efficient node
-/// lookups by phandle value.
+/// All nodes are stored in a flat `BTreeMap<NodeId, Node>`. The tree structure
+/// is maintained through `Vec<NodeId>` children lists in each `Node` and an
+/// optional `parent: Option<NodeId>` back-pointer.
 #[derive(Clone)]
 pub struct Fdt {
     /// Boot CPU ID
     pub boot_cpuid_phys: u32,
     /// Memory reservation block entries
     pub memory_reservations: Vec<MemoryReservation>,
-    /// Root node of the device tree
-    pub root: Node,
-    /// Cache mapping phandles to full node paths
-    phandle_cache: BTreeMap<Phandle, String>,
+    /// Flat storage for all nodes
+    nodes: BTreeMap<NodeId, Node>,
+    /// Root node ID
+    root: NodeId,
+    /// Next unique node ID to allocate
+    next_id: NodeId,
+    /// Cache mapping phandles to node IDs for fast lookup
+    phandle_cache: BTreeMap<Phandle, NodeId>,
 }
 
 impl Default for Fdt {
@@ -42,13 +41,199 @@ impl Default for Fdt {
 }
 
 impl Fdt {
-    /// Creates a new empty FDT.
+    /// Creates a new empty FDT with an empty root node.
     pub fn new() -> Self {
+        let mut nodes = BTreeMap::new();
+        let root_id: NodeId = 0;
+        nodes.insert(root_id, Node::new(""));
         Self {
             boot_cpuid_phys: 0,
             memory_reservations: Vec::new(),
-            root: Node::new(""),
+            nodes,
+            root: root_id,
+            next_id: 1,
             phandle_cache: BTreeMap::new(),
+        }
+    }
+
+    /// Allocates a new node in the arena, returning its unique ID.
+    fn alloc_node(&mut self, node: Node) -> NodeId {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.nodes.insert(id, node);
+        id
+    }
+
+    /// Returns the root node ID.
+    pub fn root_id(&self) -> NodeId {
+        self.root
+    }
+
+    /// Returns a reference to the node with the given ID.
+    pub fn node(&self, id: NodeId) -> Option<&Node> {
+        self.nodes.get(&id)
+    }
+
+    /// Returns a mutable reference to the node with the given ID.
+    pub fn node_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        self.nodes.get_mut(&id)
+    }
+
+    /// Returns the total number of nodes in the tree.
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Adds a new node as a child of `parent`, returning the new node's ID.
+    ///
+    /// Sets the new node's `parent` field and updates the parent's children list
+    /// and name cache.
+    pub fn add_node(&mut self, parent: NodeId, mut node: Node) -> NodeId {
+        node.parent = Some(parent);
+        let name = node.name.clone();
+        let id = self.alloc_node(node);
+
+        if let Some(parent_node) = self.nodes.get_mut(&parent) {
+            parent_node.add_child(&name, id);
+        }
+
+        // Update phandle cache if the new node has a phandle
+        if let Some(phandle) = self.nodes.get(&id).and_then(|n| n.phandle()) {
+            self.phandle_cache.insert(phandle, id);
+        }
+
+        id
+    }
+
+    /// Removes a child node (by name) from the given parent, and recursively
+    /// removes the entire subtree from the arena.
+    ///
+    /// Returns the removed node's ID if found.
+    pub fn remove_node(&mut self, parent: NodeId, name: &str) -> Option<NodeId> {
+        let removed_id = {
+            let parent_node = self.nodes.get_mut(&parent)?;
+            parent_node.remove_child(name)?
+        };
+
+        // Rebuild parent's name cache (needs arena access for child names)
+        self.rebuild_name_cache(parent);
+
+        // Recursively remove the subtree
+        self.remove_subtree(removed_id);
+
+        Some(removed_id)
+    }
+
+    /// Recursively removes a node and all its descendants from the arena.
+    fn remove_subtree(&mut self, id: NodeId) {
+        if let Some(node) = self.nodes.remove(&id) {
+            // Remove from phandle cache
+            if let Some(phandle) = node.phandle() {
+                self.phandle_cache.remove(&phandle);
+            }
+            // Recursively remove children
+            for child_id in node.children() {
+                self.remove_subtree(*child_id);
+            }
+        }
+    }
+
+    /// Rebuilds the name cache for a node based on its current children.
+    fn rebuild_name_cache(&mut self, id: NodeId) {
+        let names: Vec<(String, usize)> = {
+            let node = match self.nodes.get(&id) {
+                Some(n) => n,
+                None => return,
+            };
+            node.children()
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, &child_id)| {
+                    self.nodes.get(&child_id).map(|c| (c.name.clone(), idx))
+                })
+                .collect()
+        };
+        if let Some(node) = self.nodes.get_mut(&id) {
+            node.rebuild_name_cache_with_names(&names);
+        }
+    }
+
+    /// Looks up a node by its full path (e.g. "/soc/uart@10000"),
+    /// returning its `NodeId`.
+    ///
+    /// The root node is matched by "/" or "".
+    pub fn get_by_path_id(&self, path: &str) -> Option<NodeId> {
+        let normalized = path.trim_start_matches('/');
+        if normalized.is_empty() {
+            return Some(self.root);
+        }
+
+        let mut current = self.root;
+        for part in normalized.split('/') {
+            let node = self.nodes.get(&current)?;
+            current = node.get_child(part)?;
+        }
+        Some(current)
+    }
+
+    /// Looks up a node by its phandle value, returning its `NodeId`.
+    pub fn get_by_phandle_id(&self, phandle: Phandle) -> Option<NodeId> {
+        self.phandle_cache.get(&phandle).copied()
+    }
+
+    /// Computes the full path string for a node by walking up parent links.
+    pub fn path_of(&self, id: NodeId) -> String {
+        let mut parts: Vec<&str> = Vec::new();
+        let mut cur = id;
+        loop {
+            let node = match self.nodes.get(&cur) {
+                Some(n) => n,
+                None => break,
+            };
+            if cur == self.root {
+                break;
+            }
+            parts.push(&node.name);
+            match node.parent {
+                Some(p) => cur = p,
+                None => break,
+            }
+        }
+        parts.reverse();
+        if parts.is_empty() {
+            return String::from("/");
+        }
+        format!("/{}", parts.join("/"))
+    }
+
+    /// Removes a node and its subtree by path.
+    ///
+    /// Returns the removed node's ID if found.
+    pub fn remove_by_path(&mut self, path: &str) -> Option<NodeId> {
+        let normalized = path.trim_start_matches('/');
+        if normalized.is_empty() {
+            return None; // Cannot remove root
+        }
+
+        let parts: Vec<&str> = normalized.split('/').collect();
+        let child_name = *parts.last()?;
+
+        // Find the parent node
+        let parent_path = &parts[..parts.len() - 1];
+        let mut parent_id = self.root;
+        for &part in parent_path {
+            let node = self.nodes.get(&parent_id)?;
+            parent_id = node.get_child(part)?;
+        }
+
+        self.remove_node(parent_id, child_name)
+    }
+
+    /// Returns a depth-first iterator over all node IDs in the tree.
+    pub fn iter_node_ids(&self) -> NodeDfsIter<'_> {
+        NodeDfsIter {
+            fdt: self,
+            stack: vec![self.root],
         }
     }
 
@@ -76,74 +261,77 @@ impl Fdt {
         let mut fdt = Fdt {
             boot_cpuid_phys: header.boot_cpuid_phys,
             memory_reservations: raw_fdt.memory_reservations().collect(),
-            root: Node::new(""),
+            nodes: BTreeMap::new(),
+            root: 0,
+            next_id: 0,
             phandle_cache: BTreeMap::new(),
         };
 
-        // Build node tree using a stack to track parent nodes
-        let mut node_stack: Vec<Node> = Vec::new();
+        // Build node tree using a stack to track parent node IDs.
+        // raw_fdt.all_nodes() yields nodes in DFS pre-order with level info.
+        // We use a stack of (NodeId, level) to find parents.
+        let mut id_stack: Vec<(NodeId, usize)> = Vec::new();
 
         for raw_node in raw_fdt.all_nodes() {
             let level = raw_node.level();
             let node = Node::from(&raw_node);
-            if let Some(phandle) = node.phandle() {
-                fdt.phandle_cache
-                    .insert(phandle, raw_node.path().to_string());
+            let node_name = node.name.clone();
+
+            // Allocate the node in the arena
+            let node_id = fdt.alloc_node(node);
+
+            // Update phandle cache
+            if let Some(phandle) = fdt.nodes.get(&node_id).and_then(|n| n.phandle()) {
+                fdt.phandle_cache.insert(phandle, node_id);
             }
 
-            // Pop stack until we reach the correct parent level
-            while node_stack.len() > level {
-                let child = node_stack.pop().unwrap();
-                if let Some(parent) = node_stack.last_mut() {
-                    parent.add_child(child);
+            // Pop the stack until we find the parent at level - 1
+            while let Some(&(_, stack_level)) = id_stack.last() {
+                if stack_level >= level {
+                    id_stack.pop();
                 } else {
-                    // This is the root node
-                    fdt.root = child;
+                    break;
                 }
             }
 
-            node_stack.push(node);
-        }
-
-        // Pop all remaining nodes
-        while let Some(child) = node_stack.pop() {
-            if let Some(parent) = node_stack.last_mut() {
-                parent.add_child(child);
+            if let Some(&(parent_id, _)) = id_stack.last() {
+                // Set parent link
+                if let Some(n) = fdt.nodes.get_mut(&node_id) {
+                    n.parent = Some(parent_id);
+                }
+                // Add as child to parent
+                if let Some(parent) = fdt.nodes.get_mut(&parent_id) {
+                    parent.add_child(&node_name, node_id);
+                }
             } else {
                 // This is the root node
-                fdt.root = child;
+                fdt.root = node_id;
             }
+
+            id_stack.push((node_id, level));
         }
+
         Ok(fdt)
     }
+}
 
-    pub fn all_raw_nodes(&self) -> impl Iterator<Item = &Node> {
-        self.all_nodes().map(|node_ref| node_ref._as_raw())
+/// Depth-first iterator over all node IDs in the tree.
+pub struct NodeDfsIter<'a> {
+    fdt: &'a Fdt,
+    stack: Vec<NodeId>,
+}
+
+impl<'a> Iterator for NodeDfsIter<'a> {
+    type Item = NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let id = self.stack.pop()?;
+        if let Some(node) = self.fdt.nodes.get(&id) {
+            // Push children in reverse order so that the first child is visited first
+            for &child_id in node.children().iter().rev() {
+                self.stack.push(child_id);
+            }
+        }
+        Some(id)
     }
-
-    pub fn all_raw_nodes_mut(&mut self) -> impl Iterator<Item = &mut Node> {
-        self.all_nodes_mut()
-            .map(|mut node_ref| node_ref._as_raw_mut())
-    }
-
-    pub fn all_nodes(&self) -> impl Iterator<Item = NodeRef<'_>> + '_ {
-        NodeRefIter::new(&self.root)
-    }
-
-    pub fn all_nodes_mut(&mut self) -> impl Iterator<Item = NodeRefMut<'_>> + '_ {
-        NodeRefIterMut::new(&self.root)
-    }
-
-    fn get_by_path_exact(&self, path: &str) -> Option<NodeRef<'_>> {
-        self.all_nodes().find(|node| node.path().as_str() == path)
-    }
-
-    // /// Resolves an alias to its full path.
-    // ///
-    // /// Looks up the alias in the /aliases node and returns the
-    // /// corresponding path string.
-    // pub fn resolve_alias(&self, alias: &str) -> Option<&str> {
-    //     let aliases_node = self.get_by_path_exact("/aliases")?;
-        
-    // }
 }
