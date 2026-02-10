@@ -366,6 +366,10 @@ impl Fdt {
     pub fn all_nodes(&self) -> impl Iterator<Item = NodeType<'_>> {
         self.iter_raw_nodes().map(|v| v.classify())
     }
+
+    pub fn root_mut(&mut self) -> NodeTypeMut<'_> {
+        self.view_typed_mut(self.root).unwrap()
+    }
 }
 
 /// Depth-first iterator over all node IDs in the tree.
