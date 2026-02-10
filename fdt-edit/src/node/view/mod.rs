@@ -97,6 +97,7 @@ impl<'a> NodeView<'a> {
             .map(|pid| NodeView::new(self.fdt(), pid).classify())
     }
 
+    #[allow(dead_code)]
     pub fn parent_mut(&mut self) -> Option<NodeTypeMut<'a>> {
         let parent = self.as_node().parent?;
         let mut parent_view = NodeView::new(self.fdt(), parent);

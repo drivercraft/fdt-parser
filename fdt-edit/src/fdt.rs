@@ -208,11 +208,7 @@ impl Fdt {
     pub fn path_of(&self, id: NodeId) -> String {
         let mut parts: Vec<&str> = Vec::new();
         let mut cur = id;
-        loop {
-            let node = match self.nodes.get(&cur) {
-                Some(n) => n,
-                None => break,
-            };
+        while let Some(node) = self.nodes.get(&cur) {
             if cur == self.root {
                 break;
             }

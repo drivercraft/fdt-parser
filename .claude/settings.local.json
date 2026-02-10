@@ -11,7 +11,8 @@
       "mcp__web-search-prime__webSearchPrime",
       "WebFetch(domain:www.devicetree.org)",
       "Bash(RUST_BACKTRACE=1 cargo test -p fdt-parser -- test_pci2 --nocapture)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(cargo clippy:*)"
     ],
     "deny": [],
     "ask": []
