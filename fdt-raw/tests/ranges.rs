@@ -68,28 +68,28 @@ fn test_translate_addresses_batch() {
     assert_eq!(single, 0xfe215040);
 
     // Batch translation with multiple addresses from the same path
-    let addresses = &[0x7e215040u64, 0x7e200000];
-    let result: heapless::Vec<u64, 4> = fdt.translate_addresses(path, addresses);
+    let mut addresses = [0x7e215040u64, 0x7e200000];
+    let original = addresses.clone();
+    fdt.translate_addresses(path, &mut addresses);
 
-    assert_eq!(result.len(), 2);
     assert_eq!(
-        result[0], 0xfe215040,
+        addresses[0], 0xfe215040,
         "batch[0]: want 0xfe215040, got {:#x}",
-        result[0]
+        addresses[0]
     );
     assert_eq!(
-        result[1], 0xfe200000,
+        addresses[1], 0xfe200000,
         "batch[1]: want 0xfe200000, got {:#x}",
-        result[1]
+        addresses[1]
     );
 
     // Verify batch result matches individual calls
-    for (i, &addr) in addresses.iter().enumerate() {
+    for (i, &addr) in original.iter().enumerate() {
         let individual = fdt.translate_address(path, addr);
         assert_eq!(
-            result[i], individual,
+            addresses[i], individual,
             "batch[{}] ({:#x}) differs from individual ({:#x})",
-            i, result[i], individual
+            i, addresses[i], individual
         );
     }
 }

@@ -207,7 +207,7 @@ impl<'a> Fdt<'a> {
     /// address is returned.
     pub fn translate_address(&self, path: &'a str, address: u64) -> u64 {
         let mut addresses = [address];
-        self.translate_addresses_inner(path, &mut addresses);
+        self.translate_addresses(path, &mut addresses);
         addresses[0]
     }
 
@@ -221,25 +221,12 @@ impl<'a> Fdt<'a> {
     /// # Arguments
     ///
     /// * `path` - Node path (absolute path starting with '/' or alias name)
-    /// * `addresses` - Slice of device addresses from the node's `reg` property
+    /// * `addresses` - Mutable slice of device addresses to translate in place.
+    ///   The addresses are modified with the translated CPU physical addresses.
     ///
-    /// # Returns
-    ///
-    /// A `heapless::Vec` of translated CPU physical addresses, in the same
-    /// order as the input. If translation fails, the original addresses are
-    /// preserved.
-    pub fn translate_addresses<const N: usize>(
-        &self,
-        path: &'a str,
-        addresses: &[u64],
-    ) -> heapless::Vec<u64, N> {
-        let mut result: heapless::Vec<u64, N> = addresses.iter().copied().collect();
-        self.translate_addresses_inner(path, &mut result);
-        result
-    }
-
-    /// Inner implementation for batch address translation.
-    fn translate_addresses_inner(&self, path: &'a str, addresses: &mut [u64]) {
+    /// If translation fails for any address at any level, the original address
+    /// value is preserved for that address.
+    pub fn translate_addresses(&self, path: &'a str, addresses: &mut [u64]) {
         let path = match self.normalize_path(path) {
             Some(p) => p,
             None => return,
