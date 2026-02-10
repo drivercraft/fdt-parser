@@ -13,6 +13,7 @@ version = "0.2.0"
 [dependencies]
 fdt-raw = {version = "0.2", path = "../fdt-raw"}
 log = "0.4"
+enum_dispatch = "0.3"
 
 [dev-dependencies]
 dtb-file.workspace = true

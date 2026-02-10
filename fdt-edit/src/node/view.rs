@@ -4,12 +4,21 @@
 //! `Fdt` arena. `NodeType` and `NodeTypeMut` enums allow dispatching to
 //! type-specialized views such as `MemoryNodeView` and `IntcNodeView`.
 
-use core::ops::Deref;
+use core::{fmt::Display, ops::Deref};
 
 use alloc::{string::String, vec::Vec};
+use enum_dispatch::enum_dispatch;
 use fdt_raw::{MemoryRegion, Phandle, Status};
 
 use crate::{Fdt, Node, NodeId, Property, RangesEntry};
+
+#[enum_dispatch]
+pub(crate) trait ViewOp {
+    fn as_view(&self) -> NodeView<'_>;
+    fn display(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_view().fmt(f)
+    }
+}
 
 // ---------------------------------------------------------------------------
 // NodeView — immutable view
@@ -138,24 +147,6 @@ impl<'a> NodeView<'a> {
             NodeType::Memory(MemoryNodeView { inner: *self })
         } else {
             NodeType::Generic(GenericNodeView { inner: *self })
-        }
-    }
-
-    /// Try to view as a memory node.
-    pub fn as_memory(&self) -> Option<MemoryNodeView<'a>> {
-        if self.as_node().is_memory() {
-            Some(MemoryNodeView { inner: *self })
-        } else {
-            None
-        }
-    }
-
-    /// Try to view as an interrupt controller node.
-    pub fn as_intc(&self) -> Option<IntcNodeView<'a>> {
-        if self.as_node().is_interrupt_controller() {
-            Some(IntcNodeView { inner: *self })
-        } else {
-            None
         }
     }
 }
@@ -295,6 +286,7 @@ impl<'a> NodeViewMut<'a> {
 // NodeType — classified immutable view enum
 // ---------------------------------------------------------------------------
 
+#[enum_dispatch(ViewOp)]
 /// Typed node view enum, allowing pattern matching by node kind.
 pub enum NodeType<'a> {
     /// A memory node (`device_type = "memory"` or name starts with "memory").
@@ -376,6 +368,12 @@ pub struct MemoryNodeView<'a> {
     inner: NodeView<'a>,
 }
 
+impl ViewOp for MemoryNodeView<'_> {
+    fn as_view(&self) -> NodeView<'_> {
+        self.inner
+    }
+}
+
 impl<'a> Deref for MemoryNodeView<'a> {
     type Target = NodeView<'a>;
     fn deref(&self) -> &Self::Target {
@@ -436,6 +434,12 @@ pub struct IntcNodeView<'a> {
     inner: NodeView<'a>,
 }
 
+impl<'a> ViewOp for IntcNodeView<'a> {
+    fn as_view(&self) -> NodeView<'a> {
+        self.inner
+    }
+}
+
 impl<'a> Deref for IntcNodeView<'a> {
     type Target = NodeView<'a>;
     fn deref(&self) -> &Self::Target {
@@ -463,6 +467,12 @@ impl<'a> IntcNodeView<'a> {
 #[derive(Clone, Copy)]
 pub struct GenericNodeView<'a> {
     inner: NodeView<'a>,
+}
+
+impl ViewOp for GenericNodeView<'_> {
+    fn as_view(&self) -> NodeView<'_> {
+        self.inner
+    }
 }
 
 impl<'a> Deref for GenericNodeView<'a> {

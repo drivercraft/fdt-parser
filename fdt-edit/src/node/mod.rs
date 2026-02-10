@@ -5,6 +5,8 @@ use fdt_raw::{Phandle, Status};
 
 use crate::{NodeId, Property, RangesEntry};
 
+pub(crate) mod view;
+
 /// A mutable device tree node.
 ///
 /// Represents a node in the device tree with a name, properties, and child node IDs.
