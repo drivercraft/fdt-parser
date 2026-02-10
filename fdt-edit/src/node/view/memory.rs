@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use fdt_raw::MemoryRegion;
 
 use super::NodeView;
-use crate::{NodeGeneric, NodeGenericMut, ViewOp};
+use crate::{NodeGeneric, NodeGenericMut, Property, ViewMutOp, ViewOp};
 
 // ---------------------------------------------------------------------------
 // MemoryNodeView
@@ -85,6 +85,15 @@ impl<'a> Deref for MemoryNodeViewMut<'a> {
 impl<'a> ViewOp<'a> for MemoryNodeViewMut<'a> {
     fn as_view(&self) -> NodeView<'a> {
         self.inner.as_view()
+    }
+}
+
+impl<'a> ViewMutOp<'a> for MemoryNodeViewMut<'a> {
+    fn new(node: NodeGenericMut<'a>) -> Self {
+        let mut s = Self { inner: node };
+        let n = s.inner.inner.as_node_mut();
+        n.set_property(Property::new("device_type", b"memory\0".to_vec()));
+        s
     }
 }
 

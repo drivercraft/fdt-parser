@@ -29,7 +29,7 @@ pub(crate) trait ViewOp<'a> {
     }
 }
 
-pub trait ViewMutOp<'a> {
+pub(crate) trait ViewMutOp<'a> {
     fn new(node: NodeGenericMut<'a>) -> Self;
 }
 
@@ -412,6 +412,16 @@ impl Fdt {
     /// Returns a classified `NodeTypeMut` for the given node ID.
     pub fn view_typed_mut(&mut self, id: NodeId) -> Option<NodeTypeMut<'_>> {
         self.view(id).map(|mut v| v.classify_mut())
+    }
+}
+
+impl<'a> NodeGenericMut<'a> {
+    pub fn add_child_memory(&mut self, name: &str) -> MemoryNodeViewMut<'a> {
+        self.add_child(name)
+    }
+
+    pub fn add_child_interrupt_controller(&mut self, name: &str) -> IntcNodeViewMut<'a> {
+        self.add_child(name)
     }
 }
 

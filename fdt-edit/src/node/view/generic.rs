@@ -77,7 +77,7 @@ impl<'a> NodeGenericMut<'a> {
         NodeGenericMut { inner: new_view }
     }
 
-    pub fn add_child<T: ViewMutOp<'a>>(&mut self, name: &str) -> T {
+    pub(crate) fn add_child<T: ViewMutOp<'a>>(&mut self, name: &str) -> T {
         let generic_child = self.add_child_generic(name);
         T::new(generic_child)
     }

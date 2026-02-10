@@ -2,8 +2,10 @@
 
 use core::ops::Deref;
 
+use alloc::vec::Vec;
+
 use super::NodeView;
-use crate::{NodeGeneric, NodeGenericMut, ViewOp};
+use crate::{NodeGeneric, NodeGenericMut, Property, ViewMutOp, ViewOp};
 
 // ---------------------------------------------------------------------------
 // IntcNodeView
@@ -62,6 +64,15 @@ pub struct IntcNodeViewMut<'a> {
 impl<'a> ViewOp<'a> for IntcNodeViewMut<'a> {
     fn as_view(&self) -> NodeView<'a> {
         self.inner.as_view()
+    }
+}
+
+impl<'a> ViewMutOp<'a> for IntcNodeViewMut<'a> {
+    fn new(node: NodeGenericMut<'a>) -> Self {
+        let mut s = Self { inner: node };
+        let n = s.inner.inner.as_node_mut();
+        n.set_property(Property::new("interrupt-controller", Vec::new()));
+        s
     }
 }
 
