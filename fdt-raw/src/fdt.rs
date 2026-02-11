@@ -183,8 +183,14 @@ impl<'a> Fdt<'a> {
     ///     }
     /// }
     /// ```
-    pub fn find_children_by_path(&self, path: &str) -> Option<impl Iterator<Item = Node<'a>> + 'a> {
-        let path = self.normalize_path(path)?;
+    pub fn find_children_by_path(&self, path: &str) -> ChildrenIter<'a> {
+        let Some(path) = self.normalize_path(path) else {
+            return ChildrenIter {
+                node_iter: self.all_nodes(),
+                child_level: 0,
+                done: true,
+            };
+        };
         let split = path.trim_matches('/').split('/');
 
         let mut iter = self.all_nodes();
@@ -205,16 +211,20 @@ impl<'a> Fdt<'a> {
                 }
             }
             if !found {
-                return None;
+                return ChildrenIter {
+                    node_iter: self.all_nodes(),
+                    child_level: 0,
+                    done: true,
+                };
             }
         }
 
         let child_level = target_level + 1;
-        Some(ChildrenIter {
+        ChildrenIter {
             node_iter: iter,
             child_level,
             done: false,
-        })
+        }
     }
 
     /// Resolve an alias to its full path.
@@ -441,7 +451,7 @@ impl<'a> Iterator for ReservedMemoryIter<'a> {
 /// Yields only nodes whose level equals `child_level`. Nodes deeper
 /// than `child_level` (grandchildren) are skipped, and iteration stops
 /// when leaving the parent's subtree (level < child_level).
-struct ChildrenIter<'a> {
+pub struct ChildrenIter<'a> {
     node_iter: FdtIter<'a>,
     child_level: usize,
     done: bool,
