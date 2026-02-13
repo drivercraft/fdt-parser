@@ -165,7 +165,7 @@ impl<'a> PciNodeView<'a> {
         let parent_addr_cells = if let Some(parent) = self.as_view().parent() {
             parent.as_view().address_cells().unwrap_or(2) as usize
         } else {
-            2 as usize
+            2_usize
         };
 
         let size_cells = self.as_view().size_cells().unwrap_or(2) as usize;
@@ -361,7 +361,7 @@ impl<'a> PciNodeView<'a> {
 
         // 如果 encoded_address 比 child_addr_cells 短，填充 0
         let remaining = child_addr_cells.saturating_sub(encoded_address.len());
-        masked_child_address.extend(core::iter::repeat(0).take(remaining));
+        masked_child_address.extend(core::iter::repeat_n(0, remaining));
 
         let encoded_irq = [interrupt_pin as u32];
         let mut masked_child_irq = Vec::with_capacity(child_irq_cells);
@@ -377,7 +377,7 @@ impl<'a> PciNodeView<'a> {
 
         // 如果 encoded_irq 比 child_irq_cells 短，填充 0
         let remaining_irq = child_irq_cells.saturating_sub(encoded_irq.len());
-        masked_child_irq.extend(core::iter::repeat(0).take(remaining_irq));
+        masked_child_irq.extend(core::iter::repeat_n(0, remaining_irq));
 
         // 在 interrupt-map 中查找匹配的条目
         for mapping in &interrupt_map {
