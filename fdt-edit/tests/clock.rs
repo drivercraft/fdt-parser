@@ -34,11 +34,7 @@ fn test_clock_output_names() {
         if let NodeType::Clock(clock) = node {
             let names = clock.clock_output_names();
             if !names.is_empty() {
-                println!(
-                    "Clock {} has output names: {:?}",
-                    clock.path(),
-                    names
-                );
+                println!("Clock {} has output names: {:?}", clock.path(), names);
 
                 // Test output_name method
                 if let Some(first_name) = clock.output_name(0) {
@@ -59,11 +55,7 @@ fn test_fixed_clock() {
         if let NodeType::Clock(clock) = node {
             let clock_type = clock.clock_type();
             if let fdt_edit::ClockType::Fixed(fixed) = clock_type {
-                println!(
-                    "Fixed clock: {} freq={}Hz",
-                    clock.path(),
-                    fixed.frequency
-                );
+                println!("Fixed clock: {} freq={}Hz", clock.path(), fixed.frequency);
 
                 // Fixed clock should have a frequency
                 assert!(

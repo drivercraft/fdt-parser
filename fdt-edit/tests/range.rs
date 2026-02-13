@@ -15,7 +15,10 @@ fn test_reg_address_translation() {
 
     let reg = &regs[0];
     assert_eq!(reg.address, 0xfe215040, "CPU address should be 0xfe215040");
-    assert_eq!(reg.child_bus_address, 0x7e215040, "bus address should be 0x7e215040");
+    assert_eq!(
+        reg.child_bus_address, 0x7e215040,
+        "bus address should be 0x7e215040"
+    );
     assert_eq!(reg.size, Some(0x40), "size should be 0x40");
 }
 
@@ -74,6 +77,9 @@ fn test_set_regs_roundtrip() {
     };
 
     assert_eq!(roundtrip_reg.address, original_reg.address);
-    assert_eq!(roundtrip_reg.child_bus_address, original_reg.child_bus_address);
+    assert_eq!(
+        roundtrip_reg.child_bus_address,
+        original_reg.child_bus_address
+    );
     assert_eq!(roundtrip_reg.size, original_reg.size);
 }

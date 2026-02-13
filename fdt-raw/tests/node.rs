@@ -816,7 +816,10 @@ fn test_find_children_by_path_leaf() {
     let children: Vec<_> = fdt.find_children_by_path("/chosen").collect();
     info!(
         "Children of /chosen: {:?}",
-        children.iter().map(|n: &fdt_raw::Node| n.name()).collect::<Vec<_>>()
+        children
+            .iter()
+            .map(|n: &fdt_raw::Node| n.name())
+            .collect::<Vec<_>>()
     );
 
     // Even if it has children, verify they are all at the correct level
@@ -835,7 +838,10 @@ fn test_find_children_by_path_nonexistent() {
 
     // Non-existent path should return empty iterator
     let result: Vec<_> = fdt.find_children_by_path("/nonexistent/path").collect();
-    assert!(result.is_empty(), "Non-existent path should return empty iterator");
+    assert!(
+        result.is_empty(),
+        "Non-existent path should return empty iterator"
+    );
 }
 
 #[test]

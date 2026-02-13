@@ -3,7 +3,7 @@
 use std::sync::Once;
 
 use dtb_file::*;
-use fdt_edit::{Fdt, NodeType, PciSpace, PciRange};
+use fdt_edit::{Fdt, NodeType, PciRange, PciSpace};
 
 fn init_logging() {
     static INIT: Once = Once::new();
@@ -45,11 +45,7 @@ fn test_pci_ranges() {
     for node in fdt.all_nodes() {
         if let NodeType::Pci(pci) = node {
             if let Some(ranges) = pci.ranges() {
-                println!(
-                    "PCI {} has {} ranges:",
-                    pci.path(),
-                    ranges.len()
-                );
+                println!("PCI {} has {} ranges:", pci.path(), ranges.len());
 
                 for range in &ranges {
                     let space_name = match range.space {
@@ -60,7 +56,11 @@ fn test_pci_ranges() {
 
                     println!(
                         "  {}: bus={:#x} cpu={:#x} size={:#x} prefetch={}",
-                        space_name, range.bus_address, range.cpu_address, range.size, range.prefetchable
+                        space_name,
+                        range.bus_address,
+                        range.cpu_address,
+                        range.size,
+                        range.prefetchable
                     );
                 }
 

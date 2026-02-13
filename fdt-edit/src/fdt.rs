@@ -13,7 +13,9 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{FdtData, FdtEncoder, FdtError, Node, NodeId, NodeType, NodeTypeMut, NodeView, Phandle};
+use crate::{
+    FdtData, FdtEncoder, FdtError, Node, NodeId, NodeType, NodeTypeMut, NodeView, Phandle,
+};
 
 pub use fdt_raw::MemoryReservation;
 

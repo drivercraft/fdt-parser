@@ -28,8 +28,14 @@ fn test_encode_with_properties() {
     // 添加一些属性到根节点
     let root_id = fdt.root_id();
     let node = fdt.node_mut(root_id).unwrap();
-    node.set_property(crate::Property::new("#address-cells", vec![0x00, 0x00, 0x00, 0x02]));
-    node.set_property(crate::Property::new("#size-cells", vec![0x00, 0x00, 0x00, 0x01]));
+    node.set_property(crate::Property::new(
+        "#address-cells",
+        vec![0x00, 0x00, 0x00, 0x02],
+    ));
+    node.set_property(crate::Property::new(
+        "#size-cells",
+        vec![0x00, 0x00, 0x00, 0x01],
+    ));
     node.set_property(crate::Property::new("model", {
         let mut v = b"Test Device".to_vec();
         v.push(0);
@@ -46,7 +52,10 @@ fn test_encode_with_properties() {
     // 验证属性
     assert_eq!(node_ref.address_cells(), Some(2));
     assert_eq!(node_ref.size_cells(), Some(1));
-    assert_eq!(node_ref.get_property("model").unwrap().as_str(), Some("Test Device"));
+    assert_eq!(
+        node_ref.get_property("model").unwrap().as_str(),
+        Some("Test Device")
+    );
 }
 
 /// 测试带有子节点的 FDT 编码
@@ -57,8 +66,14 @@ fn test_encode_with_children() {
     // 添加子节点
     let root_id = fdt.root_id();
     let mut soc = crate::Node::new("soc");
-    soc.set_property(crate::Property::new("#address-cells", vec![0x00, 0x00, 0x00, 0x02]));
-    soc.set_property(crate::Property::new("#size-cells", vec![0x00, 0x00, 0x00, 0x02]));
+    soc.set_property(crate::Property::new(
+        "#address-cells",
+        vec![0x00, 0x00, 0x00, 0x02],
+    ));
+    soc.set_property(crate::Property::new(
+        "#size-cells",
+        vec![0x00, 0x00, 0x00, 0x02],
+    ));
     let soc_id = fdt.add_node(root_id, soc);
 
     let mut uart = crate::Node::new("uart@1000");
@@ -104,8 +119,15 @@ fn test_parse_and_encode() {
     assert_eq!(original.node_count(), reparsed.node_count());
 
     // 验证内存保留区一致
-    assert_eq!(original.memory_reservations.len(), reparsed.memory_reservations.len());
-    for (orig, rep) in original.memory_reservations.iter().zip(reparsed.memory_reservations.iter()) {
+    assert_eq!(
+        original.memory_reservations.len(),
+        reparsed.memory_reservations.len()
+    );
+    for (orig, rep) in original
+        .memory_reservations
+        .iter()
+        .zip(reparsed.memory_reservations.iter())
+    {
         assert_eq!(orig.address, rep.address);
         assert_eq!(orig.size, rep.size);
     }
@@ -114,7 +136,11 @@ fn test_parse_and_encode() {
     for id in original.iter_node_ids() {
         let path = original.path_of(id);
         let reparsed_id = reparsed.get_by_path_id(&path);
-        assert!(reparsed_id.is_some(), "path {} not found in reparsed FDT", path);
+        assert!(
+            reparsed_id.is_some(),
+            "path {} not found in reparsed FDT",
+            path
+        );
     }
 }
 
@@ -167,7 +193,10 @@ fn test_encode_with_reserve_dtb() {
     let reparsed = Fdt::from_bytes(&encoded).unwrap();
 
     // 验证保留区被正确编码
-    assert_eq!(original.memory_reservations.len(), reparsed.memory_reservations.len());
+    assert_eq!(
+        original.memory_reservations.len(),
+        reparsed.memory_reservations.len()
+    );
 }
 
 /// 测试节点属性完整性
@@ -180,10 +209,16 @@ fn test_encode_properties_integrity() {
     let node = fdt.node_mut(root_id).unwrap();
 
     // u32 属性
-    node.set_property(crate::Property::new("prop-u32", 0x12345678u32.to_be_bytes().to_vec()));
+    node.set_property(crate::Property::new(
+        "prop-u32",
+        0x12345678u32.to_be_bytes().to_vec(),
+    ));
 
     // u64 属性
-    node.set_property(crate::Property::new("prop-u64", 0x1234567890ABCDEFu64.to_be_bytes().to_vec()));
+    node.set_property(crate::Property::new(
+        "prop-u64",
+        0x1234567890ABCDEFu64.to_be_bytes().to_vec(),
+    ));
 
     // 字符串属性
     node.set_property(crate::Property::new("prop-string", {
@@ -201,8 +236,8 @@ fn test_encode_properties_integrity() {
     // reg 属性
     {
         let v = vec![
-            0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00,
-            0x00, 0x30, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00,
+            0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x40,
+            0x00, 0x00,
         ];
         node.set_property(crate::Property::new("reg", v));
     }

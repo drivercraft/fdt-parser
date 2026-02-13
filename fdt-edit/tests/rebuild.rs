@@ -59,8 +59,8 @@ fn test_rebuild_single(case: &DtbTestCase) {
 
     // 1. 获取原始 DTB 数据
     let raw_data = (case.loader)();
-    let original = Fdt::from_bytes(&raw_data)
-        .unwrap_or_else(|_| panic!("Failed to parse {}", case.name));
+    let original =
+        Fdt::from_bytes(&raw_data).unwrap_or_else(|_| panic!("Failed to parse {}", case.name));
 
     // 2. 编码
     let encoded = original.encode();
@@ -118,7 +118,9 @@ fn test_rebuild_single(case: &DtbTestCase) {
     assert!(
         diff_status.success(),
         "DTS files differ for {}: run 'diff {} {}' to see details",
-        case.name, orig_dts_path, enc_dts_path
+        case.name,
+        orig_dts_path,
+        enc_dts_path
     );
 
     println!("Rebuild test PASSED: {}", case.name);
