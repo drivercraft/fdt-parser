@@ -5,9 +5,11 @@
 //! type-specialized views such as `MemoryNodeView` and `IntcNodeView`.
 
 // Specialized node view modules
+mod clock;
 mod generic;
 mod intc;
 mod memory;
+mod pci;
 
 use core::fmt::Display;
 
@@ -17,9 +19,11 @@ use enum_dispatch::enum_dispatch;
 use crate::{Fdt, Node, NodeId, Property, RangesEntry};
 
 // Re-export specialized view types
+pub use clock::{ClockNodeView, ClockNodeViewMut, ClockRef, ClockType, FixedClock};
 pub use generic::{NodeGeneric, NodeGenericMut};
 pub use intc::{IntcNodeView, IntcNodeViewMut};
 pub use memory::{MemoryNodeView, MemoryNodeViewMut};
+pub use pci::{PciInterruptInfo, PciInterruptMap, PciNodeView, PciNodeViewMut, PciRange, PciSpace};
 
 #[enum_dispatch]
 pub(crate) trait ViewOp<'a> {
@@ -257,6 +261,14 @@ impl<'a> NodeView<'a> {
     }
 
     pub(crate) fn classify(&self) -> NodeType<'a> {
+        if let Some(node) = ClockNodeView::try_from_view(*self) {
+            return NodeType::Clock(node);
+        }
+
+        if let Some(node) = PciNodeView::try_from_view(*self) {
+            return NodeType::Pci(node);
+        }
+
         if let Some(node) = MemoryNodeView::try_from_view(*self) {
             return NodeType::Memory(node);
         }
@@ -269,6 +281,14 @@ impl<'a> NodeView<'a> {
     }
 
     pub(crate) fn classify_mut(&mut self) -> NodeTypeMut<'a> {
+        if let Some(node) = ClockNodeViewMut::try_from_view(*self) {
+            return NodeTypeMut::Clock(node);
+        }
+
+        if let Some(node) = PciNodeViewMut::try_from_view(*self) {
+            return NodeTypeMut::Pci(node);
+        }
+
         if let Some(node) = MemoryNodeViewMut::try_from_view(*self) {
             return NodeTypeMut::Memory(node);
         }
@@ -318,10 +338,14 @@ impl core::fmt::Display for NodeView<'_> {
 #[enum_dispatch(ViewOp)]
 /// Typed node view enum, allowing pattern matching by node kind.
 pub enum NodeType<'a> {
+    /// A clock provider node (has `#clock-cells` property).
+    Clock(ClockNodeView<'a>),
     /// A memory node (`device_type = "memory"` or name starts with "memory").
     Memory(MemoryNodeView<'a>),
     /// An interrupt controller node (has the `interrupt-controller` property).
     InterruptController(IntcNodeView<'a>),
+    /// A PCI bridge node (`device_type = "pci"`).
+    Pci(PciNodeView<'a>),
     /// A generic node (no special classification).
     Generic(NodeGeneric<'a>),
 }
@@ -370,8 +394,10 @@ impl core::fmt::Display for NodeType<'_> {
 /// Typed mutable node view enum.
 #[enum_dispatch(ViewOp)]
 pub enum NodeTypeMut<'a> {
+    Clock(ClockNodeViewMut<'a>),
     Memory(MemoryNodeViewMut<'a>),
     InterruptController(IntcNodeViewMut<'a>),
+    Pci(PciNodeViewMut<'a>),
     Generic(NodeGenericMut<'a>),
 }
 

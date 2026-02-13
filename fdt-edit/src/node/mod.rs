@@ -264,6 +264,16 @@ impl Node {
         self.get_property("#interrupt-cells")
             .and_then(|prop| prop.get_u32())
     }
+
+    /// Returns true if this node is a clock provider.
+    pub fn is_clock(&self) -> bool {
+        self.get_property("#clock-cells").is_some()
+    }
+
+    /// Returns true if this node is a PCI bridge.
+    pub fn is_pci(&self) -> bool {
+        self.device_type() == Some("pci")
+    }
 }
 
 impl From<&fdt_raw::Node<'_>> for Node {

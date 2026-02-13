@@ -25,6 +25,20 @@ fn test_node_classify() {
 
     for view in fdt.all_nodes() {
         match view {
+            NodeType::Clock(clock) => {
+                println!(
+                    "Clock node: {} #clock-cells={}",
+                    clock.path(),
+                    clock.clock_cells()
+                );
+            }
+            NodeType::Pci(pci) => {
+                println!(
+                    "PCI node: {} #interrupt-cells={}",
+                    pci.path(),
+                    pci.interrupt_cells()
+                );
+            }
             NodeType::Memory(mem) => {
                 memory_count += 1;
                 let regions = mem.regions();

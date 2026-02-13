@@ -380,6 +380,28 @@ impl Fdt {
         self.view_typed_mut(self.root).unwrap()
     }
 
+    /// Finds nodes with matching compatible strings.
+    pub fn find_compatible(&self, compatible: &[&str]) -> Vec<NodeType<'_>> {
+        let mut results = Vec::new();
+        for node_ref in self.all_nodes() {
+            let compatibles = node_ref.as_node().compatibles();
+            let mut found = false;
+
+            for comp in compatibles {
+                if compatible.contains(&comp) {
+                    results.push(node_ref);
+                    found = true;
+                    break;
+                }
+            }
+
+            if found {
+                continue;
+            }
+        }
+        results
+    }
+
     /// Encodes the FDT to DTB binary format.
     pub fn encode(&self) -> FdtData {
         FdtEncoder::new(self).encode()
