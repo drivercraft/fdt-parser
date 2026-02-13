@@ -8,7 +8,8 @@
 use core::fmt;
 
 use crate::{
-    Chosen, FdtError, Memory, MemoryReservation, Node, data::Bytes, header::Header, iter::FdtIter,
+    Chosen, FdtError, Memory, MemoryReservation, Node, Property, VecRange, data, data::Bytes,
+    fmt_utils, header::Header, iter::FdtIter,
 };
 
 /// Iterator over memory reservation entries.
@@ -25,8 +26,8 @@ impl<'a> Iterator for MemoryReservationIter<'a> {
     type Item = MemoryReservation;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Ensure we have enough data to read address and size (8 bytes each)
-        if self.offset + 16 > self.data.len() {
+        // Ensure we have enough data to read a complete entry
+        if self.offset + data::MEM_RSV_ENTRY_SIZE > self.data.len() {
             return None;
         }
 
@@ -47,14 +48,6 @@ impl<'a> Iterator for MemoryReservationIter<'a> {
 
         Some(MemoryReservation { address, size })
     }
-}
-
-/// Helper function for writing indentation during formatting.
-fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Result {
-    for _ in 0..count {
-        write!(f, "{}", ch)?;
-    }
-    Ok(())
 }
 
 /// A parsed Flattened Device Tree (FDT).
@@ -171,6 +164,69 @@ impl<'a> Fdt<'a> {
         found_node
     }
 
+    /// Find all direct children of a node at the given path.
+    ///
+    /// Returns an iterator over all direct child nodes (one level deeper)
+    /// of the node at the specified path. Returns `None` if the node is
+    /// not found.
+    ///
+    /// Only direct children are yielded — grandchildren and deeper
+    /// descendants are skipped.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // List all direct children of /soc
+    /// if let Some(children) = fdt.find_children_by_path("/soc") {
+    ///     for child in children {
+    ///         println!("{}", child.name());
+    ///     }
+    /// }
+    /// ```
+    pub fn find_children_by_path(&self, path: &str) -> ChildrenIter<'a> {
+        let Some(path) = self.normalize_path(path) else {
+            return ChildrenIter {
+                node_iter: self.all_nodes(),
+                child_level: 0,
+                done: true,
+            };
+        };
+        let split = path.trim_matches('/').split('/');
+
+        let mut iter = self.all_nodes();
+        let mut target_level = 0usize;
+
+        for part in split {
+            if part.is_empty() {
+                // Root path "/" — skip the root node itself
+                iter.next();
+                break;
+            }
+            let mut found = false;
+            for node in iter.by_ref() {
+                if node.name() == part {
+                    found = true;
+                    target_level = node.level();
+                    break;
+                }
+            }
+            if !found {
+                return ChildrenIter {
+                    node_iter: self.all_nodes(),
+                    child_level: 0,
+                    done: true,
+                };
+            }
+        }
+
+        let child_level = target_level + 1;
+        ChildrenIter {
+            node_iter: iter,
+            child_level,
+            done: false,
+        }
+    }
+
     /// Resolve an alias to its full path.
     ///
     /// Looks up the alias in the /aliases node and returns the corresponding
@@ -213,81 +269,107 @@ impl<'a> Fdt<'a> {
     /// point (e.g., a parent node has no `ranges` property), the original
     /// address is returned.
     pub fn translate_address(&self, path: &'a str, address: u64) -> u64 {
+        let mut addresses = [address];
+        self.translate_addresses(path, &mut addresses);
+        addresses[0]
+    }
+
+    /// Translate multiple device addresses to CPU physical addresses in a single pass.
+    ///
+    /// This is more efficient than calling `translate_address` multiple times
+    /// for the same node path, because the tree is walked only once. Each
+    /// parent node's `ranges` property is looked up once and applied to all
+    /// addresses in the batch.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Node path (absolute path starting with '/' or alias name)
+    /// * `addresses` - Mutable slice of device addresses to translate in place.
+    ///   The addresses are modified with the translated CPU physical addresses.
+    ///
+    /// If translation fails for any address at any level, the original address
+    /// value is preserved for that address.
+    pub fn translate_addresses(&self, path: &'a str, addresses: &mut [u64]) {
         let path = match self.normalize_path(path) {
             Some(p) => p,
-            None => return address,
+            None => return,
         };
 
-        // Split path into component parts
-        let path_parts: heapless::Vec<&str, 16> = path
-            .trim_matches('/')
-            .split('/')
-            .filter(|s| !s.is_empty())
-            .collect();
-
+        let path_parts = Self::split_path(path);
         if path_parts.is_empty() {
-            return address;
+            return;
         }
 
-        let mut current_address = address;
+        self.translate_addresses_with_parts(&path_parts, addresses);
+    }
 
+    /// Splits an absolute path into its component parts.
+    ///
+    /// Takes a path like "/soc/serial@0" and returns ["soc", "serial@0"].
+    fn split_path(path: &str) -> heapless::Vec<&str, 16> {
+        path.trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+
+    /// Performs batch address translation using pre-split path components.
+    ///
+    /// Walks up the tree from the deepest node, applying `ranges` at each level
+    /// to all addresses in the slice. Each parent node is looked up only once.
+    fn translate_addresses_with_parts(&self, path_parts: &[&str], addresses: &mut [u64]) {
         // Walk up from the deepest node, applying ranges at each level
-        // Note: We start from the second-to-last level (the target node itself is skipped)
+        // We start from the second-to-last level (the target node itself is skipped)
         for depth in (0..path_parts.len()).rev() {
-            // Build the path to the current parent level
             let parent_parts = &path_parts[..depth];
+
             if parent_parts.is_empty() {
                 // Reached root node, no more translation needed
                 break;
             }
 
-            // Find the parent node
-            let mut parent_path = heapless::String::<256>::new();
-            parent_path.push('/').ok();
-            for (i, part) in parent_parts.iter().enumerate() {
-                if i > 0 {
-                    parent_path.push('/').ok();
-                }
-                parent_path.push_str(part).ok();
-            }
+            if let Some(parent_node) = self.find_node_by_parts(parent_parts) {
+                let ranges = match parent_node.ranges() {
+                    Some(r) => r,
+                    None => break, // No ranges property, stop translation
+                };
 
-            let parent_node = match self.find_by_path(parent_path.as_str()) {
-                Some(node) => node,
-                None => continue,
-            };
-
-            // Get the parent's ranges property
-            let ranges = match parent_node.ranges() {
-                Some(r) => r,
-                None => {
-                    // No ranges property, stop translation
-                    break;
-                }
-            };
-
-            // Look for a matching translation rule in ranges
-            let mut found = false;
-            for range in ranges.iter() {
-                // Check if the address falls within this range
-                if current_address >= range.child_address
-                    && current_address < range.child_address + range.length
-                {
-                    // Calculate offset in child address space
-                    let offset = current_address - range.child_address;
-                    // Translate to parent address space
-                    current_address = range.parent_address + offset;
-                    found = true;
-                    break;
+                // Apply ranges to all addresses in batch
+                for addr in addresses.iter_mut() {
+                    *addr = Self::apply_ranges_one(&ranges, *addr);
                 }
             }
+        }
+    }
 
-            if !found {
-                // No matching range found, keep current address and continue
-                // This typically means translation failed, but we try upper levels
+    /// Finds a node by its path component parts.
+    fn find_node_by_parts(&self, parts: &[&str]) -> Option<Node<'a>> {
+        let mut path = heapless::String::<256>::new();
+        path.push('/').ok();
+        for (i, part) in parts.iter().enumerate() {
+            if i > 0 {
+                path.push('/').ok();
+            }
+            path.push_str(part).ok();
+        }
+        self.find_by_path(path.as_str())
+    }
+
+    /// Translates a single address using the given ranges.
+    ///
+    /// If the address falls within a range, it is translated. Otherwise,
+    /// the original address is returned unchanged.
+    fn apply_ranges_one(ranges: &VecRange<'_>, address: u64) -> u64 {
+        for range in ranges.iter() {
+            // Check if the address falls within this range
+            if address >= range.child_address && address < range.child_address + range.length {
+                let offset = address - range.child_address;
+                return range.parent_address + offset;
             }
         }
 
-        current_address
+        // No matching range found, return as-is
+        address
     }
 
     /// Returns an iterator over memory reservation entries.
@@ -364,49 +446,108 @@ impl<'a> Iterator for ReservedMemoryIter<'a> {
     }
 }
 
+/// Iterator over direct children of a specific node.
+///
+/// Yields only nodes whose level equals `child_level`. Nodes deeper
+/// than `child_level` (grandchildren) are skipped, and iteration stops
+/// when leaving the parent's subtree (level < child_level).
+pub struct ChildrenIter<'a> {
+    node_iter: FdtIter<'a>,
+    child_level: usize,
+    done: bool,
+}
+
+impl<'a> Iterator for ChildrenIter<'a> {
+    type Item = Node<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        for node in self.node_iter.by_ref() {
+            if node.level() == self.child_level {
+                return Some(node);
+            }
+            if node.level() < self.child_level {
+                // Left the parent's subtree
+                self.done = true;
+                return None;
+            }
+            // node.level() > self.child_level: grandchild, skip
+        }
+        None
+    }
+}
+
 impl fmt::Display for Fdt<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "/dts-v1/;")?;
         writeln!(f)?;
 
-        let mut prev_level = 0;
+        let mut state = DisplayState::new();
 
         for node in self.all_nodes() {
-            let level = node.level();
-
-            // Close nodes from the previous level
-            while prev_level > level {
-                prev_level -= 1;
-                write_indent(f, prev_level, "    ")?;
-                writeln!(f, "}};\n")?;
-            }
-
-            write_indent(f, level, "    ")?;
-            let name = if node.name().is_empty() {
-                "/"
-            } else {
-                node.name()
-            };
-
-            // Print node header
-            writeln!(f, "{} {{", name)?;
-
-            // Print properties
-            for prop in node.properties() {
-                write_indent(f, level + 1, "    ")?;
-                writeln!(f, "{};", prop)?;
-            }
-
-            prev_level = level + 1;
+            self.close_open_nodes(f, &mut state, node.level())?;
+            self.write_node(f, &node)?;
+            state.prev_level = node.level() + 1;
         }
 
-        // Close remaining nodes
-        while prev_level > 0 {
-            prev_level -= 1;
-            write_indent(f, prev_level, "    ")?;
+        self.close_all_nodes(f, &mut state)
+    }
+}
+
+/// State for tracking the display output during tree traversal.
+struct DisplayState {
+    prev_level: usize,
+}
+
+impl DisplayState {
+    fn new() -> Self {
+        Self { prev_level: 0 }
+    }
+}
+
+impl Fdt<'_> {
+    /// Writes a single node in DTS format.
+    fn write_node(&self, f: &mut fmt::Formatter<'_>, node: &Node<'_>) -> fmt::Result {
+        fmt_utils::write_indent(f, node.level(), "    ")?;
+        let name = Self::format_node_name(node.name());
+        writeln!(f, "{} {{", name)?;
+
+        for prop in node.properties() {
+            fmt_utils::write_indent(f, node.level() + 1, "    ")?;
+            writeln!(f, "{};", prop)?;
+        }
+        Ok(())
+    }
+
+    /// Formats a node name, replacing empty names with "/".
+    fn format_node_name(name: &str) -> &str {
+        if name.is_empty() { "/" } else { name }
+    }
+
+    /// Closes nodes that are no longer open in the tree traversal.
+    fn close_open_nodes(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        state: &mut DisplayState,
+        current_level: usize,
+    ) -> fmt::Result {
+        while state.prev_level > current_level {
+            state.prev_level -= 1;
+            fmt_utils::write_indent(f, state.prev_level, "    ")?;
             writeln!(f, "}};\n")?;
         }
+        Ok(())
+    }
 
+    /// Closes all remaining open nodes at the end of output.
+    fn close_all_nodes(&self, f: &mut fmt::Formatter<'_>, state: &mut DisplayState) -> fmt::Result {
+        while state.prev_level > 0 {
+            state.prev_level -= 1;
+            fmt_utils::write_indent(f, state.prev_level, "    ")?;
+            writeln!(f, "}};\n")?;
+        }
         Ok(())
     }
 }
@@ -418,53 +559,70 @@ impl fmt::Debug for Fdt<'_> {
         writeln!(f, "\tnodes:")?;
 
         for node in self.all_nodes() {
-            let level = node.level();
-            // Base indentation is 2 tabs, plus 1 tab per level
-            write_indent(f, level + 2, "\t")?;
-
-            let name = if node.name().is_empty() {
-                "/"
-            } else {
-                node.name()
-            };
-
-            // Print node name and basic info
-            writeln!(
-                f,
-                "[{}] address_cells={}, size_cells={}",
-                name, node.address_cells, node.size_cells
-            )?;
-
-            // Print properties
-            for prop in node.properties() {
-                write_indent(f, level + 3, "\t")?;
-                if let Some(v) = prop.as_address_cells() {
-                    writeln!(f, "#address-cells: {}", v)?;
-                } else if let Some(v) = prop.as_size_cells() {
-                    writeln!(f, "#size-cells: {}", v)?;
-                } else if let Some(v) = prop.as_interrupt_cells() {
-                    writeln!(f, "#interrupt-cells: {}", v)?;
-                } else if let Some(s) = prop.as_status() {
-                    writeln!(f, "status: {:?}", s)?;
-                } else if let Some(p) = prop.as_phandle() {
-                    writeln!(f, "phandle: {}", p)?;
-                } else {
-                    // Default handling for unknown properties
-                    if prop.is_empty() {
-                        writeln!(f, "{}", prop.name())?;
-                    } else if let Some(s) = prop.as_str() {
-                        writeln!(f, "{}: \"{}\"", prop.name(), s)?;
-                    } else if prop.len() == 4 {
-                        let v = u32::from_be_bytes(prop.data().as_slice().try_into().unwrap());
-                        writeln!(f, "{}: {:#x}", prop.name(), v)?;
-                    } else {
-                        writeln!(f, "{}: <{} bytes>", prop.name(), prop.len())?;
-                    }
-                }
-            }
+            self.debug_node(f, &node)?;
         }
 
         writeln!(f, "}}")
+    }
+}
+
+impl Fdt<'_> {
+    /// Writes a node in debug format.
+    fn debug_node(&self, f: &mut fmt::Formatter<'_>, node: &Node<'_>) -> fmt::Result {
+        let level = node.level();
+        fmt_utils::write_indent(f, level + 2, "\t")?;
+
+        let name = Self::format_node_name(node.name());
+        writeln!(
+            f,
+            "[{}] address_cells={}, size_cells={}",
+            name, node.address_cells, node.size_cells
+        )?;
+
+        for prop in node.properties() {
+            self.debug_property(f, level, &prop)?;
+        }
+        Ok(())
+    }
+
+    /// Writes a property in debug format.
+    fn debug_property(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        level: usize,
+        prop: &Property<'_>,
+    ) -> fmt::Result {
+        fmt_utils::write_indent(f, level + 3, "\t")?;
+
+        match () {
+            () if prop.as_address_cells().is_some() => {
+                writeln!(f, "#address-cells: {}", prop.as_address_cells().unwrap())?
+            }
+            () if prop.as_size_cells().is_some() => {
+                writeln!(f, "#size-cells: {}", prop.as_size_cells().unwrap())?
+            }
+            () if prop.as_interrupt_cells().is_some() => writeln!(
+                f,
+                "#interrupt-cells: {}",
+                prop.as_interrupt_cells().unwrap()
+            )?,
+            () if prop.as_status().is_some() => {
+                writeln!(f, "status: {:?}", prop.as_status().unwrap())?
+            }
+            () if prop.as_phandle().is_some() => {
+                writeln!(f, "phandle: {}", prop.as_phandle().unwrap())?
+            }
+            () if prop.is_empty() => writeln!(f, "{}", prop.name())?,
+            () if prop.as_str().is_some() => {
+                writeln!(f, "{}: \"{}\"", prop.name(), prop.as_str().unwrap())?
+            }
+            () if prop.len() == 4 => {
+                let v = u32::from_be_bytes(prop.data().as_slice().try_into().unwrap());
+                writeln!(f, "{}: {:#x}", prop.name(), v)?
+            }
+            () => writeln!(f, "{}: <{} bytes>", prop.name(), prop.len())?,
+        }
+        Ok(())
     }
 }
 
@@ -476,7 +634,7 @@ mod tests {
     #[test]
     fn test_memory_reservation_iterator() {
         // Create simple test data: one memory reservation entry + terminator
-        let mut test_data = [0u8; 32];
+        let mut test_data = [0u8; data::MEM_RSV_ENTRY_SIZE * 2];
 
         // Address: 0x80000000, Size: 0x10000000 (256MB)
         test_data[0..8].copy_from_slice(&0x80000000u64.to_be_bytes());
@@ -499,7 +657,7 @@ mod tests {
     #[test]
     fn test_empty_memory_reservation_iterator() {
         // Only terminator
-        let mut test_data = [0u8; 16];
+        let mut test_data = [0u8; data::MEM_RSV_ENTRY_SIZE];
         test_data[0..8].copy_from_slice(&0u64.to_be_bytes());
         test_data[8..16].copy_from_slice(&0u64.to_be_bytes());
 

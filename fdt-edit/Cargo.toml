@@ -2,24 +2,21 @@
 authors = ["周睿 <zrufo747@outlook.com>"]
 categories = ["embedded", "no-std", "hardware-support"]
 description = "A high-level library for creating, editing, and encoding Flattened Device Tree (FDT) structures"
-documentation = "https://docs.rs/fdt-edit"
 edition = "2024"
-exclude = [".git*", "*.md", "tests/"]
 homepage = "https://github.com/drivercraft/fdt-parser"
 keywords = ["device-tree", "dtb", "embedded", "no-std", "editor"]
 license = "MIT OR Apache-2.0"
 name = "fdt-edit"
-readme = "README.md"
 repository = "https://github.com/drivercraft/fdt-parser"
-version = "0.1.7"
+version = "0.2.0"
 
 [dependencies]
-enum_dispatch = "0.3.13"
-fdt-raw = {version = "0.1.0", path = "../fdt-raw"}
+fdt-raw = {version = "0.2", path = "../fdt-raw"}
 log = "0.4"
+enum_dispatch = "0.3"
 
 [dev-dependencies]
-dtb-file = {path = "../dtb-file"}
+dtb-file.workspace = true
 env_logger = "0.11"
 
 [features]

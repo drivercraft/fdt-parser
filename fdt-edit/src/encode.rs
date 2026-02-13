@@ -1,27 +1,25 @@
-//! FDT encoding module.
+//! FDT 编码模块
 //!
-//! This module handles serialization of the `Fdt` structure into the
-//! DTB (Device Tree Blob) binary format.
+//! 将 Fdt 结构序列化为 DTB 二进制格式
 
 use alloc::{string::String, vec::Vec};
 use core::ops::Deref;
+
 use fdt_raw::{FDT_MAGIC, Token};
 
-use crate::{Fdt, Node};
+use crate::{Fdt, NodeId};
 
-/// FDT binary data container.
-///
-/// Wraps the encoded DTB data and provides access to the underlying bytes.
+/// FDT 二进制数据
 #[derive(Clone, Debug)]
 pub struct FdtData(Vec<u32>);
 
 impl FdtData {
-    /// Returns the data length in bytes.
+    /// 获取数据长度（字节）
     pub fn len(&self) -> usize {
         self.0.len() * 4
     }
 
-    /// Returns true if the data is empty.
+    /// 数据是否为空
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -46,10 +44,7 @@ impl AsRef<[u8]> for FdtData {
     }
 }
 
-/// FDT encoder for serializing to DTB format.
-///
-/// This encoder walks the node tree and generates the binary DTB format
-/// according to the Device Tree Specification.
+/// FDT 编码器
 pub struct FdtEncoder<'a> {
     fdt: &'a Fdt,
     struct_data: Vec<u32>,
@@ -58,7 +53,7 @@ pub struct FdtEncoder<'a> {
 }
 
 impl<'a> FdtEncoder<'a> {
-    /// Creates a new encoder for the given FDT.
+    /// 创建新的编码器
     pub fn new(fdt: &'a Fdt) -> Self {
         Self {
             fdt,
@@ -68,7 +63,7 @@ impl<'a> FdtEncoder<'a> {
         }
     }
 
-    /// Gets or adds a string to the strings block, returning its offset.
+    /// 获取或添加字符串，返回偏移量
     fn get_or_add_string(&mut self, s: &str) -> u32 {
         for (existing, offset) in &self.string_offsets {
             if existing == s {
@@ -83,7 +78,7 @@ impl<'a> FdtEncoder<'a> {
         offset
     }
 
-    /// Writes a BEGIN_NODE token and node name.
+    /// 写入 BEGIN_NODE token 和节点名
     fn write_begin_node(&mut self, name: &str) {
         let begin_token: u32 = Token::BeginNode.into();
         self.struct_data.push(begin_token.to_be());
@@ -101,13 +96,13 @@ impl<'a> FdtEncoder<'a> {
         }
     }
 
-    /// Writes an END_NODE token.
+    /// 写入 END_NODE token
     fn write_end_node(&mut self) {
         let end_token: u32 = Token::EndNode.into();
         self.struct_data.push(end_token.to_be());
     }
 
-    /// Writes a property to the structure block.
+    /// 写入属性
     fn write_property(&mut self, name: &str, data: &[u8]) {
         let prop_token: u32 = Token::Prop.into();
         self.struct_data.push(prop_token.to_be());
@@ -129,38 +124,43 @@ impl<'a> FdtEncoder<'a> {
         }
     }
 
-    /// Performs the encoding and returns the binary DTB data.
+    /// 执行编码
     pub fn encode(mut self) -> FdtData {
-        // Recursively encode node tree
-        self.encode_node(&self.fdt.root.clone());
+        // 从根节点开始递归编码节点树
+        self.encode_node(self.fdt.root_id());
 
-        // Add END token
+        // 添加 END token
         let token: u32 = Token::End.into();
         self.struct_data.push(token.to_be());
 
         self.finalize()
     }
 
-    /// Recursively encodes a node and its children.
-    fn encode_node(&mut self, node: &Node) {
-        // Write BEGIN_NODE and node name
-        self.write_begin_node(node.name());
+    /// 递归编码节点及其子节点（适配 arena 结构）
+    fn encode_node(&mut self, id: NodeId) {
+        let node = match self.fdt.node(id) {
+            Some(n) => n,
+            None => return,
+        };
 
-        // Write all properties (using raw data directly)
+        // 写入 BEGIN_NODE 和节点名
+        self.write_begin_node(&node.name);
+
+        // 写入所有属性
         for prop in node.properties() {
-            self.write_property(prop.name(), &prop.data);
+            self.write_property(&prop.name, &prop.data);
         }
 
-        // Recursively encode child nodes
-        for child in node.children() {
-            self.encode_node(child);
+        // 递归编码子节点
+        for &child_id in node.children() {
+            self.encode_node(child_id);
         }
 
-        // Write END_NODE
+        // 写入 END_NODE
         self.write_end_node();
     }
 
-    /// Generates the final FDT binary data.
+    /// 生成最终 FDT 数据
     fn finalize(self) -> FdtData {
         let memory_reservations = &self.fdt.memory_reservations;
         let boot_cpuid_phys = self.fdt.boot_cpuid_phys;

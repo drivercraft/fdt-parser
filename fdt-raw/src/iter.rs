@@ -29,6 +29,8 @@ pub struct FdtIter<'a> {
     level: usize,
     /// Context stack, with the top being the current context
     context_stack: heapless::Vec<NodeContext, 16>,
+    /// Path stack tracking the current path components from root
+    path_stack: heapless::Vec<&'a str, 16>,
 }
 
 impl<'a> FdtIter<'a> {
@@ -60,17 +62,27 @@ impl<'a> FdtIter<'a> {
             level: 0,
             finished: false,
             context_stack,
+            path_stack: heapless::Vec::new(),
         }
     }
 
     /// Returns the current context (top of the stack).
+    ///
+    /// # Safety
+    ///
+    /// The stack is never empty because a default context is pushed on
+    /// initialization in `FdtIter::new`.
     #[inline]
     fn current_context(&self) -> &NodeContext {
-        // The stack is never empty because we push a default context on initialization
+        // SAFETY: The stack is initialized with a default context and is never
+        // completely emptied during iteration.
         self.context_stack.last().unwrap()
     }
 
     /// Handles an error by logging it and terminating iteration.
+    ///
+    /// When an error occurs during FDT parsing, we log it and stop iteration
+    /// rather than panicking. This allows partial parsing and graceful degradation.
     fn handle_error(&mut self, err: FdtError) {
         error!("FDT parse error: {}", err);
         self.finished = true;
@@ -103,6 +115,7 @@ impl<'a> Iterator for FdtIter<'a> {
                             self.level -= 1;
                             // Pop stack to restore parent node context
                             self.context_stack.pop();
+                            self.path_stack.pop();
                         }
                         // Continue loop to process next token
                     }
@@ -131,7 +144,7 @@ impl<'a> Iterator for FdtIter<'a> {
                     );
 
                     // Read node name
-                    match node_iter.read_node_name() {
+                    match node_iter.read_node_name(&self.path_stack) {
                         Ok(mut node) => {
                             // Process node properties to get address-cells, size-cells
                             match node_iter.process() {
@@ -154,6 +167,10 @@ impl<'a> Iterator for FdtIter<'a> {
 
                                             // Has child nodes, update reader position
                                             self.reader = node_iter.reader().clone();
+                                            // Push current node name onto path stack
+                                            if !node.name().is_empty() {
+                                                let _ = self.path_stack.push(node.name());
+                                            }
                                             // Increase level (node has children)
                                             self.level += 1;
                                         }
@@ -190,6 +207,7 @@ impl<'a> Iterator for FdtIter<'a> {
                         self.level -= 1;
                         // Pop stack to restore parent node context
                         self.context_stack.pop();
+                        self.path_stack.pop();
                     }
                     continue;
                 }

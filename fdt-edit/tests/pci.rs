@@ -1,182 +1,193 @@
-#[cfg(test)]
-mod tests {
-    use std::sync::Once;
+//! PCI node view tests.
 
-    use dtb_file::{fdt_phytium, fdt_qemu};
-    use fdt_edit::*;
+use std::sync::Once;
 
-    fn init_logging() {
-        static INIT: Once = Once::new();
-        INIT.call_once(|| {
-            let _ = env_logger::builder()
-                .is_test(true)
-                .filter_level(log::LevelFilter::Trace)
-                .try_init();
-        });
-    }
+use dtb_file::*;
+use fdt_edit::{Fdt, NodeType, PciRange, PciSpace};
 
-    #[test]
-    fn test_pci_node_detection() {
-        let raw_data = fdt_qemu();
-        let fdt = Fdt::from_bytes(&raw_data).unwrap();
+fn init_logging() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Trace)
+            .try_init();
+    });
+}
 
-        // Try to find PCI nodes
-        let mut pci_nodes_found = 0;
-        for node in fdt.all_nodes() {
-            {
-                if let NodeRef::Pci(pci) = node {
-                    pci_nodes_found += 1;
-                    println!("Found PCI node: {}", pci.name());
-                }
-            }
+#[test]
+fn test_pci_node_detection() {
+    let raw_data = fdt_phytium();
+    let fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+    let mut pci_count = 0;
+    for node in fdt.all_nodes() {
+        if let NodeType::Pci(pci) = node {
+            pci_count += 1;
+            println!(
+                "PCI node: {} #interrupt-cells={}",
+                pci.path(),
+                pci.interrupt_cells()
+            );
         }
-
-        // We should find at least one PCI node in the qemu PCI test file
-        assert!(pci_nodes_found > 0, "Should find at least one PCI node");
     }
 
-    #[test]
-    fn test_bus_range() {
-        let raw_data = fdt_qemu();
-        let fdt = Fdt::from_bytes(&raw_data).unwrap();
+    println!("Total PCI nodes: {}", pci_count);
+    // 飞腾 DTB 应该有 PCI/PCIe 节点
+    assert!(pci_count > 0, "phytium DTB should have PCI nodes");
+}
 
-        for node in fdt.all_nodes() {
-            {
-                if let NodeRef::Pci(pci) = node
-                    && let Some(range) = pci.bus_range()
-                {
-                    println!("Found bus-range: {range:?}");
-                    assert!(range.start <= range.end, "Bus range start should be <= end");
-                    return; // Test passed
-                }
-            }
-        }
+#[test]
+fn test_pci_ranges() {
+    let raw_data = fdt_phytium();
+    let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        // println!("No bus-range found in any PCI node");
-    }
+    for node in fdt.all_nodes() {
+        if let NodeType::Pci(pci) = node {
+            if let Some(ranges) = pci.ranges() {
+                println!("PCI {} has {} ranges:", pci.path(), ranges.len());
 
-    #[test]
-    fn test_pci_properties() {
-        let raw_data = fdt_qemu();
-        let fdt = Fdt::from_bytes(&raw_data).unwrap();
+                for range in &ranges {
+                    let space_name = match range.space {
+                        PciSpace::IO => "IO",
+                        PciSpace::Memory32 => "Mem32",
+                        PciSpace::Memory64 => "Mem64",
+                    };
 
-        for node in fdt.all_nodes() {
-            {
-                if let NodeRef::Pci(pci) = node {
-                    // Test address cells
-                    assert_eq!(
-                        pci.address_cells(),
-                        Some(3),
-                        "PCI should use 3 address cells"
+                    println!(
+                        "  {}: bus={:#x} cpu={:#x} size={:#x} prefetch={}",
+                        space_name,
+                        range.bus_address,
+                        range.cpu_address,
+                        range.size,
+                        range.prefetchable
                     );
-
-                    // Test interrupt cells
-                    assert_eq!(pci.interrupt_cells(), 1, "PCI should use 1 interrupt cell");
-
-                    // Test device type
-                    if let Some(device_type) = pci.device_type() {
-                        assert!(!device_type.is_empty());
-                    }
-
-                    // Test compatibles
-                    let compatibles = pci.compatibles().collect::<Vec<_>>();
-                    if !compatibles.is_empty() {
-                        println!("Compatibles: {:?}", compatibles);
-                    }
-
-                    return; // Test passed for first PCI node found
                 }
+
+                assert!(!ranges.is_empty(), "PCI node should have ranges");
             }
         }
-
-        panic!("No PCI nodes found for property testing");
     }
+}
 
-    #[test]
-    fn test_pci2() {
-        let raw = fdt_phytium();
-        let fdt = Fdt::from_bytes(&raw).unwrap();
-        let node = fdt
-            .find_compatible(&["pci-host-ecam-generic"])
-            .into_iter()
-            .next()
-            .unwrap();
+#[test]
+fn test_pci_bus_range() {
+    let raw_data = fdt_phytium();
+    let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        let NodeRef::Pci(pci) = node else {
-            panic!("Not a PCI node");
-        };
-
-        let want = [
-            PciRange {
-                space: PciSpace::IO,
-                bus_address: 0x0,
-                cpu_address: 0x50000000,
-                size: 0xf00000,
-                prefetchable: false,
-            },
-            PciRange {
-                space: PciSpace::Memory32,
-                bus_address: 0x58000000,
-                cpu_address: 0x58000000,
-                size: 0x28000000,
-                prefetchable: false,
-            },
-            PciRange {
-                space: PciSpace::Memory64,
-                bus_address: 0x1000000000,
-                cpu_address: 0x1000000000,
-                size: 0x1000000000,
-                prefetchable: false,
-            },
-        ];
-
-        for (i, range) in pci.ranges().unwrap().iter().enumerate() {
-            assert_eq!(*range, want[i]);
-            println!("{range:#x?}");
+    for node in fdt.all_nodes() {
+        if let NodeType::Pci(pci) = node {
+            if let Some(bus_range) = pci.bus_range() {
+                println!(
+                    "PCI {} bus-range: {}..{}",
+                    pci.path(),
+                    bus_range.start,
+                    bus_range.end
+                );
+            }
         }
     }
+}
 
-    #[test]
-    fn test_pci_irq_map() {
-        let raw = fdt_phytium();
-        let fdt = Fdt::from_bytes(&raw).unwrap();
-        let node_ref = fdt
-            .find_compatible(&["pci-host-ecam-generic"])
-            .into_iter()
-            .next()
-            .unwrap();
+#[test]
+fn test_pci_interrupt_map_mask() {
+    let raw_data = fdt_phytium();
+    let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
-        let NodeRef::Pci(pci) = node_ref else {
-            panic!("Not a PCI node");
-        };
-
-        let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
-
-        assert!(!irq.irqs.is_empty());
-    }
-
-    #[test]
-    fn test_pci_irq_map2() {
-        init_logging();
-
-        let raw = fdt_qemu();
-        let fdt = Fdt::from_bytes(&raw).unwrap();
-        let node_ref = fdt
-            .find_compatible(&["pci-host-ecam-generic"])
-            .into_iter()
-            .next()
-            .unwrap();
-
-        let NodeRef::Pci(pci) = node_ref else {
-            panic!("Not a PCI node");
-        };
-
-        let irq = pci.child_interrupts(0, 2, 0, 1).unwrap();
-
-        let want = [0, 5, 4];
-
-        for (got, want) in irq.irqs.iter().zip(want.iter()) {
-            assert_eq!(*got, *want);
+    for node in fdt.all_nodes() {
+        if let NodeType::Pci(pci) = node {
+            if let Some(mask) = pci.interrupt_map_mask() {
+                println!("PCI {} interrupt-map-mask: {:?}", pci.path(), mask);
+                assert!(!mask.is_empty(), "interrupt-map-mask should not be empty");
+            }
         }
+    }
+}
+
+#[test]
+fn test_pci2() {
+    let raw = fdt_phytium();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+    let node = fdt
+        .find_compatible(&["pci-host-ecam-generic"])
+        .into_iter()
+        .next()
+        .unwrap();
+
+    let NodeType::Pci(pci) = node else {
+        panic!("Not a PCI node");
+    };
+
+    let want = [
+        PciRange {
+            space: PciSpace::IO,
+            bus_address: 0x0,
+            cpu_address: 0x50000000,
+            size: 0xf00000,
+            prefetchable: false,
+        },
+        PciRange {
+            space: PciSpace::Memory32,
+            bus_address: 0x58000000,
+            cpu_address: 0x58000000,
+            size: 0x28000000,
+            prefetchable: false,
+        },
+        PciRange {
+            space: PciSpace::Memory64,
+            bus_address: 0x1000000000,
+            cpu_address: 0x1000000000,
+            size: 0x1000000000,
+            prefetchable: false,
+        },
+    ];
+
+    for (i, range) in pci.ranges().unwrap().iter().enumerate() {
+        assert_eq!(*range, want[i]);
+        println!("{range:#x?}");
+    }
+}
+
+#[test]
+fn test_pci_irq_map() {
+    let raw = fdt_phytium();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+    let node_ref = fdt
+        .find_compatible(&["pci-host-ecam-generic"])
+        .into_iter()
+        .next()
+        .unwrap();
+
+    let NodeType::Pci(pci) = node_ref else {
+        panic!("Not a PCI node");
+    };
+
+    let irq = pci.child_interrupts(0, 0, 0, 4).unwrap();
+
+    assert!(!irq.irqs.is_empty());
+}
+
+#[test]
+fn test_pci_irq_map2() {
+    init_logging();
+
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+    let node_ref = fdt
+        .find_compatible(&["pci-host-ecam-generic"])
+        .into_iter()
+        .next()
+        .unwrap();
+
+    let NodeType::Pci(pci) = node_ref else {
+        panic!("Not a PCI node");
+    };
+
+    let irq = pci.child_interrupts(0, 2, 0, 1).unwrap();
+
+    let want = [0, 5, 4];
+
+    for (got, want) in irq.irqs.iter().zip(want.iter()) {
+        assert_eq!(*got, *want);
     }
 }

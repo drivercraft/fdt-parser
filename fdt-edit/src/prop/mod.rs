@@ -11,9 +11,9 @@ use alloc::{
     vec::Vec,
 };
 
-use fdt_raw::data::{Bytes, Reader, StrIter, U32Iter};
+use fdt_raw::data::{Bytes, StrIter, U32Iter};
 // Re-export from fdt_raw
-pub use fdt_raw::{Phandle, RegInfo, Status};
+use crate::Reader;
 
 /// A mutable device tree property.
 ///

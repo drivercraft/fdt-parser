@@ -47,6 +47,8 @@ mod header;
 mod iter;
 mod node;
 
+mod fmt_utils;
+
 pub use define::*;
 pub use fdt::Fdt;
 pub use header::Header;

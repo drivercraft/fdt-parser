@@ -17,7 +17,7 @@ pub use reg::{RegInfo, RegIter};
 
 use crate::{
     FdtError, Phandle, Status, Token,
-    data::{Bytes, Reader, StrIter, U32Iter},
+    data::{Bytes, Reader, StrIter, U32_SIZE, U32Iter},
 };
 
 /// A generic device tree property containing name and raw data.
@@ -221,76 +221,107 @@ impl<'a> Property<'a> {
 impl fmt::Display for Property<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_empty() {
-            write!(f, "{}", self.name())
-        } else if let Some(v) = self.as_address_cells() {
-            write!(f, "#address-cells = <{:#x}>", v)
-        } else if let Some(v) = self.as_size_cells() {
-            write!(f, "#size-cells = <{:#x}>", v)
-        } else if let Some(v) = self.as_interrupt_cells() {
-            write!(f, "#interrupt-cells = <{:#x}>", v)
-        } else if self.name() == "reg" {
-            // reg property needs special handling, but we lack context info
-            // Display raw data
-            write!(f, "reg = ")?;
-            format_bytes(f, &self.data())
-        } else if let Some(s) = self.as_status() {
-            write!(f, "status = \"{:?}\"", s)
-        } else if let Some(p) = self.as_phandle() {
-            write!(f, "phandle = {}", p)
-        } else if let Some(p) = self.as_interrupt_parent() {
-            write!(f, "interrupt-parent = {}", p)
-        } else if let Some(s) = self.as_device_type() {
-            write!(f, "device_type = \"{}\"", s)
-        } else if let Some(iter) = self.as_compatible() {
-            write!(f, "compatible = ")?;
-            let mut first = true;
-            for s in iter.clone() {
-                if !first {
-                    write!(f, ", ")?;
-                }
-                write!(f, "\"{}\"", s)?;
-                first = false;
+            return write!(f, "{}", self.name());
+        }
+
+        // Try typed formatters first
+        if let Some(result) = self.try_format_typed(f) {
+            return result;
+        }
+
+        // Named properties with special handling
+        match self.name() {
+            "reg" => {
+                write!(f, "reg = ")?;
+                format_bytes(f, &self.data())
             }
-            Ok(())
-        } else if let Some(iter) = self.as_clock_names() {
-            write!(f, "clock-names = ")?;
-            let mut first = true;
-            for s in iter.clone() {
-                if !first {
-                    write!(f, ", ")?;
-                }
-                write!(f, "\"{}\"", s)?;
-                first = false;
-            }
-            Ok(())
-        } else if self.is_dma_coherent() {
-            write!(f, "dma-coherent")
-        } else if let Some(s) = self.as_str() {
-            // Check if there are multiple strings
-            if self.data().iter().filter(|&&b| b == 0).count() > 1 {
-                write!(f, "{} = ", self.name())?;
-                let mut first = true;
-                for s in self.as_str_iter() {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "\"{}\"", s)?;
-                    first = false;
-                }
-                Ok(())
-            } else {
-                write!(f, "{} = \"{}\"", self.name(), s)
-            }
-        } else if self.len() == 4 {
-            // Single u32
-            let v = u32::from_be_bytes(self.data().as_slice().try_into().unwrap());
-            write!(f, "{} = <{:#x}>", self.name(), v)
-        } else {
-            // Raw bytes
-            write!(f, "{} = ", self.name())?;
-            format_bytes(f, &self.data())
+            _ => self.format_generic(f),
         }
     }
+}
+
+impl Property<'_> {
+    /// Attempts to format the property using its specific type formatter.
+    /// Returns `Some(result)` if a specific formatter was used, `None` otherwise.
+    fn try_format_typed(&self, f: &mut fmt::Formatter<'_>) -> Option<fmt::Result> {
+        if let Some(v) = self.as_address_cells() {
+            return Some(write!(f, "#address-cells = <{:#x}>", v));
+        }
+        if let Some(v) = self.as_size_cells() {
+            return Some(write!(f, "#size-cells = <{:#x}>", v));
+        }
+        if let Some(v) = self.as_interrupt_cells() {
+            return Some(write!(f, "#interrupt-cells = <{:#x}>", v));
+        }
+        if let Some(s) = self.as_status() {
+            return Some(write!(f, "status = \"{:?}\"", s));
+        }
+        if let Some(p) = self.as_phandle() {
+            return Some(write!(f, "phandle = {}", p));
+        }
+        if let Some(p) = self.as_interrupt_parent() {
+            return Some(write!(f, "interrupt-parent = {}", p));
+        }
+        if let Some(s) = self.as_device_type() {
+            return Some(write!(f, "device_type = \"{}\"", s));
+        }
+        if let Some(iter) = self.as_compatible() {
+            return Some(format_string_list(f, "compatible", iter));
+        }
+        if let Some(iter) = self.as_clock_names() {
+            return Some(format_string_list(f, "clock-names", iter));
+        }
+        if self.is_dma_coherent() {
+            return Some(write!(f, "dma-coherent"));
+        }
+        None
+    }
+
+    /// Formats the property as a generic value (string, number, or bytes).
+    fn format_generic(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Check for multiple strings
+        if self.has_multiple_strings() {
+            return format_string_list(f, self.name(), self.as_str_iter());
+        }
+
+        // Try as single string
+        if let Some(s) = self.as_str() {
+            return write!(f, "{} = \"{}\"", self.name(), s);
+        }
+
+        // Try as single u32
+        if self.len() == 4 {
+            let v = u32::from_be_bytes(self.data().as_slice().try_into().unwrap());
+            return write!(f, "{} = <{:#x}>", self.name(), v);
+        }
+
+        // Default to raw bytes
+        write!(f, "{} = ", self.name())?;
+        format_bytes(f, &self.data())
+    }
+
+    /// Checks if the property data contains multiple null-terminated strings.
+    fn has_multiple_strings(&self) -> bool {
+        self.data().iter().filter(|&&b| b == 0).count() > 1
+    }
+}
+
+/// Formats a list of strings as "name = "s1", "s2"".
+fn format_string_list<'a>(
+    f: &mut fmt::Formatter<'_>,
+    name: &str,
+    iter: impl Iterator<Item = &'a str>,
+) -> fmt::Result {
+    write!(f, "{} = ", name)?;
+    let mut first = true;
+    for s in iter {
+        if !first {
+            write!(f, ", ")?;
+        }
+        write!(f, "\"{}\"", s)?;
+        first = false;
+    }
+    Ok(())
 }
 
 /// Formats a byte array as DTS format.
@@ -324,10 +355,22 @@ fn format_bytes(f: &mut fmt::Formatter<'_>, data: &[u8]) -> fmt::Result {
 /// Property iterator.
 ///
 /// Iterates over properties within a node, parsing each property from the
-/// device tree structure block.
+/// device tree structure block. Properties are read sequentially until
+/// a node boundary (BeginNode, EndNode, or End token) is encountered.
+///
+/// # Examples
+///
+/// ```ignore
+/// for prop in node.properties() {
+///     println!("{}: {}", prop.name(), prop.len());
+/// }
+/// ```
 pub struct PropIter<'a> {
+    /// Reader for the property data
     reader: Reader<'a>,
+    /// Strings block for resolving property names
     strings: Bytes<'a>,
+    /// Whether iteration has terminated (due to error or boundary)
     finished: bool,
 }
 
@@ -363,7 +406,7 @@ impl<'a> PropIter<'a> {
     /// Aligns the reader to a 4-byte boundary.
     fn align4(&mut self) {
         let pos = self.reader.position();
-        let aligned = (pos + 3) & !3;
+        let aligned = (pos + U32_SIZE - 1) & !(U32_SIZE - 1);
         let skip = aligned - pos;
         if skip > 0 {
             let _ = self.reader.read_bytes(skip);
@@ -443,7 +486,7 @@ impl<'a> Iterator for PropIter<'a> {
                 }
                 Token::BeginNode | Token::EndNode | Token::End => {
                     // Encountered node boundary, backtrack and terminate property iteration
-                    self.reader.backtrack(4);
+                    self.reader.backtrack(U32_SIZE);
                     self.finished = true;
                     return None;
                 }

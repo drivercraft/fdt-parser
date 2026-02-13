@@ -2,6 +2,13 @@
 //!
 //! This module provides types for parsing the `reg` property, which describes
 //! memory-mapped registers and address ranges for devices.
+//!
+//! The `reg` property format is:
+//! ```text
+//! reg = <address1 size1 address2 size2 ...>;
+//! ```
+//! where each address and size uses `#address-cells` and `#size-cells`
+//! u32 values respectively, inherited from the parent node.
 
 use crate::data::Reader;
 
@@ -9,17 +16,22 @@ use crate::data::Reader;
 ///
 /// Represents a single entry in a `reg` property, describing an address
 /// range for a device's registers or memory.
+///
+/// # Fields
+///
+/// * `address` - The base address of the register range or memory region
+/// * `size` - The size of the range (may be `None` if `#size-cells` is 0)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RegInfo {
-    /// Base address
+    /// Base address of the register/memory range
     pub address: u64,
-    /// Region size (optional, as size can be 0)
+    /// Size of the range (None if #size-cells is 0)
     pub size: Option<u64>,
 }
 
 impl RegInfo {
-    /// Creates a new RegInfo.
-    pub fn new(address: u64, size: Option<u64>) -> Self {
+    /// Creates a new RegInfo with the given address and optional size.
+    pub const fn new(address: u64, size: Option<u64>) -> Self {
         Self { address, size }
     }
 }
@@ -28,6 +40,21 @@ impl RegInfo {
 ///
 /// Iterates over entries in a `reg` property, parsing address and size
 /// values based on the parent node's #address-cells and #size-cells values.
+///
+/// # Cell Values
+///
+/// - `#address-cells` determines how many u32 values form each address
+/// - `#size-cells` determines how many u32 values form each size
+/// - Common values: 1 for 32-bit addresses, 2 for 64-bit addresses
+///
+/// # Examples
+///
+/// ```ignore
+/// // Assuming #address-cells = 2, #size-cells = 1
+/// for reg in node.reg() {
+///     println!("Address: {:#x}, Size: {:#x}", reg.address, reg.size.unwrap_or(0));
+/// }
+/// ```
 #[derive(Clone)]
 pub struct RegIter<'a> {
     reader: Reader<'a>,

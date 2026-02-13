@@ -10,9 +10,10 @@ use core::ops::Deref;
 use core::{ffi::CStr, fmt::Debug};
 
 use crate::Fdt;
+use crate::fmt_utils;
 use crate::{
     FdtError, Token,
-    data::{Bytes, Reader},
+    data::{Bytes, Reader, U32_SIZE},
 };
 
 mod chosen;
@@ -26,7 +27,13 @@ pub use prop::{PropIter, Property, RangeInfo, RegInfo, RegIter, VecRange};
 /// Context inherited from a node's parent.
 ///
 /// Contains the `#address-cells` and `#size-cells` values that should
-/// be used when parsing properties of the current node.
+/// be used when parsing properties of the current node. These values
+/// are inherited from the parent node unless overridden.
+///
+/// # Default Values
+///
+/// The root node defaults to `#address-cells = 2` and `#size-cells = 1`
+/// per the Device Tree specification.
 #[derive(Clone)]
 pub(crate) struct NodeContext {
     /// Parent node's #address-cells (used for parsing current node's reg)
@@ -61,6 +68,8 @@ pub struct NodeBase<'a> {
     pub size_cells: u8,
     /// Inherited context (contains parent's cells)
     context: NodeContext,
+    /// Path components from root to this node
+    path_components: heapless::Vec<&'a str, 16>,
 }
 
 impl<'a> NodeBase<'a> {
@@ -140,27 +149,36 @@ impl<'a> NodeBase<'a> {
             .into_iter()
             .flat_map(|p| p.as_str_iter())
     }
-}
 
-/// Helper function for writing indentation during formatting.
-fn write_indent(f: &mut fmt::Formatter<'_>, count: usize, ch: &str) -> fmt::Result {
-    for _ in 0..count {
-        write!(f, "{}", ch)?;
+    /// Returns the full path of this node as a string.
+    ///
+    /// For the root node, returns "/". For other nodes, returns the
+    /// absolute path like "/soc/serial@0".
+    pub fn path(&self) -> heapless::String<256> {
+        let mut result = heapless::String::new();
+        if self.path_components.is_empty() {
+            let _ = result.push('/');
+            return result;
+        }
+        for component in &self.path_components {
+            let _ = result.push('/');
+            let _ = result.push_str(component);
+        }
+        result
     }
-    Ok(())
 }
 
 impl fmt::Display for NodeBase<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_indent(f, self.level, "    ")?;
+        fmt_utils::write_indent(f, self.level, "    ")?;
         let name = if self.name.is_empty() { "/" } else { self.name };
 
         writeln!(f, "{} {{", name)?;
         for prop in self.properties() {
-            write_indent(f, self.level + 1, "    ")?;
+            fmt_utils::write_indent(f, self.level + 1, "    ")?;
             writeln!(f, "{};", prop)?;
         }
-        write_indent(f, self.level, "    ")?;
+        fmt_utils::write_indent(f, self.level, "    ")?;
         write!(f, "}}")
     }
 }
@@ -231,13 +249,16 @@ pub(crate) struct ParsedProps {
 }
 
 /// State of a single node iteration.
+///
+/// Tracks the current state while parsing a single node's content.
+/// Used internally by `OneNodeIter` to communicate with `FdtIter`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OneNodeState {
-    /// Currently processing the node
+    /// Currently processing the node (reading properties)
     Processing,
-    /// Encountered a child's BeginNode, needs to backtrack
+    /// Encountered a child's BeginNode token, needs to backtrack
     ChildBegin,
-    /// Encountered EndNode, current node processing complete
+    /// Encountered EndNode token, current node processing complete
     End,
 }
 
@@ -246,13 +267,26 @@ pub(crate) enum OneNodeState {
 /// When encountering a child's BeginNode token, it backtracks and signals
 /// FdtIter to handle the child node. This allows FdtIter to maintain
 /// proper tree traversal state.
+///
+/// # Implementation Notes
+///
+/// This iterator is `pub(crate)` because it's an internal implementation
+/// detail of the FDT parsing machinery. External consumers should use
+/// `FdtIter` or `NodeBase::properties()` instead.
 pub(crate) struct OneNodeIter<'a> {
+    /// Reader for the node's property data
     reader: Reader<'a>,
+    /// Strings block for looking up property names
     strings: Bytes<'a>,
+    /// Current iteration state
     state: OneNodeState,
+    /// Depth level of this node in the tree
     level: usize,
+    /// Inherited context from parent (address_cells, size_cells)
     context: NodeContext,
+    /// Extracted properties (#address-cells, #size-cells)
     parsed_props: ParsedProps,
+    /// Reference to the containing FDT for path resolution
     fdt: Fdt<'a>,
 }
 
@@ -281,13 +315,20 @@ impl<'a> OneNodeIter<'a> {
         &self.reader
     }
 
-    /// Returns the parsed properties.
+    /// Returns the parsed properties extracted from this node.
     pub fn parsed_props(&self) -> &ParsedProps {
         &self.parsed_props
     }
 
     /// Reads the node name (called after BeginNode token).
-    pub fn read_node_name(&mut self) -> Result<NodeBase<'a>, FdtError> {
+    ///
+    /// Reads the null-terminated node name and aligns to a 4-byte boundary.
+    /// Returns a partially-constructed `NodeBase` with default cell values
+    /// that will be updated by `process()`.
+    pub fn read_node_name(
+        &mut self,
+        parent_path: &heapless::Vec<&'a str, 16>,
+    ) -> Result<NodeBase<'a>, FdtError> {
         // Read null-terminated name string
         let name = self.read_cstr()?;
 
@@ -295,6 +336,12 @@ impl<'a> OneNodeIter<'a> {
         self.align4();
 
         let data = self.reader.remain();
+
+        // Build path components: parent path + current node name
+        let mut path_components = parent_path.clone();
+        if !name.is_empty() {
+            let _ = path_components.push(name);
+        }
 
         Ok(NodeBase {
             name,
@@ -306,10 +353,11 @@ impl<'a> OneNodeIter<'a> {
             size_cells: 1,
             context: self.context.clone(),
             _fdt: self.fdt.clone(),
+            path_components,
         })
     }
 
-    /// Reads a null-terminated string.
+    /// Reads a null-terminated string from the current position.
     fn read_cstr(&mut self) -> Result<&'a str, FdtError> {
         let bytes = self.reader.remain();
         let cstr = CStr::from_bytes_until_nul(bytes.as_slice())?;
@@ -320,9 +368,12 @@ impl<'a> OneNodeIter<'a> {
     }
 
     /// Aligns the reader to a 4-byte boundary.
+    ///
+    /// FDT structures are 4-byte aligned, so after reading variable-length
+    /// data (like node names), we need to pad to the next 4-byte boundary.
     fn align4(&mut self) {
         let pos = self.reader.position();
-        let aligned = (pos + 3) & !3;
+        let aligned = (pos + U32_SIZE - 1) & !(U32_SIZE - 1);
         let skip = aligned - pos;
         if skip > 0 {
             let _ = self.reader.read_bytes(skip);
@@ -330,25 +381,39 @@ impl<'a> OneNodeIter<'a> {
     }
 
     /// Reads a property name from the strings block.
+    ///
+    /// Property names are stored as offsets into the strings block,
+    /// not inline with the property data.
     fn read_prop_name(&self, nameoff: u32) -> Result<&'a str, FdtError> {
         let bytes = self.strings.slice(nameoff as usize..self.strings.len());
         let cstr = CStr::from_bytes_until_nul(bytes.as_slice())?;
         Ok(cstr.to_str()?)
     }
 
-    /// Reads a u32 from big-endian bytes.
+    /// Reads a u32 value from big-endian bytes at the given offset.
     fn read_u32_be(data: &[u8], offset: usize) -> u64 {
-        u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as u64
+        u32::from_be_bytes(data[offset..offset + U32_SIZE].try_into().unwrap()) as u64
     }
 
-    /// Processes node content, parsing key properties until child node or end.
+    /// Processes node content, parsing properties until child node or end.
+    ///
+    /// This is the core parsing loop for a node. It reads tokens sequentially:
+    /// - Properties are parsed and `#address-cells`/`#size-cells` are extracted
+    /// - Child nodes cause backtracking and return `ChildBegin`
+    /// - EndNode terminates processing and returns `End`
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(OneNodeState::ChildBegin)` if a child node was found
+    /// - `Ok(OneNodeState::End)` if the node ended
+    /// - `Err(FdtError)` if parsing failed
     pub fn process(&mut self) -> Result<OneNodeState, FdtError> {
         loop {
             let token = self.reader.read_token()?;
             match token {
                 Token::BeginNode => {
                     // Child node encountered, backtrack token and return
-                    self.reader.backtrack(4);
+                    self.reader.backtrack(U32_SIZE);
                     self.state = OneNodeState::ChildBegin;
                     return Ok(OneNodeState::ChildBegin);
                 }
