@@ -551,13 +551,13 @@ fn test_memory_in_fdt(raw: &[u8], name: &str) {
                     name, i, reg_info.address, reg_info.size
                 );
 
-                // Basic verification: address should be valid
-                if reg_info.size.is_some() && reg_info.size.unwrap() > 0 {
-                    assert!(
-                        reg_info.size.unwrap() > 0,
-                        "Memory size should be positive, got {:?}",
-                        reg_info.size
-                    );
+                // Basic verification: if size is present and positive, verify it
+                if let Some(size) = reg_info.size {
+                    if size > 0 {
+                        info!("[{}]       Memory size is positive: {}", name, size);
+                    } else {
+                        info!("[{}]       Memory size is 0", name);
+                    }
                 }
             }
 
@@ -743,7 +743,7 @@ fn test_find_children_by_path_root() {
     let fdt = Fdt::from_bytes(&raw).unwrap();
 
     // Root "/" should have children
-    let children: Vec<_> = fdt.find_children_by_path("/").unwrap().collect();
+    let children: Vec<_> = fdt.find_children_by_path("/").collect();
     assert!(!children.is_empty(), "Root should have children");
 
     // All children should be at level 1
@@ -786,18 +786,16 @@ fn test_find_children_by_path_nonroot() {
     for node in fdt.all_nodes() {
         if node.level() == 1 {
             let path = node.path();
-            if let Some(children_iter) = fdt.find_children_by_path(path.as_str()) {
-                let children: Vec<_> = children_iter.collect();
-                if !children.is_empty() {
-                    info!(
-                        "Found parent '{}' with {} children, first='{}'",
-                        path,
-                        children.len(),
-                        children[0].name()
-                    );
-                    parent_with_children = Some(path.to_string());
-                    break;
-                }
+            let children: Vec<_> = fdt.find_children_by_path(path.as_str()).collect();
+            if !children.is_empty() {
+                info!(
+                    "Found parent '{}' with {} children, first='{}'",
+                    path,
+                    children.len(),
+                    children[0].name()
+                );
+                parent_with_children = Some(path.to_string());
+                break;
             }
         }
     }
@@ -815,10 +813,10 @@ fn test_find_children_by_path_leaf() {
     let fdt = Fdt::from_bytes(&raw).unwrap();
 
     // "chosen" node typically has no child nodes
-    let children: Vec<_> = fdt.find_children_by_path("/chosen").unwrap().collect();
+    let children: Vec<_> = fdt.find_children_by_path("/chosen").collect();
     info!(
         "Children of /chosen: {:?}",
-        children.iter().map(|n| n.name()).collect::<Vec<_>>()
+        children.iter().map(|n: &fdt_raw::Node| n.name()).collect::<Vec<_>>()
     );
 
     // Even if it has children, verify they are all at the correct level
@@ -835,9 +833,9 @@ fn test_find_children_by_path_nonexistent() {
     let raw = fdt_qemu();
     let fdt = Fdt::from_bytes(&raw).unwrap();
 
-    // Non-existent path should return None
-    let result = fdt.find_children_by_path("/nonexistent/path");
-    assert!(result.is_none(), "Non-existent path should return None");
+    // Non-existent path should return empty iterator
+    let result: Vec<_> = fdt.find_children_by_path("/nonexistent/path").collect();
+    assert!(result.is_empty(), "Non-existent path should return empty iterator");
 }
 
 #[test]
@@ -848,7 +846,7 @@ fn test_find_children_by_path_no_grandchildren() {
 
     // Verify that find_children_by_path returns only direct children,
     // not grandchildren or deeper descendants
-    let root_children: Vec<_> = fdt.find_children_by_path("/").unwrap().collect();
+    let root_children: Vec<_> = fdt.find_children_by_path("/").collect();
 
     // Count all descendants of root (all nodes except root)
     let all_count = fdt.all_nodes().count();
@@ -895,8 +893,7 @@ fn test_find_children_by_path_consistency() {
 
         // Collect direct children from all_nodes
         let mut expected_children: Vec<&str> = Vec::new();
-        for j in (i + 1)..all_nodes.len() {
-            let child = &all_nodes[j];
+        for child in all_nodes.iter().skip(i + 1) {
             if child.level() == node_level + 1 {
                 expected_children.push(child.name());
             } else if child.level() <= node_level {
@@ -908,8 +905,7 @@ fn test_find_children_by_path_consistency() {
         // Collect direct children from find_children_by_path
         let actual_children: Vec<String> = fdt
             .find_children_by_path(path.as_str())
-            .unwrap()
-            .map(|n| n.name().to_string())
+            .map(|n: fdt_raw::Node| n.name().to_string())
             .collect();
 
         assert_eq!(
