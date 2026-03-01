@@ -43,29 +43,29 @@ fn test_pci_ranges() {
     let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
     for node in fdt.all_nodes() {
-        if let NodeType::Pci(pci) = node {
-            if let Some(ranges) = pci.ranges() {
-                println!("PCI {} has {} ranges:", pci.path(), ranges.len());
+        if let NodeType::Pci(pci) = node
+            && let Some(ranges) = pci.ranges()
+        {
+            println!("PCI {} has {} ranges:", pci.path(), ranges.len());
 
-                for range in &ranges {
-                    let space_name = match range.space {
-                        PciSpace::IO => "IO",
-                        PciSpace::Memory32 => "Mem32",
-                        PciSpace::Memory64 => "Mem64",
-                    };
+            for range in &ranges {
+                let space_name = match range.space {
+                    PciSpace::IO => "IO",
+                    PciSpace::Memory32 => "Mem32",
+                    PciSpace::Memory64 => "Mem64",
+                };
 
-                    println!(
-                        "  {}: bus={:#x} cpu={:#x} size={:#x} prefetch={}",
-                        space_name,
-                        range.bus_address,
-                        range.cpu_address,
-                        range.size,
-                        range.prefetchable
-                    );
-                }
-
-                assert!(!ranges.is_empty(), "PCI node should have ranges");
+                println!(
+                    "  {}: bus={:#x} cpu={:#x} size={:#x} prefetch={}",
+                    space_name,
+                    range.bus_address,
+                    range.cpu_address,
+                    range.size,
+                    range.prefetchable
+                );
             }
+
+            assert!(!ranges.is_empty(), "PCI node should have ranges");
         }
     }
 }
@@ -76,15 +76,15 @@ fn test_pci_bus_range() {
     let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
     for node in fdt.all_nodes() {
-        if let NodeType::Pci(pci) = node {
-            if let Some(bus_range) = pci.bus_range() {
-                println!(
-                    "PCI {} bus-range: {}..{}",
-                    pci.path(),
-                    bus_range.start,
-                    bus_range.end
-                );
-            }
+        if let NodeType::Pci(pci) = node
+            && let Some(bus_range) = pci.bus_range()
+        {
+            println!(
+                "PCI {} bus-range: {}..{}",
+                pci.path(),
+                bus_range.start,
+                bus_range.end
+            );
         }
     }
 }
@@ -95,11 +95,11 @@ fn test_pci_interrupt_map_mask() {
     let fdt = Fdt::from_bytes(&raw_data).unwrap();
 
     for node in fdt.all_nodes() {
-        if let NodeType::Pci(pci) = node {
-            if let Some(mask) = pci.interrupt_map_mask() {
-                println!("PCI {} interrupt-map-mask: {:?}", pci.path(), mask);
-                assert!(!mask.is_empty(), "interrupt-map-mask should not be empty");
-            }
+        if let NodeType::Pci(pci) = node
+            && let Some(mask) = pci.interrupt_map_mask()
+        {
+            println!("PCI {} interrupt-map-mask: {:?}", pci.path(), mask);
+            assert!(!mask.is_empty(), "interrupt-map-mask should not be empty");
         }
     }
 }
