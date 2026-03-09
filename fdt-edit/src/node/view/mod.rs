@@ -407,6 +407,7 @@ impl core::fmt::Display for NodeView<'_> {
 // ---------------------------------------------------------------------------
 
 #[enum_dispatch(ViewOp)]
+#[derive(Clone, Copy)]
 /// Typed node view enum, allowing pattern matching by node kind.
 pub enum NodeType<'a> {
     /// A clock provider node (has `#clock-cells` property).
