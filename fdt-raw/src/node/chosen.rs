@@ -91,7 +91,10 @@ mod tests {
 
     #[test]
     fn split_path_options_removes_serial_options() {
-        assert_eq!(split_path_options("/pl011@9000000:115200n8"), "/pl011@9000000");
+        assert_eq!(
+            split_path_options("/pl011@9000000:115200n8"),
+            "/pl011@9000000"
+        );
         assert_eq!(split_path_options("serial0:115200n8"), "serial0");
     }
 }
