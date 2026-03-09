@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/drivercraft/fdt-parser/compare/fdt-edit-v0.2.1...fdt-edit-v0.3.0) - 2026-03-09
+
+### Added
+
+- 为NodeType枚举添加Clone和Copy派生
+
 ## [0.2.1](https://github.com/drivercraft/fdt-parser/compare/fdt-edit-v0.2.0...fdt-edit-v0.2.1) - 2026-03-09
 
 ### Added
