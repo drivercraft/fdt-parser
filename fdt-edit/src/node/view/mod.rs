@@ -13,7 +13,7 @@ mod pci;
 
 use core::fmt::Display;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{borrow::ToOwned, string::String, vec::Vec};
 use enum_dispatch::enum_dispatch;
 use fdt_raw::Phandle;
 
@@ -135,6 +135,61 @@ impl<'a> NodeView<'a> {
         }
 
         None
+    }
+
+    /// Parses the `clocks` property into clock references.
+    ///
+    /// Each entry starts with a provider phandle followed by a provider-defined
+    /// number of specifier cells from that node's `#clock-cells` property.
+    pub fn clocks(&self) -> Vec<ClockRef> {
+        let Some(prop) = self.as_node().get_property("clocks") else {
+            return Vec::new();
+        };
+
+        let clock_names: Vec<String> = self
+            .as_node()
+            .get_property("clock-names")
+            .map(|prop| prop.as_str_iter().map(|s| s.to_owned()).collect())
+            .unwrap_or_default();
+
+        let mut reader = prop.as_reader();
+        let mut refs = Vec::new();
+        let mut index = 0;
+
+        while let Some(phandle_raw) = reader.read_u32() {
+            let phandle = Phandle::from(phandle_raw);
+            let clock_cells = self
+                .fdt()
+                .get_by_phandle(phandle)
+                .and_then(|provider| provider.as_node().get_property("#clock-cells"))
+                .and_then(|prop| prop.get_u32())
+                .unwrap_or(1);
+
+            let mut specifier = Vec::with_capacity(clock_cells as usize);
+            let mut complete = true;
+            for _ in 0..clock_cells {
+                if let Some(value) = reader.read_u32() {
+                    specifier.push(value);
+                } else {
+                    complete = false;
+                    break;
+                }
+            }
+
+            if !complete {
+                break;
+            }
+
+            refs.push(ClockRef::with_name(
+                clock_names.get(index).cloned(),
+                phandle,
+                clock_cells,
+                specifier,
+            ));
+            index += 1;
+        }
+
+        refs
     }
 
     /// Parses the `reg` property and returns corrected register entries.
@@ -399,6 +454,11 @@ impl<'a> NodeType<'a> {
     /// Returns the effective `interrupt-parent`, inheriting from ancestors.
     pub fn interrupt_parent(&self) -> Option<Phandle> {
         self.as_view().interrupt_parent()
+    }
+
+    /// Parses the `clocks` property into clock references.
+    pub fn clocks(&self) -> Vec<ClockRef> {
+        self.as_view().clocks()
     }
 }
 

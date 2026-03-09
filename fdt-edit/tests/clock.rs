@@ -1,7 +1,7 @@
 //! Clock node view tests.
 
 use dtb_file::*;
-use fdt_edit::{Fdt, NodeType};
+use fdt_edit::{ClockRef, Fdt, NodeType};
 
 #[test]
 fn test_clock_node_detection() {
@@ -72,5 +72,86 @@ fn test_fixed_clock() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn test_clocks_property_parsing() {
+    let raw_data = fdt_rpi_4b();
+    let fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+    let mut found_clock_refs = false;
+    for node in fdt.all_nodes() {
+        if node.as_node().get_property("clocks").is_none() {
+            continue;
+        }
+
+        let clocks = node.clocks();
+        if clocks.is_empty() {
+            continue;
+        }
+
+        found_clock_refs = true;
+        println!("Node {} has {} clock references", node.path(), clocks.len());
+
+        let clock_names: Vec<&str> = node
+            .as_node()
+            .get_property("clock-names")
+            .map(|prop| prop.as_str_iter().collect())
+            .unwrap_or_default();
+
+        for (index, clock) in clocks.iter().enumerate() {
+            println!(
+                "  [{}] phandle={:?} cells={} specifier={:?} name={:?}",
+                index, clock.phandle, clock.cells, clock.specifier, clock.name
+            );
+
+            assert_eq!(clock.specifier.len(), clock.cells as usize);
+
+            if let Some(provider) = fdt.get_by_phandle(clock.phandle) {
+                let provider_cells = provider
+                    .as_node()
+                    .get_property("#clock-cells")
+                    .and_then(|prop| prop.get_u32())
+                    .unwrap_or(1);
+                assert_eq!(clock.cells, provider_cells);
+            }
+
+            if let Some(expected_name) = clock_names.get(index) {
+                assert_eq!(clock.name.as_deref(), Some(*expected_name));
+            }
+        }
+    }
+
+    assert!(
+        found_clock_refs,
+        "should find nodes with parsable clocks property"
+    );
+}
+
+#[test]
+fn test_clock_ref_select() {
+    let raw_data = fdt_rpi_4b();
+    let fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+    let mut checked = false;
+    for node in fdt.all_nodes() {
+        for clock in node.clocks() {
+            checked = true;
+            assert_clock_select(&clock);
+        }
+    }
+
+    assert!(
+        checked,
+        "should validate at least one parsed clock reference"
+    );
+}
+
+fn assert_clock_select(clock: &ClockRef) {
+    if clock.cells == 0 {
+        assert_eq!(clock.select(), None);
+    } else {
+        assert_eq!(clock.select(), clock.specifier.first().copied());
     }
 }
