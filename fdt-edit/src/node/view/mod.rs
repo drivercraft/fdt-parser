@@ -22,7 +22,7 @@ use crate::{Fdt, Node, NodeId, Property, RangesEntry};
 // Re-export specialized view types
 pub use clock::{ClockNodeView, ClockNodeViewMut, ClockRef, ClockType, FixedClock};
 pub use generic::{NodeGeneric, NodeGenericMut};
-pub use intc::{IntcNodeView, IntcNodeViewMut};
+pub use intc::{IntcNodeView, IntcNodeViewMut, InterruptRef};
 pub use memory::{MemoryNodeView, MemoryNodeViewMut};
 pub use pci::{PciInterruptInfo, PciInterruptMap, PciNodeView, PciNodeViewMut, PciRange, PciSpace};
 
@@ -184,6 +184,70 @@ impl<'a> NodeView<'a> {
                 clock_names.get(index).cloned(),
                 phandle,
                 clock_cells,
+                specifier,
+            ));
+            index += 1;
+        }
+
+        refs
+    }
+
+    /// Parses the `interrupts` property into interrupt references.
+    ///
+    /// The specifier width is derived from the effective `interrupt-parent`
+    /// provider's `#interrupt-cells` value.
+    pub fn interrupts(&self) -> Vec<InterruptRef> {
+        let Some(prop) = self.as_node().get_property("interrupts") else {
+            return Vec::new();
+        };
+
+        let Some(interrupt_parent) = self.interrupt_parent() else {
+            return Vec::new();
+        };
+
+        let cells = self
+            .fdt()
+            .get_by_phandle(interrupt_parent)
+            .and_then(|provider| provider.as_node().get_property("#interrupt-cells"))
+            .and_then(|prop| prop.get_u32())
+            .unwrap_or(1);
+
+        if cells == 0 {
+            return Vec::new();
+        }
+
+        let interrupt_names: Vec<String> = self
+            .as_node()
+            .get_property("interrupt-names")
+            .map(|prop| prop.as_str_iter().map(|s| s.to_owned()).collect())
+            .unwrap_or_default();
+
+        let mut reader = prop.as_reader();
+        let mut refs = Vec::new();
+        let mut index = 0;
+
+        while let Some(first) = reader.read_u32() {
+            let mut specifier = Vec::with_capacity(cells as usize);
+            specifier.push(first);
+
+            let mut complete = true;
+            for _ in 1..cells {
+                if let Some(value) = reader.read_u32() {
+                    specifier.push(value);
+                } else {
+                    complete = false;
+                    break;
+                }
+            }
+
+            if !complete {
+                break;
+            }
+
+            refs.push(InterruptRef::with_name(
+                interrupt_names.get(index).cloned(),
+                interrupt_parent,
+                cells,
                 specifier,
             ));
             index += 1;
@@ -455,6 +519,11 @@ impl<'a> NodeType<'a> {
     /// Returns the effective `interrupt-parent`, inheriting from ancestors.
     pub fn interrupt_parent(&self) -> Option<Phandle> {
         self.as_view().interrupt_parent()
+    }
+
+    /// Parses the `interrupts` property into interrupt references.
+    pub fn interrupts(&self) -> Vec<InterruptRef> {
+        self.as_view().interrupts()
     }
 
     /// Parses the `clocks` property into clock references.

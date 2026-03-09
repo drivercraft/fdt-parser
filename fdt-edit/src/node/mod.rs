@@ -256,7 +256,8 @@ impl Node {
 
     /// Returns true if this node is an interrupt controller.
     pub fn is_interrupt_controller(&self) -> bool {
-        self.get_property("interrupt-controller").is_some()
+        self.name.starts_with("interrupt-controller")
+            || self.get_property("interrupt-controller").is_some()
     }
 
     /// Returns the `#interrupt-cells` property value.

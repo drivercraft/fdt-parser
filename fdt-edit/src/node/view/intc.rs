@@ -2,10 +2,45 @@
 
 use core::ops::Deref;
 
-use alloc::vec::Vec;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+
+use fdt_raw::Phandle;
 
 use super::NodeView;
 use crate::{NodeGeneric, NodeGenericMut, Property, ViewMutOp, ViewOp};
+
+/// Interrupt reference, used to parse the `interrupts` property.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterruptRef {
+    /// Optional interrupt name from `interrupt-names`.
+    pub name: Option<String>,
+    /// Effective interrupt parent controller phandle.
+    pub interrupt_parent: Phandle,
+    /// Provider `#interrupt-cells` value used to parse the specifier.
+    pub cells: u32,
+    /// Raw interrupt specifier cells.
+    pub specifier: Vec<u32>,
+}
+
+impl InterruptRef {
+    /// Creates a named interrupt reference.
+    pub fn with_name(
+        name: Option<String>,
+        interrupt_parent: Phandle,
+        cells: u32,
+        specifier: Vec<u32>,
+    ) -> Self {
+        Self {
+            name,
+            interrupt_parent,
+            cells,
+            specifier,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // IntcNodeView
@@ -46,9 +81,23 @@ impl<'a> IntcNodeView<'a> {
         self.as_view().as_node().interrupt_cells()
     }
 
+    /// Returns the `#address-cells` property value used by `interrupt-map`.
+    pub fn interrupt_address_cells(&self) -> Option<u32> {
+        self.as_view().as_node().address_cells()
+    }
+
     /// This is always `true` for `IntcNodeView` (type-level guarantee).
     pub fn is_interrupt_controller(&self) -> bool {
         true
+    }
+
+    /// Returns all compatible strings as owned values.
+    pub fn compatibles(&self) -> Vec<String> {
+        self.as_view()
+            .as_node()
+            .compatibles()
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 

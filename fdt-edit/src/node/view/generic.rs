@@ -4,7 +4,7 @@ use alloc::{string::String, vec::Vec};
 use fdt_raw::{Phandle, RegInfo};
 
 use super::NodeView;
-use crate::{ClockRef, Node, NodeId, RegFixed, ViewMutOp, ViewOp};
+use crate::{ClockRef, InterruptRef, Node, NodeId, RegFixed, ViewMutOp, ViewOp};
 
 // ---------------------------------------------------------------------------
 // GenericNodeView
@@ -37,6 +37,11 @@ impl<'a> NodeGeneric<'a> {
     /// Parses the `clocks` property into clock references.
     pub fn clocks(&self) -> Vec<ClockRef> {
         self.inner.clocks()
+    }
+
+    /// Parses the `interrupts` property into interrupt references.
+    pub fn interrupts(&self) -> Vec<InterruptRef> {
+        self.inner.interrupts()
     }
 }
 
