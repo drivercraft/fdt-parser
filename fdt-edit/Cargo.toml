@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 name = "fdt-edit"
 repository = "https://github.com/drivercraft/fdt-parser"
 version = "0.2.0"
+readme = "../README.md"
 
 [dependencies]
 fdt-raw = { version = "0.3", path = "../fdt-raw"}
