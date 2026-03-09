@@ -179,7 +179,7 @@ impl Node {
             .map(Phandle::from)
     }
 
-    /// Returns the `interrupt-parent` property value.
+    /// Returns the local `interrupt-parent` property value.
     pub fn interrupt_parent(&self) -> Option<Phandle> {
         self.get_property("interrupt-parent")
             .and_then(|prop| prop.get_u32())

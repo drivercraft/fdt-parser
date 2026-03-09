@@ -342,6 +342,20 @@ fn test_node_properties() {
 }
 
 #[test]
+fn test_interrupt_parent_inheritance() {
+    init_logging();
+    let raw = fdt_qemu();
+    let fdt = Fdt::from_bytes(&raw).unwrap();
+
+    let root = fdt.find_by_path("/").unwrap();
+    assert_eq!(root.interrupt_parent(), Some(Phandle::from(0x8002)));
+
+    let chosen = fdt.find_by_path("/chosen").unwrap();
+    assert!(chosen.find_property("interrupt-parent").is_none());
+    assert_eq!(chosen.interrupt_parent(), Some(Phandle::from(0x8002)));
+}
+
+#[test]
 fn test_reg_parsing() {
     init_logging();
     let raw = fdt_qemu();

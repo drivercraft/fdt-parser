@@ -162,6 +162,9 @@ impl<'a> Iterator for FdtIter<'a> {
                                             let child_context = NodeContext {
                                                 address_cells: node.address_cells,
                                                 size_cells: node.size_cells,
+                                                interrupt_parent: props
+                                                    .interrupt_parent
+                                                    .or(node.interrupt_parent()),
                                             };
                                             let _ = self.context_stack.push(child_context);
 

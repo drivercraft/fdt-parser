@@ -12,7 +12,7 @@ use core::{ffi::CStr, fmt::Debug};
 use crate::Fdt;
 use crate::fmt_utils;
 use crate::{
-    FdtError, Token,
+    FdtError, Phandle, Token,
     data::{Bytes, Reader, U32_SIZE},
 };
 
@@ -40,6 +40,8 @@ pub(crate) struct NodeContext {
     pub address_cells: u8,
     /// Parent node's #size-cells (used for parsing current node's reg)
     pub size_cells: u8,
+    /// Effective interrupt-parent inherited from ancestors
+    pub interrupt_parent: Option<Phandle>,
 }
 
 impl Default for NodeContext {
@@ -47,6 +49,7 @@ impl Default for NodeContext {
         NodeContext {
             address_cells: 2,
             size_cells: 1,
+            interrupt_parent: None,
         }
     }
 }
@@ -150,6 +153,13 @@ impl<'a> NodeBase<'a> {
             .flat_map(|p| p.as_str_iter())
     }
 
+    /// Returns the effective `interrupt-parent`, inheriting from ancestors.
+    pub fn interrupt_parent(&self) -> Option<Phandle> {
+        self.find_property("interrupt-parent")
+            .and_then(|prop| prop.as_interrupt_parent())
+            .or(self.context.interrupt_parent)
+    }
+
     /// Returns the full path of this node as a string.
     ///
     /// For the root node, returns "/". For other nodes, returns the
@@ -246,6 +256,7 @@ impl fmt::Debug for Node<'_> {
 pub(crate) struct ParsedProps {
     pub address_cells: Option<u8>,
     pub size_cells: Option<u8>,
+    pub interrupt_parent: Option<Phandle>,
 }
 
 /// State of a single node iteration.
@@ -452,6 +463,10 @@ impl<'a> OneNodeIter<'a> {
                             "#size-cells" if len == 4 => {
                                 self.parsed_props.size_cells =
                                     Some(Self::read_u32_be(&prop_data, 0) as u8);
+                            }
+                            "interrupt-parent" if len == 4 => {
+                                self.parsed_props.interrupt_parent =
+                                    Some(Phandle::from(Self::read_u32_be(&prop_data, 0) as u32));
                             }
                             _ => {}
                         }

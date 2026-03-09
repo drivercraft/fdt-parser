@@ -1,7 +1,7 @@
 //! Generic node view specialization.
 
 use alloc::{string::String, vec::Vec};
-use fdt_raw::RegInfo;
+use fdt_raw::{Phandle, RegInfo};
 
 use super::NodeView;
 use crate::{Node, NodeId, RegFixed, ViewMutOp, ViewOp};
@@ -27,6 +27,11 @@ impl<'a> NodeGeneric<'a> {
 
     pub fn regs(&self) -> Vec<RegFixed> {
         self.inner.regs()
+    }
+
+    /// Returns the effective `interrupt-parent`, inheriting from ancestors.
+    pub fn interrupt_parent(&self) -> Option<Phandle> {
+        self.inner.interrupt_parent()
     }
 }
 
