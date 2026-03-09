@@ -7,6 +7,7 @@
 use core::ops::Deref;
 
 const TEST_RPI_4_FDT: &[u8] = include_bytes!("dtb/bcm2711-rpi-4-b.dtb");
+const TEST_ORANGEPI_5_PLUS_FDT: &[u8] = include_bytes!("dtb/orangepi5plus.dtb");
 const TEST_PHYTIUM_FDT: &[u8] = include_bytes!("dtb/phytium.dtb");
 const TEST_QEMU_FDT: &[u8] = include_bytes!("dtb/qemu_pci.dtb");
 const TEST_3568_FDT: &[u8] = include_bytes!("dtb/rk3568-firefly-roc-pc-se.dtb");
@@ -15,6 +16,11 @@ const TEST_RESERVE_FDT: &[u8] = include_bytes!("dtb/test_reserve.dtb");
 /// Returns the FDT data for Raspberry Pi 4 Model B.
 pub fn fdt_rpi_4b() -> Align4Vec {
     Align4Vec::new(TEST_RPI_4_FDT)
+}
+
+/// Returns the FDT data for Orange Pi 5 Plus.
+pub fn fdt_orangepi_5plus() -> Align4Vec {
+    Align4Vec::new(TEST_ORANGEPI_5_PLUS_FDT)
 }
 
 /// Returns the FDT data for Phytium platform.

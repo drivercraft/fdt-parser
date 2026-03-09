@@ -38,6 +38,23 @@ fn test_interrupt_parent_inheritance() {
 }
 
 #[test]
+fn test_interrupt_parent_inheritance_orangepi5plus() {
+    let raw_data = fdt_orangepi_5plus();
+    let fdt = Fdt::from_bytes(&raw_data).unwrap();
+
+    let root = fdt.get_by_path("/").unwrap();
+    assert_eq!(root.as_node().interrupt_parent(), Some(Phandle::from(0x01)));
+    assert_eq!(root.interrupt_parent(), Some(Phandle::from(0x01)));
+
+    let mmc = fdt.get_by_path("/mmc@fe2e0000").unwrap();
+    assert_eq!(mmc.as_node().interrupt_parent(), None);
+    assert_eq!(mmc.interrupt_parent(), Some(Phandle::from(0x01)));
+
+    let irq_parent = fdt.get_by_phandle(Phandle::from(0x01)).unwrap();
+    assert_eq!(irq_parent.path(), "/interrupt-controller@fe600000");
+}
+
+#[test]
 fn test_iter_nodes() {
     let raw_data = fdt_phytium();
     let fdt = Fdt::from_bytes(&raw_data).unwrap();
