@@ -1,7 +1,13 @@
 name: Test
 
 on:
-  workflow_call:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  
 
 jobs:
   ci:
@@ -11,5 +17,9 @@ jobs:
     - uses: dtolnay/rust-toolchain@nightly
     - name: Install dtc
       run: sudo apt-get install device-tree-compiler
+    - name: Check code format
+      run: cargo fmt --all -- --check
+    - name: Clippy
+      run: cargo clippy --all-features
     - name: Unit test
       run: cargo test -- --nocapture
