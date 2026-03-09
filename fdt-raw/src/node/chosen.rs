@@ -5,7 +5,7 @@
 
 use core::ops::Deref;
 
-use super::NodeBase;
+use super::{Node, NodeBase};
 
 /// The /chosen node containing boot parameters.
 ///
@@ -39,6 +39,16 @@ impl<'a> Chosen<'a> {
         self.node.find_property_str("stdout-path")
     }
 
+    /// Returns the node referenced by the stdout-path property.
+    ///
+    /// The device tree specification allows stdout-path to append options
+    /// after a ':' separator, such as a UART baud rate. Those options are
+    /// ignored when resolving the referenced node.
+    pub fn stdout(&self) -> Option<Node<'a>> {
+        let path = split_path_options(self.stdout_path()?);
+        self.node._fdt.find_by_path(path)
+    }
+
     /// Returns the stdin-path property value.
     ///
     /// This property specifies the path to the device to be used for
@@ -62,5 +72,29 @@ impl core::fmt::Debug for Chosen<'_> {
             .field("bootargs", &self.bootargs())
             .field("stdout_path", &self.stdout_path())
             .finish()
+    }
+}
+
+fn split_path_options(path: &str) -> &str {
+    path.split_once(':').map_or(path, |(path, _)| path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_path_options;
+
+    #[test]
+    fn split_path_options_keeps_plain_path() {
+        assert_eq!(split_path_options("/pl011@9000000"), "/pl011@9000000");
+        assert_eq!(split_path_options("serial0"), "serial0");
+    }
+
+    #[test]
+    fn split_path_options_removes_serial_options() {
+        assert_eq!(
+            split_path_options("/pl011@9000000:115200n8"),
+            "/pl011@9000000"
+        );
+        assert_eq!(split_path_options("serial0:115200n8"), "serial0");
     }
 }

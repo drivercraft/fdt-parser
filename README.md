@@ -193,6 +193,7 @@ Test device tree files and utilities for development and testing, including:
 - `memory_reservation_blocks()`: Get memory reservations as iterator
 - `aliases()`: Get node aliases for path shortcuts
 - `chosen()`: Get chosen boot parameters
+- `Chosen::stdout()`: Resolve `/chosen/stdout-path` to the referenced node
 - `all_nodes()`: Iterator over all nodes in the tree
 - `root()`: Access the root node
 - `as_slice()`: Get access to the raw FDT data slice

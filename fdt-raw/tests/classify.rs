@@ -20,6 +20,8 @@ fn test_chosen() {
     let fdt = Fdt::from_bytes(&raw).unwrap();
     let chosen = fdt.chosen().unwrap();
     println!("Chosen node: {:?}", chosen);
+    let stdout = chosen.stdout().unwrap();
+    assert_eq!(stdout.path().as_str(), "/pl011@9000000");
 }
 
 #[test]
