@@ -2,6 +2,42 @@ use dtb_file::*;
 use fdt_edit::*;
 
 #[test]
+fn test_interrupt_parent_inheritance() {
+    let mut fdt = Fdt::new();
+    let root_id = fdt.root_id();
+
+    fdt.node_mut(root_id).unwrap().set_property(Property::new(
+        "interrupt-parent",
+        0x10_u32.to_be_bytes().to_vec(),
+    ));
+
+    let soc_id = fdt.add_node(root_id, Node::new("soc"));
+    fdt.add_node(soc_id, Node::new("uart@1000"));
+
+    let mut timer = Node::new("timer@2000");
+    timer.set_property(Property::new(
+        "interrupt-parent",
+        0x20_u32.to_be_bytes().to_vec(),
+    ));
+    fdt.add_node(soc_id, timer);
+
+    let soc = fdt.get_by_path("/soc").unwrap();
+    assert_eq!(soc.as_node().interrupt_parent(), None);
+    assert_eq!(soc.interrupt_parent(), Some(Phandle::from(0x10)));
+
+    let uart = fdt.get_by_path("/soc/uart@1000").unwrap();
+    assert_eq!(uart.as_node().interrupt_parent(), None);
+    assert_eq!(uart.interrupt_parent(), Some(Phandle::from(0x10)));
+
+    let timer = fdt.get_by_path("/soc/timer@2000").unwrap();
+    assert_eq!(
+        timer.as_node().interrupt_parent(),
+        Some(Phandle::from(0x20))
+    );
+    assert_eq!(timer.interrupt_parent(), Some(Phandle::from(0x20)));
+}
+
+#[test]
 fn test_iter_nodes() {
     let raw_data = fdt_phytium();
     let fdt = Fdt::from_bytes(&raw_data).unwrap();

@@ -15,6 +15,7 @@ use core::fmt::Display;
 
 use alloc::{string::String, vec::Vec};
 use enum_dispatch::enum_dispatch;
+use fdt_raw::Phandle;
 
 use crate::{Fdt, Node, NodeId, Property, RangesEntry};
 
@@ -119,6 +120,21 @@ impl<'a> NodeView<'a> {
 
     pub fn size_cells(&self) -> Option<u32> {
         self.as_node().size_cells()
+    }
+
+    /// Returns the effective `interrupt-parent`, inheriting from ancestors.
+    pub fn interrupt_parent(&self) -> Option<Phandle> {
+        let mut current = Some(self.id);
+
+        while let Some(node_id) = current {
+            let node = self.fdt().node(node_id)?;
+            if let Some(phandle) = node.interrupt_parent() {
+                return Some(phandle);
+            }
+            current = self.fdt().parent_of(node_id);
+        }
+
+        None
     }
 
     /// Parses the `reg` property and returns corrected register entries.
@@ -378,6 +394,11 @@ impl<'a> NodeType<'a> {
     /// Parses the `reg` property and returns corrected register entries.
     pub fn regs(&self) -> Vec<RegFixed> {
         self.as_view().regs()
+    }
+
+    /// Returns the effective `interrupt-parent`, inheriting from ancestors.
+    pub fn interrupt_parent(&self) -> Option<Phandle> {
+        self.as_view().interrupt_parent()
     }
 }
 
