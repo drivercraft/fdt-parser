@@ -13,7 +13,6 @@ pub struct Fdt<'a> {
 }
 
 impl<'a> Fdt<'a> {
-    
     /// Get the raw data as a byte slice.
     pub fn as_slice(&self) -> &'a [u8] {
         self.data
