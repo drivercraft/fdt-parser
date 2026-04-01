@@ -102,7 +102,8 @@ impl<'a> FdtReader<'a> {
     pub fn take_prop(&mut self, fdt: &Fdt<'a>) -> Option<Property<'a>> {
         let len = self.take_u32()?;
         let nameoff = self.take_u32()?;
-        let bytes = self.take_aligned(len as _)?;
+        let bytes = self.bytes.get(..len as usize)?;
+        let _ = self.skip_4_aligned(len as _);
         Some(Property {
             name: fdt.get_str(nameoff as _).unwrap_or("<error>"),
             data: FdtReader { bytes },
